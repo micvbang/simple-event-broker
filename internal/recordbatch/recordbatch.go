@@ -58,7 +58,7 @@ func Write(wtr io.Writer, records [][]byte) error {
 var ErrOutOfBounds = fmt.Errorf("attempting to read out of bounds record")
 
 type RecordBatch struct {
-	header      Header
+	Header      Header
 	recordIndex []uint32
 	rdr         io.ReadSeeker
 }
@@ -79,20 +79,20 @@ func Parse(rdr io.ReadSeeker) (*RecordBatch, error) {
 	}
 
 	return &RecordBatch{
-		header:      header,
+		Header:      header,
 		recordIndex: recordIndices,
 		rdr:         rdr,
 	}, nil
 }
 
 func (rb *RecordBatch) Record(recordIndex uint32) ([]byte, error) {
-	if recordIndex >= rb.header.NumRecords {
-		return nil, fmt.Errorf("%d records available, record index %d does not exist: %w", rb.header.NumRecords, recordIndex, ErrOutOfBounds)
+	if recordIndex >= rb.Header.NumRecords {
+		return nil, fmt.Errorf("%d records available, record index %d does not exist: %w", rb.Header.NumRecords, recordIndex, ErrOutOfBounds)
 	}
 
 	recordOffset := rb.recordIndex[recordIndex]
 
-	fileOffset := headerSize + rb.header.NumRecords*recordIndexSize + recordOffset
+	fileOffset := headerSize + rb.Header.NumRecords*recordIndexSize + recordOffset
 	_, err := rb.rdr.Seek(int64(fileOffset), io.SeekStart)
 	if err != nil {
 		return nil, fmt.Errorf("seeking for record %d/%d: %w", recordIndex, len(rb.recordIndex), err)
