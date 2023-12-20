@@ -37,13 +37,17 @@ func Write(wtr io.Writer, records [][]byte) error {
 		return fmt.Errorf("writing header: %w", err)
 	}
 
+	recordIndexes := make([]uint32, len(records))
+
 	var recordIndex uint32
-	for _, record := range records {
-		err = binary.Write(wtr, byteOrder, recordIndex)
-		if err != nil {
-			return fmt.Errorf("writing record index %d: %w", recordIndex, err)
-		}
+	for i, record := range records {
+		recordIndexes[i] = recordIndex
 		recordIndex += uint32(len(record))
+	}
+
+	err = binary.Write(wtr, byteOrder, recordIndexes)
+	if err != nil {
+		return fmt.Errorf("writing record indexes %d: %w", recordIndex, err)
 	}
 
 	for i, record := range records {
