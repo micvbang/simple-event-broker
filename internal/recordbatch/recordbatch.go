@@ -13,12 +13,13 @@ var (
 
 const (
 	FileFormatVersion = 1
-	headerSize        = 9
+	headerBytes       = 22
 	recordIndexSize   = 4
 )
 
 type Header struct {
 	MagicBytes [3]byte
+	Reserved   [13]byte
 	Version    int16
 	NumRecords uint32
 }
@@ -96,7 +97,7 @@ func (rb *RecordBatch) Record(recordIndex uint32) ([]byte, error) {
 
 	recordOffset := rb.recordIndex[recordIndex]
 
-	fileOffset := headerSize + rb.Header.NumRecords*recordIndexSize + recordOffset
+	fileOffset := headerBytes + rb.Header.NumRecords*recordIndexSize + recordOffset
 	_, err := rb.rdr.Seek(int64(fileOffset), io.SeekStart)
 	if err != nil {
 		return nil, fmt.Errorf("seeking for record %d/%d: %w", recordIndex, len(rb.recordIndex), err)
