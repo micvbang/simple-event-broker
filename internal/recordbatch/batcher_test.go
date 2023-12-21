@@ -2,65 +2,70 @@ package recordbatch_test
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
-	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/simple-commit-log/internal/recordbatch"
 	"github.com/micvbang/simple-commit-log/internal/tester"
 	"github.com/stretchr/testify/require"
 )
 
-// TestBatcherMultipleBatchesSimple verifies that Batcher creates batches
-// containing only the records added before cancel was called.
-func TestBatcherMultipleBatchesSimple(t *testing.T) {
-	var (
-		ctx    context.Context
-		cancel func()
-	)
-
-	batcher := recordbatch.NewBatcher(func() context.Context {
-		return ctx
-	})
-
-	for i := 0; i < 10; i++ {
-		ctx, cancel = context.WithCancel(context.Background())
-
-		expectedRecordBatch := tester.MakeRandomRecordBatch(1 + inty.RandomN(10))
-		for _, record := range expectedRecordBatch {
-			batcher.Add(record)
-		}
-
-		// the batch must not be finalized before ctx is done.
-		requireNoReceive(t, batcher.Output())
-
-		cancel()
-
-		// NOTE: there's a race condition here; if we were to add another
-		// batch.Add() at this location, the output would depend on who wins the
-		// race of the case selected in an internal `select` statement.
-
-		got := <-batcher.Output()
-		require.Equal(t, expectedRecordBatch, got)
-	}
-}
-
-// TestBatcherOutputNoBatches verifies that there's nothing on the batch.Output
-// channel when Add() hasn't been called.
-func TestBatcherOutputNoBatches(t *testing.T) {
+// TestBatcherAddBlocks verifies that calls to Batcher.Add() block until
+// persistRecordBatch has returned, ensuring that data has been persisted before
+// giving control back to the caller.
+func TestBatcherAddBlocks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	batcher := recordbatch.NewBatcher(func() context.Context {
+	makeContext := func() context.Context {
 		return ctx
-	})
-
-	requireNoReceive(t, batcher.Output())
-}
-
-func requireNoReceive[T any](t *testing.T, ch chan T) {
-	select {
-	case <-ch:
-		require.FailNow(t, "no receive expected")
-	default:
 	}
+
+	expectedRecordBatch := tester.MakeRandomRecordBatch(25)
+
+	persistRecordBatchCalled := false
+	persistRecordBatchContinue := make(chan struct{})
+
+	persistRecordBatch := func(recordBatch [][]byte) error {
+		<-persistRecordBatchContinue
+		persistRecordBatchCalled = true
+		return nil
+	}
+
+	batcher := recordbatch.NewBatcher(makeContext, persistRecordBatch)
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(expectedRecordBatch))
+
+	persistRecordBatchLatency := 500 * time.Millisecond
+
+	t0 := time.Now()
+	for _, recordBatch := range expectedRecordBatch {
+		recordBatch := recordBatch
+
+		go func() {
+			defer wg.Done()
+
+			// Test
+			// should block until persistRecordBatch has returned
+			batcher.Add(recordBatch)
+
+			// Verify
+			require.True(t, time.Since(t0) >= persistRecordBatchLatency)
+		}()
+	}
+
+	time.Sleep(50 * time.Millisecond) // wait for all above go-routines to block on batcher.Add()
+
+	cancel() // expire ctx to make persistRecordBatch() be called
+
+	// block persistRecordBatch() for a while before returning
+	time.Sleep(persistRecordBatchLatency)
+	close(persistRecordBatchContinue)
+
+	// Verify
+	wg.Wait() // wait until all calls to batcher.Add() have returned
+
+	require.True(t, persistRecordBatchCalled)
 }
