@@ -29,14 +29,17 @@ func NewBatcher(makeContext func() context.Context, persistRecordBatch func([][]
 }
 
 func (b *Batcher) Add(record []byte) error {
-	b.mu.Lock()
-	if !b.collectingBatch {
-		b.collectingBatch = true
-		b.addResults = make([]chan<- error, 0, 16)
-		go b.collectBatch(b.makeContext())
-	}
 	result := make(chan error)
-	b.addResults = append(b.addResults, result)
+
+	b.mu.Lock()
+	{
+		if !b.collectingBatch {
+			b.collectingBatch = true
+			b.addResults = make([]chan<- error, 0, 16)
+			go b.collectBatch(b.makeContext())
+		}
+		b.addResults = append(b.addResults, result)
+	}
 	b.mu.Unlock()
 
 	b.records <- record

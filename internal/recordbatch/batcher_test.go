@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,72 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBatcherAddBlocks verifies that calls to Batcher.Add() block until
-// persistRecordBatch has returned, ensuring that data has been persisted before
-// giving control back to the caller.
-func TestBatcherAddBlocks(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	makeContext := func() context.Context {
-		return ctx
-	}
-
-	expectedRecordBatch := tester.MakeRandomRecordBatch(25)
-
-	persistRecordBatchCalled := false
-	persistRecordBatchContinue := make(chan struct{})
-
-	persistRecordBatch := func(recordBatch [][]byte) error {
-		<-persistRecordBatchContinue
-		persistRecordBatchCalled = true
-		return nil
-	}
-
-	batcher := recordbatch.NewBatcher(makeContext, persistRecordBatch)
-
-	wg := sync.WaitGroup{}
-	wg.Add(len(expectedRecordBatch))
-
-	persistRecordBatchLatency := 500 * time.Millisecond
-
-	t0 := time.Now()
-	for _, recordBatch := range expectedRecordBatch {
-		recordBatch := recordBatch
-
-		go func() {
-			defer wg.Done()
-
-			// Test
-			// should block until persistRecordBatch has returned
-			batcher.Add(recordBatch)
-
-			// Verify
-			require.True(t, time.Since(t0) >= persistRecordBatchLatency)
-		}()
-	}
-
-	time.Sleep(50 * time.Millisecond) // wait for all above go-routines to block on batcher.Add()
-
-	cancel() // expire ctx to make persistRecordBatch() be called
-
-	// block persistRecordBatch() for a while before returning
-	time.Sleep(persistRecordBatchLatency)
-	close(persistRecordBatchContinue)
-
-	// Verify
-	wg.Wait() // wait until all calls to batcher.Add() have returned
-
-	require.True(t, persistRecordBatchCalled)
-}
-
 // TestBatcherAddReturnValue verifies that the error returned by persistRecordBatch() is returned
 // all the way back up to callers of batcher.Add().
 func TestBatcherAddReturnValue(t *testing.T) {
 	var (
-		ctx           context.Context
-		cancel        func()
-		returnedError error
+		ctx         context.Context
+		cancel      func()
+		returnedErr error
 	)
 
 	makeContext := func() context.Context {
@@ -85,7 +27,7 @@ func TestBatcherAddReturnValue(t *testing.T) {
 	}
 
 	persistRecordBatch := func(recordBatch [][]byte) error {
-		return returnedError
+		return returnedErr
 	}
 
 	tests := map[string]struct {
@@ -104,7 +46,7 @@ func TestBatcherAddReturnValue(t *testing.T) {
 		defer cancel()
 
 		t.Run(name, func(t *testing.T) {
-			returnedError = test.expected
+			returnedErr = test.expected
 
 			// Test
 			got := batcher.Add([]byte{})
@@ -113,4 +55,66 @@ func TestBatcherAddReturnValue(t *testing.T) {
 			require.ErrorIs(t, got, test.expected)
 		})
 	}
+}
+
+// TestBatcherAddBlocks verifies that calls to Batcher.Add() block until
+// persistRecordBatch has returned. This ensures that data has been persisted
+// before giving control back to the caller.
+func TestBatcherAddBlocks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	makeContext := func() context.Context {
+		return ctx
+	}
+
+	blockPersistRecordBatch := make(chan struct{})
+	returnedErr := fmt.Errorf("all is on fire!")
+	persistRecordBatch := func(recordBatch [][]byte) error {
+		<-blockPersistRecordBatch
+		return returnedErr
+	}
+
+	batcher := recordbatch.NewBatcher(makeContext, persistRecordBatch)
+
+	const numRecordBatches = 25
+
+	wg := sync.WaitGroup{}
+	wg.Add(numRecordBatches)
+
+	addReturned := atomic.Bool{}
+	for _, recordBatch := range tester.MakeRandomRecordBatch(numRecordBatches) {
+		recordBatch := recordBatch
+
+		go func() {
+			defer wg.Done()
+
+			// Test
+			got := batcher.Add(recordBatch)
+			addReturned.Store(true)
+
+			// Verify
+			require.ErrorIs(t, got, returnedErr)
+		}()
+	}
+
+	// wait for all above go-routines to be scheduled and block on Add()
+	time.Sleep(10 * time.Millisecond)
+
+	// expire ctx to make Batcher persist data (call persistRecordBatch())
+	cancel()
+
+	// wait a long time before verifying that none of the Add() callers have returned
+	time.Sleep(500 * time.Millisecond)
+	require.False(t, addReturned.Load())
+
+	// allow persistRecordBatch to return
+	close(blockPersistRecordBatch)
+
+	// wait for persistRecordBatch() return value to propagate to Add() callers
+	time.Sleep(10 * time.Millisecond)
+
+	require.True(t, addReturned.Load())
+
+	// ensure that all Add()ers return
+	wg.Wait()
 }
