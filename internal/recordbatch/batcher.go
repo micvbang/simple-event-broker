@@ -25,6 +25,12 @@ func NewBatcher(makeContext func() context.Context, persistRecordBatch func([][]
 	}
 }
 
+// Add adds record to the ongoing record batch and blocks until
+// persistRecordBatch() has been called and completed.
+//
+// persistRecordBatch() will be called once the most recent context
+// returned by makeContext() has expired. This means that, if makeContext()
+// returns a very long living context, Add() will block for a long time.
 func (b *Batcher) Add(record []byte) error {
 	result := make(chan error)
 
@@ -49,6 +55,7 @@ func (b *Batcher) collectBatch(ctx context.Context) {
 	recordBatch := make([][]byte, 0, 16)
 	for {
 		select {
+
 		case record := <-b.records:
 			recordBatch = append(recordBatch, record)
 
@@ -61,7 +68,9 @@ func (b *Batcher) collectBatch(ctx context.Context) {
 			}
 
 			b.mu.Lock()
-			b.collectingBatch = false
+			{
+				b.collectingBatch = false
+			}
 			b.mu.Unlock()
 
 			return
