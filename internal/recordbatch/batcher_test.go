@@ -2,6 +2,7 @@ package recordbatch_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -68,4 +69,48 @@ func TestBatcherAddBlocks(t *testing.T) {
 	wg.Wait() // wait until all calls to batcher.Add() have returned
 
 	require.True(t, persistRecordBatchCalled)
+}
+
+// TestBatcherAddReturnValue verifies that the error returned by persistRecordBatch() is returned
+// all the way back up to callers of batcher.Add().
+func TestBatcherAddReturnValue(t *testing.T) {
+	var (
+		ctx           context.Context
+		cancel        func()
+		returnedError error
+	)
+
+	makeContext := func() context.Context {
+		return ctx
+	}
+
+	persistRecordBatch := func(recordBatch [][]byte) error {
+		return returnedError
+	}
+
+	tests := map[string]struct {
+		ctx      context.Context
+		expected error
+	}{
+		"err1":     {expected: fmt.Errorf("I'm the error!")},
+		"err2":     {expected: fmt.Errorf("other error")},
+		"no error": {expected: nil},
+	}
+
+	batcher := recordbatch.NewBatcher(makeContext, persistRecordBatch)
+
+	for name, test := range tests {
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
+		t.Run(name, func(t *testing.T) {
+			returnedError = test.expected
+
+			// Test
+			got := batcher.Add([]byte{})
+
+			// Verify
+			require.ErrorIs(t, got, test.expected)
+		})
+	}
 }

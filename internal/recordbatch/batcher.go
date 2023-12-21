@@ -2,7 +2,6 @@ package recordbatch
 
 import (
 	"context"
-	"fmt"
 	"sync"
 )
 
@@ -11,7 +10,7 @@ type Batcher struct {
 
 	mu              sync.Mutex
 	collectingBatch bool
-	blockAdd        chan struct{}
+	addResults      []chan<- error
 
 	makeContext func() context.Context
 	records     chan []byte
@@ -24,7 +23,6 @@ func NewBatcher(makeContext func() context.Context, persistRecordBatch func([][]
 		recordBatch:        make([][]byte, 0, 16),
 		mu:                 sync.Mutex{},
 		records:            make(chan []byte),
-		blockAdd:           nil,
 		makeContext:        makeContext,
 		persistRecordBatch: persistRecordBatch,
 	}
@@ -34,16 +32,17 @@ func (b *Batcher) Add(record []byte) error {
 	b.mu.Lock()
 	if !b.collectingBatch {
 		b.collectingBatch = true
-		b.blockAdd = make(chan struct{})
+		b.addResults = make([]chan<- error, 0, 16)
 		go b.collectBatch(b.makeContext())
 	}
+	result := make(chan error)
+	b.addResults = append(b.addResults, result)
 	b.mu.Unlock()
 
 	b.records <- record
 
 	// block until record has been peristed
-	<-b.blockAdd
-	return nil
+	return <-result
 }
 
 func (b *Batcher) collectBatch(ctx context.Context) {
@@ -54,19 +53,17 @@ func (b *Batcher) collectBatch(ctx context.Context) {
 			recordBatch = append(recordBatch, record)
 
 		case <-ctx.Done():
-			// TODO: handle record batch error (return error to all blocked
-			// adders)
 			err := b.persistRecordBatch(recordBatch)
-			fmt.Printf("persistRecordBatch: %s\n", err)
 
-			// Make waiting adders return
-			close(b.blockAdd)
+			// report result to waiting Add()ers
+			for _, result := range b.addResults {
+				result <- err
+			}
 
 			b.mu.Lock()
 			b.collectingBatch = false
 			b.mu.Unlock()
 
-			// TODO: handle ctx error
 			return
 		}
 	}
