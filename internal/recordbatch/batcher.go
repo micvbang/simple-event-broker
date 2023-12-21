@@ -6,8 +6,6 @@ import (
 )
 
 type Batcher struct {
-	recordBatch [][]byte
-
 	mu              sync.Mutex
 	collectingBatch bool
 	addResults      []chan<- error
@@ -20,7 +18,6 @@ type Batcher struct {
 
 func NewBatcher(makeContext func() context.Context, persistRecordBatch func([][]byte) error) *Batcher {
 	return &Batcher{
-		recordBatch:        make([][]byte, 0, 16),
 		mu:                 sync.Mutex{},
 		records:            make(chan []byte),
 		makeContext:        makeContext,
