@@ -19,8 +19,8 @@ type DiskStorage struct {
 }
 
 func NewDiskStorage(rootDir string, topic string) (*DiskStorage, error) {
-	root := filepath.Join(rootDir, topic)
-	recordBatchIDs, err := listRecordBatches(root)
+	topicDir := filepath.Join(rootDir, topic)
+	recordBatchIDs, err := listRecordBatches(topicDir)
 	if err != nil {
 		return nil, fmt.Errorf("listing record batches: %w", err)
 	}
@@ -28,7 +28,7 @@ func NewDiskStorage(rootDir string, topic string) (*DiskStorage, error) {
 	var nextRecordID uint64
 	if len(recordBatchIDs) > 0 {
 		newestRecordBatchID := recordBatchIDs[len(recordBatchIDs)-1]
-		hdr, err := readRecordBatchHeader(root, newestRecordBatchID)
+		hdr, err := readRecordBatchHeader(topicDir, newestRecordBatchID)
 		if err != nil {
 			return nil, fmt.Errorf("reading record batch header: %w", err)
 		}
@@ -36,7 +36,7 @@ func NewDiskStorage(rootDir string, topic string) (*DiskStorage, error) {
 	}
 
 	return &DiskStorage{
-		root:           root,
+		root:           topicDir,
 		nextRecordID:   nextRecordID,
 		recordBatchIDs: recordBatchIDs,
 	}, nil
@@ -107,20 +107,25 @@ func readRecordBatchHeader(root string, recordBatchID uint64) (recordbatch.Heade
 }
 
 func recordBatchPath(root string, recordBatchID uint64) string {
-	return filepath.Join(root, fmt.Sprintf("%d%s", recordBatchID, recordBatchExtension))
+	return filepath.Join(root, fmt.Sprintf("%012d%s", recordBatchID, recordBatchExtension))
 }
 
+// listRecordBatches returns the record batch identifiers identified
 func listRecordBatches(root string) ([]uint64, error) {
 	recordIDs := make([]uint64, 0, 128)
 
 	walkConfig := filepathy.WalkConfig{Files: true, Extensions: []string{recordBatchExtension}}
 	err := filepathy.Walk(root, walkConfig, func(path string, info os.FileInfo, _ error) error {
-		recordID, err := uint64y.FromString(info.Name())
+		name := info.Name()
+		recordIDStr := name[:len(name)-len(recordBatchExtension)]
+
+		recordID, err := uint64y.FromString(recordIDStr)
 		if err != nil {
 			return err
 		}
 		recordIDs = append(recordIDs, recordID)
 		return nil
 	})
+
 	return recordIDs, err
 }

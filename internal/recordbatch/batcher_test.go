@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/micvbang/go-helpy/inty"
-	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/simple-commit-log/internal/recordbatch"
+	"github.com/micvbang/simple-commit-log/internal/tester"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +25,7 @@ func TestBatcherMultipleBatchesSimple(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		ctx, cancel = context.WithCancel(context.Background())
 
-		expectedRecordBatch := makeRandomRecordBatch(1 + inty.RandomN(10))
+		expectedRecordBatch := tester.MakeRandomRecordBatch(1 + inty.RandomN(10))
 		for _, record := range expectedRecordBatch {
 			batcher.Add(record)
 		}
@@ -55,14 +55,6 @@ func TestBatcherOutputNoBatches(t *testing.T) {
 	})
 
 	requireNoReceive(t, batcher.Output())
-}
-
-func makeRandomRecordBatch(size int) [][]byte {
-	expectedRecordBatch := make([][]byte, size)
-	for i := 0; i < len(expectedRecordBatch); i++ {
-		expectedRecordBatch[i] = []byte(stringy.RandomN(10))
-	}
-	return expectedRecordBatch
 }
 
 func requireNoReceive[T any](t *testing.T, ch chan T) {
