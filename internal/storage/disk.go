@@ -89,7 +89,12 @@ func (ds *DiskStorage) ReadRecord(recordID uint64) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing record batch '%s': %w", rbPath, err)
 	}
-	return rb.Record(uint32(recordID - recordBatchID))
+
+	record, err := rb.Record(uint32(recordID - recordBatchID))
+	if err != nil {
+		return nil, fmt.Errorf("record batch '%s': %w", rbPath, err)
+	}
+	return record, nil
 }
 
 func readRecordBatchHeader(root string, recordBatchID uint64) (recordbatch.Header, error) {
