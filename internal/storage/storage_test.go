@@ -10,89 +10,89 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDiskEmpty verifies that reading from an empty topic returns
+// TestStorageEmpty verifies that reading from an empty topic returns
 // ErrOutOfBounds.
-func TestDiskEmpty(t *testing.T) {
+func TestStorageEmpty(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "scl_*")
 	require.NoError(t, err)
 
-	ds, err := storage.NewDiskStorage(tempDir, "my_topic")
+	s, err := storage.NewStorage(storage.DiskStorage{}, tempDir, "mytopic")
 	require.NoError(t, err)
 
 	// Test
-	_, err = ds.ReadRecord(0)
+	_, err = s.ReadRecord(0)
 
 	// Verify
 	require.ErrorIs(t, err, storage.ErrOutOfBounds)
 }
 
-// TestDiskWriteRecordBatchSingleBatch verifies that all records from a single
-// Record batch can be read back, and that reading out of bounds returns
+// TestStorageWriteRecordBatchSingleBatch verifies that all records from a
+// single Record batch can be read back, and that reading out of bounds returns
 // ErrOutOfBounds.
-func TestDiskWriteRecordBatchSingleBatch(t *testing.T) {
+func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "scl_*")
 	require.NoError(t, err)
 
-	ds, err := storage.NewDiskStorage(tempDir, "my_topic")
+	s, err := storage.NewStorage(storage.DiskStorage{}, tempDir, "mytopic")
 	require.NoError(t, err)
 
 	recordBatch := tester.MakeRandomRecordBatch(5)
 
 	// Test
-	err = ds.AddRecordBatch(recordBatch)
+	err = s.AddRecordBatch(recordBatch)
 	require.NoError(t, err)
 
 	// Verify
 	for recordID, record := range recordBatch {
-		got, err := ds.ReadRecord(uint64(recordID))
+		got, err := s.ReadRecord(uint64(recordID))
 		require.NoError(t, err)
 		require.Equal(t, record, got)
 	}
 
 	// Out of bounds reads
-	_, err = ds.ReadRecord(uint64(len(recordBatch)))
+	_, err = s.ReadRecord(uint64(len(recordBatch)))
 	require.ErrorIs(t, err, storage.ErrOutOfBounds)
 
-	_, err = ds.ReadRecord(uint64(len(recordBatch) + 5))
+	_, err = s.ReadRecord(uint64(len(recordBatch) + 5))
 	require.ErrorIs(t, err, storage.ErrOutOfBounds)
 }
 
-// TestDiskWriteRecordBatchMultipleBatches verifies that multiple RecordBatches
-// can be written to DiskStorage and read back again, and that reading beyond
-// the number of existing records yields ErrOutOfBounds.
-func TestDiskWriteRecordBatchMultipleBatches(t *testing.T) {
+// TestStorageWriteRecordBatchMultipleBatches verifies that multiple
+// RecordBatches can be written to the underlying storage and be read back
+// again, and that reading beyond the number of existing records yields
+// ErrOutOfBounds.
+func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "scl_*")
 	require.NoError(t, err)
 
-	ds, err := storage.NewDiskStorage(tempDir, "my_topic")
+	s, err := storage.NewStorage(storage.DiskStorage{}, tempDir, "mytopic")
 	require.NoError(t, err)
 
 	recordBatch1 := tester.MakeRandomRecordBatch(5)
 	recordBatch2 := tester.MakeRandomRecordBatch(3)
 
 	// Test
-	err = ds.AddRecordBatch(recordBatch1)
+	err = s.AddRecordBatch(recordBatch1)
 	require.NoError(t, err)
 
-	err = ds.AddRecordBatch(recordBatch2)
+	err = s.AddRecordBatch(recordBatch2)
 	require.NoError(t, err)
 
 	// Verify
 	for recordID, record := range append(recordBatch1, recordBatch2...) {
-		got, err := ds.ReadRecord(uint64(recordID))
+		got, err := s.ReadRecord(uint64(recordID))
 		require.NoError(t, err)
 		require.Equal(t, record, got)
 	}
 
 	// Out of bounds reads
-	_, err = ds.ReadRecord(uint64(len(recordBatch1) + len(recordBatch2)))
+	_, err = s.ReadRecord(uint64(len(recordBatch1) + len(recordBatch2)))
 	require.ErrorIs(t, err, storage.ErrOutOfBounds)
 }
 
-// TestDiskOpenExistingStorage verifies that storage.NewDiskStorage correctly
-// initializes a DiskStorage from a topic that already exists and has many data
-// files.
-func TestDiskOpenExistingStorage(t *testing.T) {
+// TestStorageOpenExistingStorage verifies that storage.Storage correctly
+// initializes from a topic that already exists and has many data files.
+func TestStorageOpenExistingStorage(t *testing.T) {
 	const topicName = "my_topic"
 
 	tempDir, err := os.MkdirTemp("", "scl_*")
@@ -107,24 +107,24 @@ func TestDiskOpenExistingStorage(t *testing.T) {
 	}
 
 	{
-		ds1, err := storage.NewDiskStorage(tempDir, topicName)
+		s1, err := storage.NewStorage(storage.DiskStorage{}, tempDir, topicName)
 		require.NoError(t, err)
 
 		for _, recordBatch := range recordBatches {
-			err = ds1.AddRecordBatch(recordBatch)
+			err = s1.AddRecordBatch(recordBatch)
 			require.NoError(t, err)
 		}
 	}
 
 	// Test
-	ds2, err := storage.NewDiskStorage(tempDir, topicName)
+	s2, err := storage.NewStorage(storage.DiskStorage{}, tempDir, topicName)
 	require.NoError(t, err)
 
 	// Verify
 	recordID := 0
 	for _, recordBatch := range recordBatches {
 		for _, record := range recordBatch {
-			got, err := ds2.ReadRecord(uint64(recordID))
+			got, err := s2.ReadRecord(uint64(recordID))
 			require.NoError(t, err)
 			require.Equal(t, record, got)
 
@@ -133,6 +133,6 @@ func TestDiskOpenExistingStorage(t *testing.T) {
 	}
 
 	// Out of bounds reads
-	_, err = ds2.ReadRecord(uint64(totalRecords + 1))
+	_, err = s2.ReadRecord(uint64(totalRecords + 1))
 	require.ErrorIs(t, err, storage.ErrOutOfBounds)
 }
