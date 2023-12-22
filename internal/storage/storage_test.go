@@ -1,14 +1,18 @@
 package storage_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
 	"github.com/micvbang/go-helpy/inty"
+	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
 	"github.com/micvbang/simple-commit-log/internal/storage"
 	"github.com/micvbang/simple-commit-log/internal/tester"
 	"github.com/stretchr/testify/require"
 )
+
+var log = logger.NewDefault(context.Background())
 
 // TestStorageEmpty verifies that reading from an empty topic returns
 // ErrOutOfBounds.
@@ -16,7 +20,7 @@ func TestStorageEmpty(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "scl_*")
 	require.NoError(t, err)
 
-	s, err := storage.NewStorage(storage.DiskStorage{}, tempDir, "mytopic")
+	s, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, "mytopic")
 	require.NoError(t, err)
 
 	// Test
@@ -33,7 +37,7 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "scl_*")
 	require.NoError(t, err)
 
-	s, err := storage.NewStorage(storage.DiskStorage{}, tempDir, "mytopic")
+	s, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, "mytopic")
 	require.NoError(t, err)
 
 	recordBatch := tester.MakeRandomRecordBatch(5)
@@ -65,7 +69,7 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "scl_*")
 	require.NoError(t, err)
 
-	s, err := storage.NewStorage(storage.DiskStorage{}, tempDir, "mytopic")
+	s, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, "mytopic")
 	require.NoError(t, err)
 
 	recordBatch1 := tester.MakeRandomRecordBatch(5)
@@ -107,7 +111,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	}
 
 	{
-		s1, err := storage.NewStorage(storage.DiskStorage{}, tempDir, topicName)
+		s1, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, topicName)
 		require.NoError(t, err)
 
 		for _, recordBatch := range recordBatches {
@@ -117,7 +121,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	}
 
 	// Test
-	s2, err := storage.NewStorage(storage.DiskStorage{}, tempDir, topicName)
+	s2, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, topicName)
 	require.NoError(t, err)
 
 	// Verify
@@ -150,14 +154,14 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 
 	recordBatch1 := tester.MakeRandomRecordBatch(1)
 	{
-		s1, err := storage.NewStorage(storage.DiskStorage{}, tempDir, topicName)
+		s1, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, topicName)
 		require.NoError(t, err)
 
 		err = s1.AddRecordBatch(recordBatch1)
 		require.NoError(t, err)
 	}
 
-	s2, err := storage.NewStorage(storage.DiskStorage{}, tempDir, topicName)
+	s2, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, topicName)
 	require.NoError(t, err)
 
 	// Test

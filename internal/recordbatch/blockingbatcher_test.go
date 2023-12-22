@@ -8,10 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
 	"github.com/micvbang/simple-commit-log/internal/recordbatch"
 	"github.com/micvbang/simple-commit-log/internal/tester"
 	"github.com/stretchr/testify/require"
 )
+
+var log = logger.NewDefault(context.Background())
 
 // TestBlockingBatcherAddReturnValue verifies that the error returned by
 // persistRecordBatch() is returned all the way back up to callers of
@@ -40,7 +43,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		"no error": {expected: nil},
 	}
 
-	batcher := recordbatch.NewBlockingBatcher(makeContext, persistRecordBatch)
+	batcher := recordbatch.NewBlockingBatcher(log, makeContext, persistRecordBatch)
 
 	for name, test := range tests {
 		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -75,7 +78,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 		return returnedErr
 	}
 
-	batcher := recordbatch.NewBlockingBatcher(makeContext, persistRecordBatch)
+	batcher := recordbatch.NewBlockingBatcher(log, makeContext, persistRecordBatch)
 
 	const numRecordBatches = 25
 

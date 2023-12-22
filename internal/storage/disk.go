@@ -7,14 +7,15 @@ import (
 	"path/filepath"
 
 	"github.com/micvbang/go-helpy/filepathy"
+	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
 )
 
 const recordBatchExtension = ".record_batch"
 
 type DiskStorage struct{}
 
-func NewDiskStorage(rootDir string, topic string) (*Storage, error) {
-	return NewStorage(DiskStorage{}, rootDir, topic)
+func NewDiskStorage(log logger.Logger, rootDir string, topic string) (*Storage, error) {
+	return NewStorage(log, DiskStorage{}, rootDir, topic)
 }
 
 func (DiskStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {

@@ -3,9 +3,12 @@ package recordbatch
 import (
 	"context"
 	"sync"
+
+	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
 )
 
 type BlockingBatcher struct {
+	log             logger.Logger
 	mu              sync.Mutex
 	collectingBatch bool
 	addResults      []chan<- error
@@ -16,8 +19,9 @@ type BlockingBatcher struct {
 	persistRecordBatch func([][]byte) error
 }
 
-func NewBlockingBatcher(makeContext func() context.Context, persistRecordBatch func([][]byte) error) *BlockingBatcher {
+func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, persistRecordBatch func([][]byte) error) *BlockingBatcher {
 	return &BlockingBatcher{
+		log:                log,
 		mu:                 sync.Mutex{},
 		records:            make(chan []byte),
 		makeContext:        makeContext,
@@ -57,10 +61,12 @@ func (b *BlockingBatcher) collectBatch(ctx context.Context) {
 		select {
 
 		case record := <-b.records:
+			b.log.Debugf("adding record to batch (%d)", len(recordBatch))
 			recordBatch = append(recordBatch, record)
 
 		case <-ctx.Done():
 			err := b.persistRecordBatch(recordBatch)
+			b.log.Debugf("%d records persisted", len(recordBatch))
 
 			// report result to waiting Add()ers
 			for _, result := range b.addResults {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/micvbang/go-helpy/uint64y"
+	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
 	"github.com/micvbang/simple-commit-log/internal/recordbatch"
 )
 
@@ -17,6 +18,7 @@ type BackingStorage interface {
 }
 
 type Storage struct {
+	log            logger.Logger
 	topicPath      string
 	nextRecordID   uint64
 	recordBatchIDs []uint64
@@ -24,7 +26,7 @@ type Storage struct {
 	backingStorage BackingStorage
 }
 
-func NewStorage(backingStorage BackingStorage, rootDir string, topic string) (*Storage, error) {
+func NewStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topic string) (*Storage, error) {
 	topicPath := filepath.Join(rootDir, topic)
 
 	recordBatchIDs, err := listRecordBatchIDs(backingStorage, topicPath)
@@ -33,6 +35,7 @@ func NewStorage(backingStorage BackingStorage, rootDir string, topic string) (*S
 	}
 
 	storage := &Storage{
+		log:            log,
 		backingStorage: backingStorage,
 		topicPath:      topicPath,
 		recordBatchIDs: recordBatchIDs,

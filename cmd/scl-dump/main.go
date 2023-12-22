@@ -1,18 +1,22 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 
+	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
 	"github.com/micvbang/simple-commit-log/internal/storage"
 )
 
 func main() {
 	flags := parseFlags()
+
+	ctx := context.Background()
+	log := logger.NewWithLevel(ctx, logger.LevelInfo)
 
 	absInputPath, err := filepath.Abs(flags.inputPath)
 	if err != nil {
@@ -23,7 +27,7 @@ func main() {
 	topicName := filepath.Base(absInputPath)
 	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromRecordID, flags.startFromRecordID+flags.numRecords-1, topicName)
 
-	diskStorage, err := storage.NewDiskStorage(rootDir, topicName)
+	diskStorage, err := storage.NewDiskStorage(log, rootDir, topicName)
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}
