@@ -44,7 +44,7 @@ func NewStorage(backingStorage BackingStorage, rootDir string, topic string) (*S
 		if err != nil {
 			return nil, fmt.Errorf("reading record batch header: %w", err)
 		}
-		storage.nextRecordID = newestRecordBatchID + uint64(hdr.NumRecords) + 1
+		storage.nextRecordID = newestRecordBatchID + uint64(hdr.NumRecords)
 	}
 
 	return storage, nil

@@ -136,3 +136,47 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	_, err = s2.ReadRecord(uint64(totalRecords + 1))
 	require.ErrorIs(t, err, storage.ErrOutOfBounds)
 }
+
+// TestStorageOpenExistingStorage verifies that storage.Storage correctly
+// initializes from a topic that already exists, and can correctly append
+// records to it.
+// NOTE: this is a regression test that handles an off by one error in
+// NewStorage().
+func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
+	const topicName = "my_topic"
+
+	tempDir, err := os.MkdirTemp("", "scl_*")
+	require.NoError(t, err)
+
+	recordBatch1 := tester.MakeRandomRecordBatch(1)
+	{
+		s1, err := storage.NewStorage(storage.DiskStorage{}, tempDir, topicName)
+		require.NoError(t, err)
+
+		err = s1.AddRecordBatch(recordBatch1)
+		require.NoError(t, err)
+	}
+
+	s2, err := storage.NewStorage(storage.DiskStorage{}, tempDir, topicName)
+	require.NoError(t, err)
+
+	// Test
+	recordBatch2 := tester.MakeRandomRecordBatch(1)
+	err = s2.AddRecordBatch(recordBatch2)
+	require.NoError(t, err)
+
+	// Verify
+	recordID := 0
+	allRecords := append(recordBatch1, recordBatch2...)
+	for _, record := range allRecords {
+		got, err := s2.ReadRecord(uint64(recordID))
+		require.NoError(t, err)
+		require.Equal(t, record, got)
+
+		recordID += 1
+	}
+
+	// Out of bounds reads
+	_, err = s2.ReadRecord(uint64(len(allRecords)))
+	require.ErrorIs(t, err, storage.ErrOutOfBounds)
+}
