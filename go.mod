@@ -1,6 +1,6 @@
 module github.com/micvbang/simple-event-broker
 
-go 1.18
+go 1.22
 
 require (
 	github.com/aws/aws-sdk-go v1.49.8 // indirect

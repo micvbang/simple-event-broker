@@ -10,8 +10,6 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
-const recordBatchExtension = ".record_batch"
-
 type DiskTopicStorage struct{}
 
 func NewDiskTopicStorage(log logger.Logger, rootDir string, topic string) (*TopicStorage, error) {

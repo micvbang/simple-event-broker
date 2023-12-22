@@ -125,6 +125,8 @@ func readRecordBatchHeader(backingStorage BackingStorage, topicPath string, reco
 	return rb.Header, nil
 }
 
+const recordBatchExtension = ".record_batch"
+
 func listRecordBatchIDs(backingStorage BackingStorage, topicPath string) ([]uint64, error) {
 	files, err := backingStorage.ListFiles(topicPath, recordBatchExtension)
 	if err != nil {

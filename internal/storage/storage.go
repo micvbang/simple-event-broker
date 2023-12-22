@@ -17,7 +17,12 @@ type topicBatcher struct {
 	storage *TopicStorage
 }
 
-type Storage struct {
+type Storage interface {
+	AddRecord(topicName string, record recordbatch.Record) error
+	GetRecord(topicName string, recordID uint64) (recordbatch.Record, error)
+}
+
+type storage struct {
 	log logger.Logger
 
 	autoCreateTopics   bool
@@ -28,8 +33,8 @@ type Storage struct {
 	topicBatcher map[string]topicBatcher
 }
 
-func NewStorage(log logger.Logger, createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error), createBatcher func(logger.Logger, *TopicStorage) RecordBatcher) *Storage {
-	return &Storage{
+func New(log logger.Logger, createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error), createBatcher func(logger.Logger, *TopicStorage) RecordBatcher) Storage {
+	return &storage{
 		autoCreateTopics:   true,
 		createTopicStorage: createTopicStorage,
 		createBatcher:      createBatcher,
@@ -39,7 +44,7 @@ func NewStorage(log logger.Logger, createTopicStorage func(log logger.Logger, to
 	}
 }
 
-func (s *Storage) AddRecord(topicName string, record recordbatch.Record) error {
+func (s *storage) AddRecord(topicName string, record recordbatch.Record) error {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return err
@@ -52,7 +57,7 @@ func (s *Storage) AddRecord(topicName string, record recordbatch.Record) error {
 	return nil
 }
 
-func (s *Storage) GetRecord(topicName string, recordID uint64) (recordbatch.Record, error) {
+func (s *storage) GetRecord(topicName string, recordID uint64) (recordbatch.Record, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
@@ -61,7 +66,7 @@ func (s *Storage) GetRecord(topicName string, recordID uint64) (recordbatch.Reco
 	return tb.storage.ReadRecord(recordID)
 }
 
-func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
+func (s *storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
