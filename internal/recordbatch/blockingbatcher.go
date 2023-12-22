@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-type Batcher struct {
+type BlockingBatcher struct {
 	mu              sync.Mutex
 	collectingBatch bool
 	addResults      []chan<- error
@@ -16,8 +16,8 @@ type Batcher struct {
 	persistRecordBatch func([][]byte) error
 }
 
-func NewBatcher(makeContext func() context.Context, persistRecordBatch func([][]byte) error) *Batcher {
-	return &Batcher{
+func NewBlockingBatcher(makeContext func() context.Context, persistRecordBatch func([][]byte) error) *BlockingBatcher {
+	return &BlockingBatcher{
 		mu:                 sync.Mutex{},
 		records:            make(chan []byte),
 		makeContext:        makeContext,
@@ -31,7 +31,7 @@ func NewBatcher(makeContext func() context.Context, persistRecordBatch func([][]
 // persistRecordBatch() will be called once the most recent context
 // returned by makeContext() has expired. This means that, if makeContext()
 // returns a very long living context, Add() will block for a long time.
-func (b *Batcher) Add(record []byte) error {
+func (b *BlockingBatcher) Add(record []byte) error {
 	result := make(chan error)
 
 	b.mu.Lock()
@@ -51,7 +51,7 @@ func (b *Batcher) Add(record []byte) error {
 	return <-result
 }
 
-func (b *Batcher) collectBatch(ctx context.Context) {
+func (b *BlockingBatcher) collectBatch(ctx context.Context) {
 	recordBatch := make([][]byte, 0, 16)
 	for {
 		select {

@@ -13,9 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBatcherAddReturnValue verifies that the error returned by persistRecordBatch() is returned
-// all the way back up to callers of batcher.Add().
-func TestBatcherAddReturnValue(t *testing.T) {
+// TestBlockingBatcherAddReturnValue verifies that the error returned by
+// persistRecordBatch() is returned all the way back up to callers of
+// batcher.Add().
+func TestBlockingBatcherAddReturnValue(t *testing.T) {
 	var (
 		ctx         context.Context
 		cancel      func()
@@ -39,7 +40,7 @@ func TestBatcherAddReturnValue(t *testing.T) {
 		"no error": {expected: nil},
 	}
 
-	batcher := recordbatch.NewBatcher(makeContext, persistRecordBatch)
+	batcher := recordbatch.NewBlockingBatcher(makeContext, persistRecordBatch)
 
 	for name, test := range tests {
 		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -57,10 +58,10 @@ func TestBatcherAddReturnValue(t *testing.T) {
 	}
 }
 
-// TestBatcherAddBlocks verifies that calls to Batcher.Add() block until
+// TestBlockingBatcherAddBlocks verifies that calls to Add() block until
 // persistRecordBatch has returned. This ensures that data has been persisted
 // before giving control back to the caller.
-func TestBatcherAddBlocks(t *testing.T) {
+func TestBlockingBatcherAddBlocks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	makeContext := func() context.Context {
@@ -74,7 +75,7 @@ func TestBatcherAddBlocks(t *testing.T) {
 		return returnedErr
 	}
 
-	batcher := recordbatch.NewBatcher(makeContext, persistRecordBatch)
+	batcher := recordbatch.NewBlockingBatcher(makeContext, persistRecordBatch)
 
 	const numRecordBatches = 25
 
