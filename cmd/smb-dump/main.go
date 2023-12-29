@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
-	"github.com/micvbang/simple-commit-log/internal/storage"
+	"github.com/micvbang/simple-message-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-message-broker/internal/storage"
 )
 
 func main() {
@@ -54,11 +54,11 @@ type flags struct {
 }
 
 func parseFlags() flags {
-	fs := flag.NewFlagSet("scl-dump", flag.ExitOnError)
+	fs := flag.NewFlagSet("smb-dump", flag.ExitOnError)
 
 	f := flags{}
 
-	fs.StringVar(&f.inputPath, "path", "", "Path of scl topic you wish to dump contents of")
+	fs.StringVar(&f.inputPath, "path", "", "Path of smb topic you wish to dump contents of")
 	fs.IntVar(&f.startFromRecordID, "start-from", 0, "Record ID to start dumping from")
 	fs.IntVar(&f.numRecords, "num", 10, "Number of records to dump")
 

@@ -1,4 +1,4 @@
-module github.com/micvbang/simple-commit-log
+module github.com/micvbang/simple-message-broker
 
 go 1.18
 

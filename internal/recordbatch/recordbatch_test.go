@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/micvbang/simple-commit-log/internal/recordbatch"
+	"github.com/micvbang/simple-message-broker/internal/recordbatch"
 	"github.com/stretchr/testify/require"
 )
 

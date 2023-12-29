@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/micvbang/go-helpy/filepathy"
-	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
+	"github.com/micvbang/simple-message-broker/internal/infrastructure/logger"
 )
 
 const recordBatchExtension = ".record_batch"
