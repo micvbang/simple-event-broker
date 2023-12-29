@@ -3,18 +3,23 @@ package recordbatch
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/micvbang/simple-commit-log/internal/infrastructure/logger"
 )
+
+type blockedAdd struct {
+	record []byte
+	err    chan<- error
+}
 
 type BlockingBatcher struct {
 	log             logger.Logger
 	mu              sync.Mutex
 	collectingBatch bool
-	addResults      []chan<- error
 
 	makeContext func() context.Context
-	records     chan []byte
+	blockedAdds chan blockedAdd
 
 	persistRecordBatch func([][]byte) error
 }
@@ -23,10 +28,9 @@ func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, p
 	return &BlockingBatcher{
 		log:                log,
 		mu:                 sync.Mutex{},
-		records:            make(chan []byte),
+		blockedAdds:        make(chan blockedAdd, 32),
 		makeContext:        makeContext,
 		persistRecordBatch: persistRecordBatch,
-		addResults:         make([]chan<- error, 0, 64),
 	}
 }
 
@@ -37,7 +41,7 @@ func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, p
 // returned by makeContext() has expired. This means that, if makeContext()
 // returns a very long living context, Add() will block for a long time.
 func (b *BlockingBatcher) Add(record []byte) error {
-	result := make(chan error)
+	errCh := make(chan error)
 
 	b.mu.Lock()
 	{
@@ -45,39 +49,56 @@ func (b *BlockingBatcher) Add(record []byte) error {
 			b.collectingBatch = true
 			go b.collectBatch(b.makeContext())
 		}
-		b.addResults = append(b.addResults, result)
 	}
 	b.mu.Unlock()
 
-	b.records <- record
+	b.blockedAdds <- blockedAdd{
+		err:    errCh,
+		record: record,
+	}
 
 	// block until record has been peristed
-	return <-result
+	return <-errCh
 }
 
 func (b *BlockingBatcher) collectBatch(ctx context.Context) {
-	recordBatch := make([][]byte, 0, 64)
+	handledAdds := make([]blockedAdd, 0, 64)
+
+	t0 := time.Now()
 
 	for {
 		select {
 
-		case record := <-b.records:
-			b.log.Debugf("adding record to batch (%d)", len(recordBatch))
-			recordBatch = append(recordBatch, record)
+		case blockedAdd := <-b.blockedAdds:
+			handledAdds = append(handledAdds, blockedAdd)
+			b.log.Debugf("added record to batch (%d)", len(handledAdds))
 
 		case <-ctx.Done():
+			b.log.Debugf("batch collection time: %v", time.Since(t0))
+
+			recordBatch := make([][]byte, len(handledAdds))
+			for i, add := range handledAdds {
+				recordBatch[i] = add.record
+			}
+
+			err := b.persistRecordBatch(recordBatch)
+			b.log.Debugf("%d records persisted (err: %v)", len(recordBatch), err)
+			if err != nil {
+				b.log.Debugf("reporting error to %d waiting add()ers", len(recordBatch))
+				for _, handledAdd := range handledAdds {
+					handledAdd.err <- err
+				}
+			}
+
+			// Unblock Add()ers
+			for _, handledAdd := range handledAdds {
+				close(handledAdd.err)
+			}
+
+			b.log.Debugf("done reporting results")
+
 			b.mu.Lock()
 			{
-				err := b.persistRecordBatch(recordBatch)
-				b.log.Debugf("%d records persisted: %s", len(recordBatch), err)
-
-				// report result to waiting Add()ers
-				for _, result := range b.addResults {
-					result <- err
-					close(result)
-				}
-				b.addResults = b.addResults[:0]
-
 				b.collectingBatch = false
 			}
 			b.mu.Unlock()
