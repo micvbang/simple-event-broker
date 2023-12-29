@@ -112,6 +112,11 @@ func (ss *S3Storage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 		return nil, fmt.Errorf("writing s3 object to disk '%s': %w", cacheRecordBatchPath, err)
 	}
 
+	_, err = f.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, fmt.Errorf("seeking to beginning of file: %w", err)
+	}
+
 	return f, nil
 }
 

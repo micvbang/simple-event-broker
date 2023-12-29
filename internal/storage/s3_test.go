@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -102,6 +103,39 @@ func TestS3WriteToCache(t *testing.T) {
 	cacheBody, err := io.ReadAll(rd)
 	require.NoError(t, err)
 	require.Equal(t, recordBatchBody, cacheBody)
+}
+
+// TestS3ReadFromCache verifies that Reader returns an io.Reader that returns
+// the bytes that were fetched from S3.
+func TestS3ReadFromCache(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "scl_*")
+	require.NoError(t, err)
+
+	recordBatchPath := "topicName/000123.record_batch"
+	recordBatchBody := []byte(stringy.RandomN(500))
+
+	s3Mock := &S3Mock{}
+	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+		return &s3.GetObjectOutput{
+			Body: io.NopCloser(bytes.NewBuffer(recordBatchBody)),
+		}, nil
+	}
+
+	s3Storage := &S3Storage{
+		log:            log,
+		s3:             s3Mock,
+		topicCacheRoot: tempDir,
+		bucketName:     "mybucket",
+	}
+
+	rdr, err := s3Storage.Reader(recordBatchPath)
+	require.NoError(t, err)
+	defer rdr.Close()
+
+	gotBytes, err := io.ReadAll(rdr)
+	require.NoError(t, err)
+
+	require.Equal(t, recordBatchBody, gotBytes)
 }
 
 type S3Mock struct {
