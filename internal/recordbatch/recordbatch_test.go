@@ -5,23 +5,30 @@ import (
 	"encoding/binary"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/micvbang/simple-message-broker/internal/recordbatch"
+	"github.com/micvbang/simple-message-broker/internal/tester"
 	"github.com/stretchr/testify/require"
 )
 
 // TestWrite verifies that Write() writes the expected data to the given
 // io.Writer.
 func TestWrite(t *testing.T) {
-	records := [][]byte{
-		[]byte("hapshapshaps"),
-		[]byte("nu skal vi ha snaps!"),
+	const numRecords = 5
+	records := tester.MakeRandomRecordBatch(numRecords)
+
+	unixEpochUs := time.Now().UTC().UnixMicro()
+
+	recordbatch.UnixEpochUs = func() int64 {
+		return unixEpochUs
 	}
 
 	expectedHeader := recordbatch.Header{
-		MagicBytes: recordbatch.FileFormatMagicBytes,
-		Version:    recordbatch.FileFormatVersion,
-		NumRecords: uint32(len(records)),
+		MagicBytes:  recordbatch.FileFormatMagicBytes,
+		Version:     recordbatch.FileFormatVersion,
+		UnixEpochUs: unixEpochUs,
+		NumRecords:  uint32(len(records)),
 	}
 	buf := bytes.NewBuffer(nil)
 
@@ -36,22 +43,21 @@ func TestWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedHeader, gotHeader)
 
-	recordIndices := [2]int32{}
+	recordIndices := [numRecords]int32{}
 	err = binary.Read(buf, binary.LittleEndian, &recordIndices)
 	require.NoError(t, err)
 
-	require.EqualValues(t, 0, recordIndices[0])
-	require.EqualValues(t, len(records[0]), recordIndices[1])
+	expectedLength := 0
+	for i := 0; i < numRecords; i++ {
+		require.EqualValues(t, int32(expectedLength), recordIndices[i])
+		expectedLength += len(records[i])
+	}
 }
 
 // TestReadRecord verifies that ReadRecord() returns the expected data when
 // reading a specific record from a RecordBatch.
 func TestReadRecord(t *testing.T) {
-	records := [][]byte{
-		[]byte("hapshapshaps"),
-		[]byte("nu skal vi ha snaps!"),
-		[]byte("ind til midt og ud til navel"),
-	}
+	records := tester.MakeRandomRecordBatch(5)
 
 	buf := bytes.NewBuffer(nil)
 	err := recordbatch.Write(buf, records)
@@ -97,10 +103,8 @@ func TestReadRecord(t *testing.T) {
 // TestReadRecordOutOfBounds verifies that ErrOutOfBounds is returned when attempting
 // to read a record that does not exist.
 func TestReadRecordOutOfBounds(t *testing.T) {
-	records := [][]byte{
-		[]byte("hapshapshaps"),
-		[]byte("nu skal vi ha snaps!"),
-	}
+	const numRecords = 5
+	records := tester.MakeRandomRecordBatch(numRecords)
 
 	buf := bytes.NewBuffer(nil)
 	err := recordbatch.Write(buf, records)
@@ -111,7 +115,7 @@ func TestReadRecordOutOfBounds(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test
-	_, err = recordBatch.Record(2)
+	_, err = recordBatch.Record(numRecords)
 
 	// Verify
 	require.ErrorIs(t, err, recordbatch.ErrOutOfBounds)

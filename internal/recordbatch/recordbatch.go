@@ -4,33 +4,40 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"time"
 )
 
 var (
-	FileFormatMagicBytes = [3]byte{'s', 'l', 'c'}
+	FileFormatMagicBytes = [4]byte{'s', 'm', 'b', '!'}
 	byteOrder            = binary.LittleEndian
 )
 
 const (
 	FileFormatVersion = 1
-	headerBytes       = 22
+	headerBytes       = 32
 	recordIndexSize   = 4
 )
 
 type Header struct {
-	MagicBytes [3]byte
-	Reserved   [13]byte
-	Version    int16
-	NumRecords uint32
+	MagicBytes  [4]byte
+	Version     int16
+	UnixEpochUs int64
+	NumRecords  uint32
+	Reserved    [14]byte
+}
+
+var UnixEpochUs = func() int64 {
+	return time.Now().UTC().UnixMicro()
 }
 
 // Write writes a RecordBatch file to wtr, consisting of a header, a record
 // index, and the given records.
 func Write(wtr io.Writer, records [][]byte) error {
 	header := Header{
-		MagicBytes: FileFormatMagicBytes,
-		Version:    FileFormatVersion,
-		NumRecords: uint32(len(records)),
+		MagicBytes:  FileFormatMagicBytes,
+		UnixEpochUs: UnixEpochUs(),
+		Version:     FileFormatVersion,
+		NumRecords:  uint32(len(records)),
 	}
 
 	err := binary.Write(wtr, byteOrder, header)
