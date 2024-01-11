@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	FileFormatMagicBytes = [4]byte{'s', 'm', 'b', '!'}
+	FileFormatMagicBytes = [4]byte{'s', 'e', 'b', '!'}
 	byteOrder            = binary.LittleEndian
 )
 

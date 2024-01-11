@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/micvbang/go-helpy/stringy"
-	"github.com/micvbang/simple-message-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +19,7 @@ var log = logger.NewDefault(context.Background())
 // TestS3WriteToS3 verifies that Writer creates an io.WriteCloser that calls
 // s3's PutObject method with the given data once the io.WriteCloser is closed.
 func TestS3WriteToS3(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "smb_*")
+	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
 	bucketName := "mybucket"
@@ -67,7 +67,7 @@ func TestS3WriteToS3(t *testing.T) {
 // TestS3WriteToCache verifies that Writer creates an io.WriteCloser that writes
 // the data written to it to a file in the given cache directory.
 func TestS3WriteToCache(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "smb_*")
+	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
 	recordBatchPath := "topicName/000123.record_batch"
@@ -108,7 +108,7 @@ func TestS3WriteToCache(t *testing.T) {
 // TestS3ReadFromCache verifies that Reader returns an io.Reader that returns
 // the bytes that were fetched from S3.
 func TestS3ReadFromCache(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "smb_*")
+	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
 	recordBatchPath := "topicName/000123.record_batch"

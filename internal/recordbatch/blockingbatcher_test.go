@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/micvbang/simple-message-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-message-broker/internal/recordbatch"
-	"github.com/micvbang/simple-message-broker/internal/tester"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
 )
 

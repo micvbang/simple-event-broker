@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/micvbang/go-helpy/filey"
-	"github.com/micvbang/simple-message-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
 type S3Storage struct {

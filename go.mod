@@ -1,4 +1,4 @@
-module github.com/micvbang/simple-message-broker
+module github.com/micvbang/simple-event-broker
 
 go 1.18
 

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/micvbang/go-helpy/uint64y"
-	"github.com/micvbang/simple-message-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-message-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
 type BackingStorage interface {

@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/micvbang/go-helpy/inty"
-	"github.com/micvbang/simple-message-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-message-broker/internal/storage"
-	"github.com/micvbang/simple-message-broker/internal/tester"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/storage"
+	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +17,7 @@ var log = logger.NewDefault(context.Background())
 // TestStorageEmpty verifies that reading from an empty topic returns
 // ErrOutOfBounds.
 func TestStorageEmpty(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "smb_*")
+	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
 	s, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, "mytopic")
@@ -34,7 +34,7 @@ func TestStorageEmpty(t *testing.T) {
 // single Record batch can be read back, and that reading out of bounds returns
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "smb_*")
+	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
 	s, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, "mytopic")
@@ -66,7 +66,7 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 // again, and that reading beyond the number of existing records yields
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "smb_*")
+	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
 	s, err := storage.NewStorage(log, storage.DiskStorage{}, tempDir, "mytopic")
@@ -99,7 +99,7 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 func TestStorageOpenExistingStorage(t *testing.T) {
 	const topicName = "my_topic"
 
-	tempDir, err := os.MkdirTemp("", "smb_*")
+	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
 	totalRecords := 0
@@ -149,7 +149,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 	const topicName = "my_topic"
 
-	tempDir, err := os.MkdirTemp("", "smb_*")
+	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
 	recordBatch1 := tester.MakeRandomRecordBatch(1)

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/micvbang/simple-message-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
 type blockedAdd struct {
