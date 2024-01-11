@@ -48,24 +48,52 @@ func (ss *S3Storage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 
 	log.Debugf("checking cache for record batch")
 	if filey.Exists(cacheRecordBatchPath) {
-		log.Debugf("record already exists")
+		log.Errorf("Record already exists. This should not happen!")
 		return nil, fmt.Errorf("file already exists '%s'", cacheRecordBatchPath)
 	}
 
-	log.Debugf("creating cache file")
-	f, err := ss.createCacheFile(cacheRecordBatchPath)
+	log.Debugf("creating temp file")
+	tmpFile, err := os.CreateTemp("", "seb_*")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating temp file: %w", err)
 	}
+	log = log.WithField("temp file", tmpFile.Name())
+
 	log.Debugf("creating s3WriteCloser")
 
-	writeCloser := &s3WriteCloser{f: f, s3Upload: func(rd io.ReadSeeker) error {
+	writeCloser := &s3WriteCloser{f: tmpFile, s3Upload: func(rd io.ReadSeeker) error {
+		log.Infof("uploading to s3")
 		_, err := ss.s3.PutObject(&s3.PutObjectInput{
 			Bucket: &ss.bucketName,
 			Key:    &recordBatchPath,
 			Body:   rd,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+
+		// NOTE: we don't _need_ the temp file to be moved into the cache, so
+		// all is good if the following fails.
+		// However: IT'S VERY IMPORTANT that we don't add the file to the cache if it
+		// wasn't successfully uploaded to s3 since S3 IS OUR SOURCE OF TRUTH!
+		log.Debugf("creating cache dir")
+		err = ss.makeCacheDirs(cacheRecordBatchPath)
+		if err != nil {
+			return nil
+		}
+
+		err = tmpFile.Close()
+		if err != nil {
+			return nil
+		}
+
+		log.Debugf("moving temporary file to cache")
+		err = os.Rename(tmpFile.Name(), cacheRecordBatchPath)
+		if err != nil {
+			return nil
+		}
+
+		return nil
 	}}
 
 	return writeCloser, nil
@@ -158,21 +186,29 @@ func (ss *S3Storage) recordBatchCachePath(recordBatchPath string) string {
 }
 
 func (ss *S3Storage) createCacheFile(cacheRecordBatchPath string) (*os.File, error) {
-	log := ss.log.WithField("cacheRecordBatchPath", cacheRecordBatchPath)
-
-	log.Debugf("creating cache dirs")
-	err := os.MkdirAll(filepath.Dir(cacheRecordBatchPath), os.ModePerm)
+	ss.log.Debugf("creating cache dir")
+	err := ss.makeCacheDirs(cacheRecordBatchPath)
 	if err != nil {
-		return nil, fmt.Errorf("creating cache topic dir: %w", err)
+		return nil, err
 	}
 
-	log.Debugf("creating cache file")
+	ss.log.Debugf("creating cache file")
 	f, err := os.Create(cacheRecordBatchPath)
 	if err != nil {
 		return nil, fmt.Errorf("creating cache record batch '%s': %w", cacheRecordBatchPath, err)
 	}
 
 	return f, err
+}
+
+func (ss *S3Storage) makeCacheDirs(cacheRecordBatchPath string) error {
+	ss.log.Debugf("creating cache dirs")
+	err := os.MkdirAll(filepath.Dir(cacheRecordBatchPath), os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("creating cache topic dir: %w", err)
+	}
+
+	return nil
 }
 
 type s3WriteCloser struct {
@@ -195,10 +231,7 @@ func (swc *s3WriteCloser) Close() error {
 		return fmt.Errorf("uploading to s3: %w", err)
 	}
 
-	err = swc.f.Close()
-	if err != nil {
-		return fmt.Errorf("closing file: %w", err)
-	}
+	// NOTE: swc.s3Upload() is responsible for closing swc.f.
 
 	return nil
 }

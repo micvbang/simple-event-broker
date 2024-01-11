@@ -5,12 +5,15 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/micvbang/go-helpy/filey"
 	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,7 +29,7 @@ func TestS3WriteToS3(t *testing.T) {
 	recordBatchPath := "topicName/000123.record_batch"
 	recordBatchBody := []byte(stringy.RandomN(500))
 
-	s3Mock := &S3Mock{}
+	s3Mock := &tester.S3Mock{}
 	s3Mock.MockPutObject = func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
 		// Verify the expected parameters are passed on to S3
 		require.Equal(t, *input.Bucket, bucketName)
@@ -73,7 +76,7 @@ func TestS3WriteToCache(t *testing.T) {
 	recordBatchPath := "topicName/000123.record_batch"
 	recordBatchBody := []byte(stringy.RandomN(500))
 
-	s3Mock := &S3Mock{}
+	s3Mock := &tester.S3Mock{}
 	s3Mock.MockPutObject = func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
 		return nil, nil
 	}
@@ -114,7 +117,7 @@ func TestS3ReadFromCache(t *testing.T) {
 	recordBatchPath := "topicName/000123.record_batch"
 	recordBatchBody := []byte(stringy.RandomN(500))
 
-	s3Mock := &S3Mock{}
+	s3Mock := &tester.S3Mock{}
 	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
 		return &s3.GetObjectOutput{
 			Body: io.NopCloser(bytes.NewBuffer(recordBatchBody)),
@@ -138,30 +141,57 @@ func TestS3ReadFromCache(t *testing.T) {
 	require.Equal(t, recordBatchBody, gotBytes)
 }
 
-type S3Mock struct {
-	s3iface.S3API
+// TestWrittenToS3BeforeCacheIsPopulated verifies that the payload has reached
+// S3 before it's written to the cache.
+// This is super important since S3 is our source of truth. If we write to the
+// cache before uploading to S3 and the server dies before our S3 upload is
+// complete, we could be in the situation where we served a request to retrieve
+// the data that only exists in the local cache but not in S3. This data is now
+// lost, and subsequent requests for the same id will not return the same data.
+func TestWrittenToS3BeforeCacheIsPopulated(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "seb_*")
+	require.NoError(t, err)
 
-	MockPutObject   func(*s3.PutObjectInput) (*s3.PutObjectOutput, error)
-	PutObjectCalled bool
+	recordBatchPath := "topicName/000123.record_batch"
+	recordBatchBody := []byte(stringy.RandomN(500))
 
-	MockGetObject   func(*s3.GetObjectInput) (*s3.GetObjectOutput, error)
-	GetObjectCalled bool
+	putReturn := make(chan struct{})
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockPutObject = func(poi *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
+		// block until putReturn is closed
+		<-putReturn
+		return nil, nil
+	}
 
-	MockListObjectPages   func(*s3.ListObjectsInput, func(*s3.ListObjectsOutput, bool) bool) error
-	ListObjectPagesCalled bool
-}
+	s3Storage := &S3Storage{
+		log:            log,
+		s3:             s3Mock,
+		topicCacheRoot: tempDir,
+		bucketName:     "mybucket",
+	}
 
-func (sm *S3Mock) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
-	sm.PutObjectCalled = true
-	return sm.MockPutObject(input)
-}
+	wtr, err := s3Storage.Writer(recordBatchPath)
+	require.NoError(t, err)
 
-func (sm *S3Mock) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
-	sm.GetObjectCalled = true
-	return sm.MockGetObject(input)
-}
+	n, err := wtr.Write(recordBatchBody)
+	require.NoError(t, err)
+	require.Equal(t, len(recordBatchBody), n)
 
-func (sm *S3Mock) ListObjectsPages(input *s3.ListObjectsInput, f func(*s3.ListObjectsOutput, bool) bool) error {
-	sm.ListObjectPagesCalled = true
-	return sm.MockListObjectPages(input, f)
+	expectedCachePath := filepath.Join(tempDir, recordBatchPath)
+	require.False(t, filey.Exists(expectedCachePath))
+
+	closeReturn := make(chan struct{})
+	go func() {
+		err := wtr.Close()
+		require.NoError(t, err)
+		close(closeReturn)
+	}()
+
+	// simulate PutObject taking some time to finish
+	time.Sleep(250 * time.Millisecond)
+	require.False(t, filey.Exists(expectedCachePath))
+
+	close(putReturn) // make PutObject return
+	<-closeReturn    // wait for wtr.Close() to write file to cache and return
+	require.True(t, filey.Exists(expectedCachePath))
 }
