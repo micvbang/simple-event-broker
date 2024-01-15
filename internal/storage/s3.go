@@ -14,19 +14,19 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
-type S3Storage struct {
-	log            logger.Logger
-	s3             s3iface.S3API
-	topicCacheRoot string
-	bucketName     string
-}
-
 type S3StorageInput struct {
 	S3             s3iface.S3API
 	LocalCacheRoot string
 	BucketName     string
 	RootDir        string
-	Topic          string
+	TopicName      string
+}
+
+type S3Storage struct {
+	log            logger.Logger
+	s3             s3iface.S3API
+	localCacheRoot string
+	bucketName     string
 }
 
 func NewS3Storage(log logger.Logger, input S3StorageInput) (*Storage, error) {
@@ -34,10 +34,10 @@ func NewS3Storage(log logger.Logger, input S3StorageInput) (*Storage, error) {
 		log:            log,
 		s3:             input.S3,
 		bucketName:     input.BucketName,
-		topicCacheRoot: input.LocalCacheRoot,
+		localCacheRoot: input.LocalCacheRoot,
 	}
 
-	return NewStorage(log, s3Storage, input.RootDir, input.Topic)
+	return NewStorage(log, s3Storage, input.RootDir, input.TopicName)
 }
 
 func (ss *S3Storage) Writer(recordBatchPath string) (io.WriteCloser, error) {
@@ -182,7 +182,7 @@ func (ss *S3Storage) ListFiles(topicPath string, extension string) ([]string, er
 }
 
 func (ss *S3Storage) recordBatchCachePath(recordBatchPath string) string {
-	return filepath.Join(ss.topicCacheRoot, recordBatchPath)
+	return filepath.Join(ss.localCacheRoot, recordBatchPath)
 }
 
 func (ss *S3Storage) createCacheFile(cacheRecordBatchPath string) (*os.File, error) {
