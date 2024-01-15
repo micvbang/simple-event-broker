@@ -47,7 +47,7 @@ func (b *BlockingBatcher) Add(r Record) error {
 	{
 		if !b.collectingBatch {
 			b.collectingBatch = true
-			go b.collectBatch(b.makeContext())
+			go b.collectBatch()
 		}
 	}
 	b.mu.Unlock()
@@ -61,7 +61,8 @@ func (b *BlockingBatcher) Add(r Record) error {
 	return <-errCh
 }
 
-func (b *BlockingBatcher) collectBatch(ctx context.Context) {
+func (b *BlockingBatcher) collectBatch() {
+	ctx := b.makeContext()
 	handledAdds := make([]blockedAdd, 0, 64)
 
 	t0 := time.Now()
