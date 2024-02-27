@@ -30,7 +30,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		return ctx
 	}
 
-	persistRecordBatch := func(recordBatch [][]byte) error {
+	persistRecordBatch := func(rb recordbatch.RecordBatch) error {
 		return returnedErr
 	}
 
@@ -53,7 +53,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 			returnedErr = test.expected
 
 			// Test
-			got := batcher.Add([]byte{})
+			got := batcher.Add(recordbatch.Record{})
 
 			// Verify
 			require.ErrorIs(t, got, test.expected)
@@ -73,7 +73,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 
 	blockPersistRecordBatch := make(chan struct{})
 	returnedErr := fmt.Errorf("all is on fire!")
-	persistRecordBatch := func(recordBatch [][]byte) error {
+	persistRecordBatch := func(rb recordbatch.RecordBatch) error {
 		<-blockPersistRecordBatch
 		return returnedErr
 	}

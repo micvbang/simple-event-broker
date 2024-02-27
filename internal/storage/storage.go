@@ -56,10 +56,9 @@ func NewStorage(log logger.Logger, backingStorage BackingStorage, rootDir string
 	}
 
 	return storage, nil
-
 }
 
-func (s *Storage) AddRecordBatch(records [][]byte) error {
+func (s *Storage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error {
 	recordBatchID := s.nextRecordID
 
 	rbPath := recordBatchPath(s.topicPath, recordBatchID)
@@ -69,17 +68,17 @@ func (s *Storage) AddRecordBatch(records [][]byte) error {
 	}
 	defer f.Close()
 
-	err = recordbatch.Write(f, records)
+	err = recordbatch.Write(f, recordBatch)
 	if err != nil {
 		return fmt.Errorf("writing record batch: %w", err)
 	}
 	s.recordBatchIDs = append(s.recordBatchIDs, recordBatchID)
-	s.nextRecordID = recordBatchID + uint64(len(records))
+	s.nextRecordID = recordBatchID + uint64(len(recordBatch))
 
 	return nil
 }
 
-func (s *Storage) ReadRecord(recordID uint64) ([]byte, error) {
+func (s *Storage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
 	if recordID >= s.nextRecordID {
 		return nil, fmt.Errorf("record ID does not exist: %w", ErrOutOfBounds)
 	}

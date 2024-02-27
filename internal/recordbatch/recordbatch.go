@@ -30,14 +30,17 @@ var UnixEpochUs = func() int64 {
 	return time.Now().UTC().UnixMicro()
 }
 
+type Record []byte
+type RecordBatch []Record
+
 // Write writes a RecordBatch file to wtr, consisting of a header, a record
 // index, and the given records.
-func Write(wtr io.Writer, records [][]byte) error {
+func Write(wtr io.Writer, rb RecordBatch) error {
 	header := Header{
 		MagicBytes:  FileFormatMagicBytes,
 		UnixEpochUs: UnixEpochUs(),
 		Version:     FileFormatVersion,
-		NumRecords:  uint32(len(records)),
+		NumRecords:  uint32(len(rb)),
 	}
 
 	err := binary.Write(wtr, byteOrder, header)
@@ -45,10 +48,10 @@ func Write(wtr io.Writer, records [][]byte) error {
 		return fmt.Errorf("writing header: %w", err)
 	}
 
-	recordIndexes := make([]uint32, len(records))
+	recordIndexes := make([]uint32, len(rb))
 
 	var recordIndex uint32
-	for i, record := range records {
+	for i, record := range rb {
 		recordIndexes[i] = recordIndex
 		recordIndex += uint32(len(record))
 	}
@@ -58,10 +61,10 @@ func Write(wtr io.Writer, records [][]byte) error {
 		return fmt.Errorf("writing record indexes %d: %w", recordIndex, err)
 	}
 
-	for i, record := range records {
+	for i, record := range rb {
 		err = binary.Write(wtr, byteOrder, record)
 		if err != nil {
-			return fmt.Errorf("writing record %d/%d: %w", i+1, len(records), err)
+			return fmt.Errorf("writing record %d/%d: %w", i+1, len(rb), err)
 		}
 	}
 	return nil
@@ -97,7 +100,7 @@ func Parse(rdr io.ReadSeeker) (*Parser, error) {
 	}, nil
 }
 
-func (rb *Parser) Record(recordIndex uint32) ([]byte, error) {
+func (rb *Parser) Record(recordIndex uint32) (Record, error) {
 	if recordIndex >= rb.Header.NumRecords {
 		return nil, fmt.Errorf("%d records available, record index %d does not exist: %w", rb.Header.NumRecords, recordIndex, ErrOutOfBounds)
 	}
@@ -117,11 +120,11 @@ func (rb *Parser) Record(recordIndex uint32) ([]byte, error) {
 
 	// read record bytes
 	size := rb.recordIndex[recordIndex+1] - recordOffset
-	buf := make([]byte, size)
-	_, err = io.ReadFull(rb.rdr, buf)
+	record := make(Record, size)
+	_, err = io.ReadFull(rb.rdr, record)
 	if err != nil {
 		return nil, fmt.Errorf("reading record: %w", err)
 	}
 
-	return buf, nil
+	return record, nil
 }

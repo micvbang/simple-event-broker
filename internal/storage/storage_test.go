@@ -7,6 +7,7 @@ import (
 
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
@@ -103,7 +104,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	totalRecords := 0
-	recordBatches := make([][][]byte, 50)
+	recordBatches := make([]recordbatch.RecordBatch, 50)
 	for i := 0; i < len(recordBatches); i++ {
 		batchSize := 1 + inty.RandomN(5)
 		totalRecords += batchSize

@@ -27,7 +27,7 @@ func TestS3WriteToS3(t *testing.T) {
 
 	bucketName := "mybucket"
 	recordBatchPath := "topicName/000123.record_batch"
-	recordBatchBody := []byte(stringy.RandomN(500))
+	randomBytes := []byte(stringy.RandomN(500))
 
 	s3Mock := &tester.S3Mock{}
 	s3Mock.MockPutObject = func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
@@ -37,7 +37,7 @@ func TestS3WriteToS3(t *testing.T) {
 
 		gotBody, err := io.ReadAll(input.Body)
 		require.NoError(t, err)
-		require.Equal(t, recordBatchBody, gotBody)
+		require.EqualValues(t, randomBytes, gotBody)
 
 		return nil, nil
 	}
@@ -53,9 +53,9 @@ func TestS3WriteToS3(t *testing.T) {
 	rbWriter, err := s3Storage.Writer(recordBatchPath)
 	require.NoError(t, err)
 
-	n, err := rbWriter.Write(recordBatchBody)
+	n, err := rbWriter.Write(randomBytes)
 	require.NoError(t, err)
-	require.Equal(t, len(recordBatchBody), n)
+	require.Equal(t, len(randomBytes), n)
 
 	// Verify
 	// file should not be written to s3 before it's closed
@@ -74,7 +74,7 @@ func TestS3WriteToCache(t *testing.T) {
 	require.NoError(t, err)
 
 	recordBatchPath := "topicName/000123.record_batch"
-	recordBatchBody := []byte(stringy.RandomN(500))
+	expectedBytes := []byte(stringy.RandomN(500))
 
 	s3Mock := &tester.S3Mock{}
 	s3Mock.MockPutObject = func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
@@ -92,9 +92,9 @@ func TestS3WriteToCache(t *testing.T) {
 	rbWriter, err := s3Storage.Writer(recordBatchPath)
 	require.NoError(t, err)
 
-	n, err := rbWriter.Write(recordBatchBody)
+	n, err := rbWriter.Write(expectedBytes)
 	require.NoError(t, err)
-	require.Equal(t, len(recordBatchBody), n)
+	require.Equal(t, len(expectedBytes), n)
 
 	err = rbWriter.Close()
 	require.NoError(t, err)
@@ -103,9 +103,9 @@ func TestS3WriteToCache(t *testing.T) {
 	rd, err := s3Storage.Reader(recordBatchPath)
 	require.NoError(t, err)
 
-	cacheBody, err := io.ReadAll(rd)
+	gotBytes, err := io.ReadAll(rd)
 	require.NoError(t, err)
-	require.Equal(t, recordBatchBody, cacheBody)
+	require.Equal(t, expectedBytes, gotBytes)
 }
 
 // TestS3ReadFromCache verifies that Reader returns an io.Reader that returns
@@ -115,12 +115,12 @@ func TestS3ReadFromCache(t *testing.T) {
 	require.NoError(t, err)
 
 	recordBatchPath := "topicName/000123.record_batch"
-	recordBatchBody := []byte(stringy.RandomN(500))
+	expectedBytes := []byte(stringy.RandomN(500))
 
 	s3Mock := &tester.S3Mock{}
 	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
 		return &s3.GetObjectOutput{
-			Body: io.NopCloser(bytes.NewBuffer(recordBatchBody)),
+			Body: io.NopCloser(bytes.NewBuffer(expectedBytes)),
 		}, nil
 	}
 
@@ -138,7 +138,7 @@ func TestS3ReadFromCache(t *testing.T) {
 	gotBytes, err := io.ReadAll(rdr)
 	require.NoError(t, err)
 
-	require.Equal(t, recordBatchBody, gotBytes)
+	require.Equal(t, expectedBytes, gotBytes)
 }
 
 // TestWrittenToS3BeforeCacheIsPopulated verifies that the payload has reached
@@ -153,7 +153,7 @@ func TestWrittenToS3BeforeCacheIsPopulated(t *testing.T) {
 	require.NoError(t, err)
 
 	recordBatchPath := "topicName/000123.record_batch"
-	recordBatchBody := []byte(stringy.RandomN(500))
+	randomBytes := []byte(stringy.RandomN(500))
 
 	putReturn := make(chan struct{})
 	s3Mock := &tester.S3Mock{}
@@ -173,9 +173,9 @@ func TestWrittenToS3BeforeCacheIsPopulated(t *testing.T) {
 	wtr, err := s3Storage.Writer(recordBatchPath)
 	require.NoError(t, err)
 
-	n, err := wtr.Write(recordBatchBody)
+	n, err := wtr.Write(randomBytes)
 	require.NoError(t, err)
-	require.Equal(t, len(recordBatchBody), n)
+	require.Equal(t, len(randomBytes), n)
 
 	expectedCachePath := filepath.Join(tempDir, recordBatchPath)
 	require.False(t, filey.Exists(expectedCachePath))

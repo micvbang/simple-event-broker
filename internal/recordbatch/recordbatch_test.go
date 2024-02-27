@@ -70,7 +70,7 @@ func TestReadRecord(t *testing.T) {
 	tests := map[string]struct {
 		rdr         io.ReadSeeker
 		recordIndex uint32
-		expected    []byte
+		expected    recordbatch.Record
 	}{
 		"first": {
 			recordIndex: 0,

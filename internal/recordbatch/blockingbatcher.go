@@ -9,7 +9,7 @@ import (
 )
 
 type blockedAdd struct {
-	record []byte
+	record Record
 	err    chan<- error
 }
 
@@ -21,10 +21,10 @@ type BlockingBatcher struct {
 	makeContext func() context.Context
 	blockedAdds chan blockedAdd
 
-	persistRecordBatch func([][]byte) error
+	persistRecordBatch func(RecordBatch) error
 }
 
-func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, persistRecordBatch func([][]byte) error) *BlockingBatcher {
+func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, persistRecordBatch func(RecordBatch) error) *BlockingBatcher {
 	return &BlockingBatcher{
 		log:                log,
 		mu:                 sync.Mutex{},
@@ -40,7 +40,7 @@ func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, p
 // persistRecordBatch() will be called once the most recent context
 // returned by makeContext() has expired. This means that, if makeContext()
 // returns a very long living context, Add() will block for a long time.
-func (b *BlockingBatcher) Add(record []byte) error {
+func (b *BlockingBatcher) Add(r Record) error {
 	errCh := make(chan error)
 
 	b.mu.Lock()
@@ -54,7 +54,7 @@ func (b *BlockingBatcher) Add(record []byte) error {
 
 	b.blockedAdds <- blockedAdd{
 		err:    errCh,
-		record: record,
+		record: r,
 	}
 
 	// block until record has been peristed
@@ -76,7 +76,7 @@ func (b *BlockingBatcher) collectBatch(ctx context.Context) {
 		case <-ctx.Done():
 			b.log.Debugf("batch collection time: %v", time.Since(t0))
 
-			recordBatch := make([][]byte, len(handledAdds))
+			recordBatch := make(RecordBatch, len(handledAdds))
 			for i, add := range handledAdds {
 				recordBatch[i] = add.record
 			}
