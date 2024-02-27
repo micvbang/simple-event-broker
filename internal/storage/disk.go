@@ -41,14 +41,17 @@ func (DiskStorage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 	return f, nil
 }
 
-func (DiskStorage) ListFiles(topicPath string, extension string) ([]string, error) {
-	filePaths := make([]string, 0, 128)
+func (DiskStorage) ListFiles(topicPath string, extension string) ([]File, error) {
+	files := make([]File, 0, 128)
 
 	walkConfig := filepathy.WalkConfig{Files: true, Extensions: []string{extension}}
 	err := filepathy.Walk(topicPath, walkConfig, func(path string, info os.FileInfo, _ error) error {
-		filePaths = append(filePaths, info.Name())
+		files = append(files, File{
+			Size: info.Size(),
+			Path: path,
+		})
 		return nil
 	})
 
-	return filePaths, err
+	return files, err
 }

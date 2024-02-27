@@ -195,3 +195,73 @@ func TestWrittenToS3BeforeCacheIsPopulated(t *testing.T) {
 	<-closeReturn    // wait for wtr.Close() to write file to cache and return
 	require.True(t, filey.Exists(expectedCachePath))
 }
+
+// TestListFiles verifies that ListFiles returns a list of the files outputted
+// by s3's ListObjectsPages's successive calls to the provided callback.
+func TestListFiles(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "seb_*")
+	require.NoError(t, err)
+
+	listObjectOutputBatches := [][]File{
+		{
+			{Path: "dummy1/name1.ext", Size: 101},
+			{Path: "dummy1/name2.ext", Size: 102},
+			{Path: "dummy1/name3.ext", Size: 103},
+		},
+		{
+			{Path: "dummy2/name1.ext", Size: 201},
+			{Path: "dummy2/name2.ext", Size: 202},
+			{Path: "dummy2/name3.ext", Size: 203},
+		},
+		{
+			{Path: "dummy3/name1.ext", Size: 301},
+		},
+	}
+
+	expectedFiles := []File{}
+	for _, batch := range listObjectOutputBatches {
+		expectedFiles = append(expectedFiles, batch...)
+	}
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockListObjectPages = func(input *s3.ListObjectsInput, f func(*s3.ListObjectsOutput, bool) bool) error {
+		for i, listObjectBatch := range listObjectOutputBatches {
+			listObjectsOutput := listObjectsOutputFromFiles(listObjectBatch)
+			lastPage := i == len(listObjectOutputBatches)-1
+
+			more := f(listObjectsOutput, lastPage)
+			if !more {
+				break
+			}
+		}
+
+		return nil
+	}
+
+	s3Storage := &S3Storage{
+		log:            log,
+		s3:             s3Mock,
+		localCacheRoot: tempDir,
+		bucketName:     "mybucket",
+	}
+
+	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext")
+	require.NoError(t, err)
+
+	require.Equal(t, expectedFiles, gotFiles)
+}
+
+func listObjectsOutputFromFiles(files []File) *s3.ListObjectsOutput {
+	s3Objects := make([]*s3.Object, len(files))
+
+	for i := range files {
+		s3Objects[i] = &s3.Object{
+			Key:  &files[i].Path,
+			Size: &files[i].Size,
+		}
+	}
+
+	return &s3.ListObjectsOutput{
+		Contents: s3Objects,
+	}
+}

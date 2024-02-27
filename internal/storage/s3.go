@@ -148,12 +148,12 @@ func (ss *S3Storage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 	return f, nil
 }
 
-func (ss *S3Storage) ListFiles(topicPath string, extension string) ([]string, error) {
+func (ss *S3Storage) ListFiles(topicPath string, extension string) ([]File, error) {
 	log := ss.log.
 		WithField("topicPath", topicPath).
 		WithField("extension", extension)
 
-	fileNames := make([]string, 0, 128)
+	files := make([]File, 0, 128)
 
 	topicPath, _ = strings.CutPrefix(topicPath, "/")
 
@@ -170,15 +170,18 @@ func (ss *S3Storage) ListFiles(topicPath string, extension string) ([]string, er
 			filePath := *obj.Key
 
 			if strings.HasSuffix(filePath, extension) {
-				fileNames = append(fileNames, *obj.Key)
+				files = append(files, File{
+					Path: filePath,
+					Size: *obj.Size,
+				})
 			}
 		}
 		return true
 	})
 
-	log.Debugf("found %d files", len(fileNames))
+	log.Debugf("found %d files", len(files))
 
-	return fileNames, err
+	return files, err
 }
 
 func (ss *S3Storage) recordBatchCachePath(recordBatchPath string) string {

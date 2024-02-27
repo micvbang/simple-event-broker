@@ -11,10 +11,15 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
+type File struct {
+	Size int64
+	Path string
+}
+
 type BackingStorage interface {
 	Writer(recordBatchPath string) (io.WriteCloser, error)
 	Reader(recordBatchPath string) (io.ReadSeekCloser, error)
-	ListFiles(topicPath string, extension string) ([]string, error)
+	ListFiles(topicPath string, extension string) ([]File, error)
 }
 
 type Storage struct {
@@ -105,7 +110,6 @@ func (s *Storage) ReadRecord(recordID uint64) ([]byte, error) {
 	}
 	return record, nil
 }
-
 func readRecordBatchHeader(backingStorage BackingStorage, topicPath string, recordBatchID uint64) (recordbatch.Header, error) {
 	rbPath := recordBatchPath(topicPath, recordBatchID)
 	f, err := backingStorage.Reader(rbPath)
@@ -122,14 +126,14 @@ func readRecordBatchHeader(backingStorage BackingStorage, topicPath string, reco
 }
 
 func listRecordBatchIDs(backingStorage BackingStorage, topicPath string) ([]uint64, error) {
-	filePaths, err := backingStorage.ListFiles(topicPath, recordBatchExtension)
+	files, err := backingStorage.ListFiles(topicPath, recordBatchExtension)
 	if err != nil {
 		return nil, fmt.Errorf("listing files: %w", err)
 	}
 
-	recordIDs := make([]uint64, 0, len(filePaths))
-	for _, filePath := range filePaths {
-		fileName := path.Base(filePath)
+	recordIDs := make([]uint64, 0, len(files))
+	for _, file := range files {
+		fileName := path.Base(file.Path)
 		recordIDStr := fileName[:len(fileName)-len(recordBatchExtension)]
 
 		recordID, err := uint64y.FromString(recordIDStr)
