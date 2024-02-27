@@ -55,7 +55,7 @@ func TestWrite(t *testing.T) {
 }
 
 // TestReadRecord verifies that ReadRecord() returns the expected data when
-// reading a specific record from a RecordBatch.
+// reading a specific record from a Parser.
 func TestReadRecord(t *testing.T) {
 	records := tester.MakeRandomRecordBatch(5)
 
@@ -64,7 +64,7 @@ func TestReadRecord(t *testing.T) {
 	require.NoError(t, err)
 
 	rdr := bytes.NewReader(buf.Bytes())
-	recordBatch, err := recordbatch.Parse(rdr)
+	parser, err := recordbatch.Parse(rdr)
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -91,7 +91,7 @@ func TestReadRecord(t *testing.T) {
 			require.NoError(t, err)
 
 			// Test
-			got, err := recordBatch.Record(test.recordIndex)
+			got, err := parser.Record(test.recordIndex)
 
 			// Verify
 			require.NoError(t, err)
@@ -111,11 +111,11 @@ func TestReadRecordOutOfBounds(t *testing.T) {
 	require.NoError(t, err)
 
 	rdr := bytes.NewReader(buf.Bytes())
-	recordBatch, err := recordbatch.Parse(rdr)
+	parser, err := recordbatch.Parse(rdr)
 	require.NoError(t, err)
 
 	// Test
-	_, err = recordBatch.Record(numRecords)
+	_, err = parser.Record(numRecords)
 
 	// Verify
 	require.ErrorIs(t, err, recordbatch.ErrOutOfBounds)
