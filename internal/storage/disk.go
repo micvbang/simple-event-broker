@@ -14,8 +14,8 @@ const recordBatchExtension = ".record_batch"
 
 type DiskStorage struct{}
 
-func NewDiskStorage(log logger.Logger, rootDir string, topic string) (*Storage, error) {
-	return NewStorage(log, DiskStorage{}, rootDir, topic)
+func NewDiskStorage(log logger.Logger, rootDir string, topic string) (*TopicStorage, error) {
+	return NewTopicStorage(log, DiskStorage{}, rootDir, topic)
 }
 
 func (DiskStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {

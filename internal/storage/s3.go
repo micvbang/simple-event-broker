@@ -29,7 +29,8 @@ type S3Storage struct {
 	bucketName     string
 }
 
-func NewS3Storage(log logger.Logger, input S3StorageInput) (*Storage, error) {
+func NewS3Storage(log logger.Logger, input S3StorageInput) (*TopicStorage, error) {
+
 	s3Storage := &S3Storage{
 		log:            log,
 		s3:             input.S3,
@@ -37,7 +38,7 @@ func NewS3Storage(log logger.Logger, input S3StorageInput) (*Storage, error) {
 		localCacheRoot: input.LocalCacheRoot,
 	}
 
-	return NewStorage(log, s3Storage, input.RootDir, input.TopicName)
+	return NewTopicStorage(log, s3Storage, input.RootDir, input.TopicName)
 }
 
 func (ss *S3Storage) Writer(recordBatchPath string) (io.WriteCloser, error) {

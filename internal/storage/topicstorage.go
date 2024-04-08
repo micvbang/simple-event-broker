@@ -22,7 +22,7 @@ type BackingStorage interface {
 	ListFiles(topicPath string, extension string) ([]File, error)
 }
 
-type Storage struct {
+type TopicStorage struct {
 	log            logger.Logger
 	topicPath      string
 	nextRecordID   uint64
@@ -31,7 +31,7 @@ type Storage struct {
 	backingStorage BackingStorage
 }
 
-func NewStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topic string) (*Storage, error) {
+func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topic string) (*TopicStorage, error) {
 	topicPath := filepath.Join(rootDir, topic)
 
 	recordBatchIDs, err := listRecordBatchIDs(backingStorage, topicPath)
@@ -39,7 +39,7 @@ func NewStorage(log logger.Logger, backingStorage BackingStorage, rootDir string
 		return nil, fmt.Errorf("listing record batches: %w", err)
 	}
 
-	storage := &Storage{
+	storage := &TopicStorage{
 		log:            log,
 		backingStorage: backingStorage,
 		topicPath:      topicPath,
@@ -58,7 +58,7 @@ func NewStorage(log logger.Logger, backingStorage BackingStorage, rootDir string
 	return storage, nil
 }
 
-func (s *Storage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error {
+func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error {
 	recordBatchID := s.nextRecordID
 
 	rbPath := recordBatchPath(s.topicPath, recordBatchID)
@@ -78,7 +78,7 @@ func (s *Storage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error {
 	return nil
 }
 
-func (s *Storage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
+func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
 	if recordID >= s.nextRecordID {
 		return nil, fmt.Errorf("record ID does not exist: %w", ErrOutOfBounds)
 	}
