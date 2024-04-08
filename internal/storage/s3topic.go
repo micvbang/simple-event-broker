@@ -22,20 +22,20 @@ type S3StorageInput struct {
 	TopicName      string
 }
 
-type S3Storage struct {
+type S3TopicStorage struct {
 	log            logger.Logger
 	s3             s3iface.S3API
 	localCacheRoot string
 	bucketName     string
 }
 
-func NewS3Storage(log logger.Logger, input S3StorageInput) (*TopicStorage, error) {
+func NewS3TopicStorage(log logger.Logger, input S3StorageInput) (*TopicStorage, error) {
 	localCacheRoot := input.RootDir
 	if input.LocalCacheRoot != nil {
 		localCacheRoot = *input.LocalCacheRoot
 	}
 
-	s3Storage := &S3Storage{
+	s3Storage := &S3TopicStorage{
 		log:            log,
 		s3:             input.S3,
 		bucketName:     input.BucketName,
@@ -45,7 +45,7 @@ func NewS3Storage(log logger.Logger, input S3StorageInput) (*TopicStorage, error
 	return NewTopicStorage(log, s3Storage, input.RootDir, input.TopicName)
 }
 
-func (ss *S3Storage) Writer(recordBatchPath string) (io.WriteCloser, error) {
+func (ss *S3TopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 	cacheRecordBatchPath := ss.recordBatchCachePath(recordBatchPath)
 	log := ss.log.
 		WithField("cacheRecordBatchPath", cacheRecordBatchPath).
@@ -104,7 +104,7 @@ func (ss *S3Storage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 	return writeCloser, nil
 }
 
-func (ss *S3Storage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
+func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 	cacheRecordBatchPath := ss.recordBatchCachePath(recordBatchPath)
 	log := ss.log.
 		WithField("cacheRecordBatchPath", cacheRecordBatchPath).
@@ -153,7 +153,7 @@ func (ss *S3Storage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 	return f, nil
 }
 
-func (ss *S3Storage) ListFiles(topicPath string, extension string) ([]File, error) {
+func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File, error) {
 	log := ss.log.
 		WithField("topicPath", topicPath).
 		WithField("extension", extension)
@@ -189,11 +189,11 @@ func (ss *S3Storage) ListFiles(topicPath string, extension string) ([]File, erro
 	return files, err
 }
 
-func (ss *S3Storage) recordBatchCachePath(recordBatchPath string) string {
+func (ss *S3TopicStorage) recordBatchCachePath(recordBatchPath string) string {
 	return filepath.Join(ss.localCacheRoot, recordBatchPath)
 }
 
-func (ss *S3Storage) createCacheFile(cacheRecordBatchPath string) (*os.File, error) {
+func (ss *S3TopicStorage) createCacheFile(cacheRecordBatchPath string) (*os.File, error) {
 	ss.log.Debugf("creating cache dir")
 	err := ss.makeCacheDirs(cacheRecordBatchPath)
 	if err != nil {
@@ -209,7 +209,7 @@ func (ss *S3Storage) createCacheFile(cacheRecordBatchPath string) (*os.File, err
 	return f, err
 }
 
-func (ss *S3Storage) makeCacheDirs(cacheRecordBatchPath string) error {
+func (ss *S3TopicStorage) makeCacheDirs(cacheRecordBatchPath string) error {
 	ss.log.Debugf("creating cache dirs")
 	err := os.MkdirAll(filepath.Dir(cacheRecordBatchPath), os.ModePerm)
 	if err != nil {

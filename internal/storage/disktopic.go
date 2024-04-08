@@ -12,13 +12,13 @@ import (
 
 const recordBatchExtension = ".record_batch"
 
-type DiskStorage struct{}
+type DiskTopicStorage struct{}
 
-func NewDiskStorage(log logger.Logger, rootDir string, topic string) (*TopicStorage, error) {
-	return NewTopicStorage(log, DiskStorage{}, rootDir, topic)
+func NewDiskTopicStorage(log logger.Logger, rootDir string, topic string) (*TopicStorage, error) {
+	return NewTopicStorage(log, DiskTopicStorage{}, rootDir, topic)
 }
 
-func (DiskStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
+func (DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 	err := os.MkdirAll(filepath.Dir(recordBatchPath), os.ModePerm)
 	if err != nil {
 		return nil, fmt.Errorf("creating topic dir: %w", err)
@@ -32,7 +32,7 @@ func (DiskStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 	return f, nil
 }
 
-func (DiskStorage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
+func (DiskTopicStorage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 	f, err := os.Open(recordBatchPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening record batch '%s': %w", recordBatchPath, err)
@@ -41,7 +41,7 @@ func (DiskStorage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 	return f, nil
 }
 
-func (DiskStorage) ListFiles(topicPath string, extension string) ([]File, error) {
+func (DiskTopicStorage) ListFiles(topicPath string, extension string) ([]File, error) {
 	files := make([]File, 0, 128)
 
 	walkConfig := filepathy.WalkConfig{Files: true, Extensions: []string{extension}}

@@ -42,7 +42,7 @@ func TestS3WriteToS3(t *testing.T) {
 		return nil, nil
 	}
 
-	s3Storage := &S3Storage{
+	s3Storage := &S3TopicStorage{
 		log:            log,
 		s3:             s3Mock,
 		localCacheRoot: tempDir,
@@ -81,7 +81,7 @@ func TestS3WriteToCache(t *testing.T) {
 		return nil, nil
 	}
 
-	s3Storage := &S3Storage{
+	s3Storage := &S3TopicStorage{
 		log:            log,
 		s3:             s3Mock,
 		localCacheRoot: tempDir,
@@ -124,7 +124,7 @@ func TestS3ReadFromCache(t *testing.T) {
 		}, nil
 	}
 
-	s3Storage := &S3Storage{
+	s3Storage := &S3TopicStorage{
 		log:            log,
 		s3:             s3Mock,
 		localCacheRoot: tempDir,
@@ -163,7 +163,7 @@ func TestWrittenToS3BeforeCacheIsPopulated(t *testing.T) {
 		return nil, nil
 	}
 
-	s3Storage := &S3Storage{
+	s3Storage := &S3TopicStorage{
 		log:            log,
 		s3:             s3Mock,
 		localCacheRoot: tempDir,
@@ -238,7 +238,7 @@ func TestListFiles(t *testing.T) {
 		return nil
 	}
 
-	s3Storage := &S3Storage{
+	s3Storage := &S3TopicStorage{
 		log:            log,
 		s3:             s3Mock,
 		localCacheRoot: tempDir,
