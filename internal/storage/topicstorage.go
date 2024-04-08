@@ -5,6 +5,7 @@ import (
 	"io"
 	"path"
 	"path/filepath"
+	"sort"
 
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -142,6 +143,10 @@ func listRecordBatchIDs(backingStorage BackingStorage, topicPath string) ([]uint
 
 		recordIDs = append(recordIDs, recordID)
 	}
+
+	sort.Slice(recordIDs, func(i, j int) bool {
+		return recordIDs[i] < recordIDs[j]
+	})
 
 	return recordIDs, nil
 }
