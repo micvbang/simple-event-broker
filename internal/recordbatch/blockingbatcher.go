@@ -34,13 +34,13 @@ func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, p
 	}
 }
 
-// Add adds record to the ongoing record batch and blocks until
+// AddRecord adds record to the ongoing record batch and blocks until
 // persistRecordBatch() has been called and completed.
 //
 // persistRecordBatch() will be called once the most recent context
 // returned by makeContext() has expired. This means that, if makeContext()
-// returns a very long living context, Add() will block for a long time.
-func (b *BlockingBatcher) Add(r Record) error {
+// returns a very long living context, AddRecord() will block for a long time.
+func (b *BlockingBatcher) AddRecord(r Record) error {
 	errCh := make(chan error)
 
 	b.mu.Lock()

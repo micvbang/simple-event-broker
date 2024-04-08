@@ -53,7 +53,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 			returnedErr = test.expected
 
 			// Test
-			got := batcher.Add(recordbatch.Record{})
+			got := batcher.AddRecord(recordbatch.Record{})
 
 			// Verify
 			require.ErrorIs(t, got, test.expected)
@@ -93,7 +93,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 			defer wg.Done()
 
 			// Test
-			got := batcher.Add(recordBatch)
+			got := batcher.AddRecord(recordBatch)
 			addReturned.Store(true)
 
 			// Verify
