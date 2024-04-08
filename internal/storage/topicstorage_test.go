@@ -128,10 +128,10 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	// Verify
 	recordID := 0
 	for _, recordBatch := range recordBatches {
-		for _, record := range recordBatch {
+		for _, expected := range recordBatch {
 			got, err := s2.ReadRecord(uint64(recordID))
 			require.NoError(t, err)
-			require.Equal(t, record, got)
+			require.Equal(t, expected, got)
 
 			recordID += 1
 		}

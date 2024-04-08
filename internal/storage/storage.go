@@ -8,28 +8,27 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
-type Batcher interface {
+type RecordBatcher interface {
 	Add(r recordbatch.Record) error
 }
 
 type topicBatcher struct {
-	batcher Batcher
+	batcher RecordBatcher
 	storage *TopicStorage
 }
 
 type Storage struct {
-	autoCreateTopics bool
-
-	createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error)
-	createBatcher      func(logger.Logger, *TopicStorage) Batcher
-
 	log logger.Logger
+
+	autoCreateTopics   bool
+	createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error)
+	createBatcher      func(logger.Logger, *TopicStorage) RecordBatcher
 
 	mu           *sync.Mutex
 	topicBatcher map[string]topicBatcher
 }
 
-func NewStorage(log logger.Logger, createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error), createBatcher func(logger.Logger, *TopicStorage) Batcher) *Storage {
+func NewStorage(log logger.Logger, createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error), createBatcher func(logger.Logger, *TopicStorage) RecordBatcher) *Storage {
 	return &Storage{
 		autoCreateTopics:   true,
 		createTopicStorage: createTopicStorage,
@@ -72,8 +71,8 @@ func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 			return topicBatcher{}, fmt.Errorf("%w: '%s'", ErrTopicNotFound, topicName)
 		}
 
-		// NOTE: this could block for a long time. Not great while holding the
-		// lock.
+		// NOTE: this could block for a long time. We're holding the lock, so
+		// this is terrible.
 		topicLogger := s.log.Name(fmt.Sprintf("topic storage (%s)", topicName))
 		topicStorage, err := s.createTopicStorage(topicLogger, topicName)
 		if err != nil {
