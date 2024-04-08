@@ -30,9 +30,10 @@ type TopicStorage struct {
 	recordBatchIDs []uint64
 
 	backingStorage BackingStorage
+	cache          *DiskCache
 }
 
-func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topic string) (*TopicStorage, error) {
+func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topic string, cache *DiskCache) (*TopicStorage, error) {
 	topicPath := filepath.Join(rootDir, topic)
 
 	recordBatchIDs, err := listRecordBatchIDs(backingStorage, topicPath)
@@ -45,6 +46,7 @@ func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir s
 		backingStorage: backingStorage,
 		topicPath:      topicPath,
 		recordBatchIDs: recordBatchIDs,
+		cache:          cache,
 	}
 
 	if len(recordBatchIDs) > 0 {
@@ -62,7 +64,7 @@ func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir s
 func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error {
 	recordBatchID := s.nextRecordID
 
-	rbPath := recordBatchPath(s.topicPath, recordBatchID)
+	rbPath := RecordBatchPath(s.topicPath, recordBatchID)
 	f, err := s.backingStorage.Writer(rbPath)
 	if err != nil {
 		return fmt.Errorf("opening writer '%s': %w", rbPath, err)
@@ -73,8 +75,31 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error
 	if err != nil {
 		return fmt.Errorf("writing record batch: %w", err)
 	}
+
 	s.recordBatchIDs = append(s.recordBatchIDs, recordBatchID)
 	s.nextRecordID = recordBatchID + uint64(len(recordBatch))
+
+	// TODO: it would be nice to remove this from the "fastpath"
+	// NOTE: we are intentionally not returning caching errors to caller. It's
+	// (semi) fine if the file isn't written to cache since we can retrieve it
+	// from backing storage.
+	if s.cache != nil {
+		cacheWtr, err := s.cache.Writer(rbPath)
+		if err != nil {
+			s.log.Errorf("creating cache writer to cache (%s): %w", rbPath, err)
+			return nil
+		}
+
+		err = recordbatch.Write(cacheWtr, recordBatch)
+		if err != nil {
+			s.log.Errorf("writing to cache (%s): %w", rbPath, err)
+		}
+
+		err = cacheWtr.Close()
+		if err != nil {
+			s.log.Errorf("closing cached file (%s): %w", rbPath, err)
+		}
+	}
 
 	return nil
 }
@@ -93,10 +118,22 @@ func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
 		}
 	}
 
-	rbPath := recordBatchPath(s.topicPath, recordBatchID)
-	f, err := s.backingStorage.Reader(rbPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening reader '%s': %w", rbPath, err)
+	rbPath := RecordBatchPath(s.topicPath, recordBatchID)
+	var f io.ReadSeekCloser
+	var err error
+
+	if s.cache != nil {
+		f, err = s.cache.Reader(rbPath)
+		if err != nil {
+			s.log.Infof("%s not found in cache", rbPath)
+		}
+	}
+
+	if f == nil { // not found in cache
+		f, err = s.backingStorage.Reader(rbPath)
+		if err != nil {
+			return nil, fmt.Errorf("opening reader '%s': %w", rbPath, err)
+		}
 	}
 
 	rb, err := recordbatch.Parse(f)
@@ -111,7 +148,7 @@ func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
 	return record, nil
 }
 func readRecordBatchHeader(backingStorage BackingStorage, topicPath string, recordBatchID uint64) (recordbatch.Header, error) {
-	rbPath := recordBatchPath(topicPath, recordBatchID)
+	rbPath := RecordBatchPath(topicPath, recordBatchID)
 	f, err := backingStorage.Reader(rbPath)
 	if err != nil {
 		return recordbatch.Header{}, fmt.Errorf("opening recordBatch '%s': %w", rbPath, err)
@@ -153,6 +190,7 @@ func listRecordBatchIDs(backingStorage BackingStorage, topicPath string) ([]uint
 	return recordIDs, nil
 }
 
-func recordBatchPath(topicPath string, recordBatchID uint64) string {
-	return filepath.Join(topicPath, fmt.Sprintf("%012d%s", recordBatchID, recordBatchExtension))
+// RecordBatchPath returns the symbolic path of the topicName and the recordBatchID.
+func RecordBatchPath(topicName string, recordBatchID uint64) string {
+	return filepath.Join(topicName, fmt.Sprintf("%012d%s", recordBatchID, recordBatchExtension))
 }

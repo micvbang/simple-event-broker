@@ -27,7 +27,7 @@ func main() {
 	topicName := filepath.Base(absInputPath)
 	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromRecordID, flags.startFromRecordID+flags.numRecords-1, topicName)
 
-	diskStorage, err := storage.NewDiskTopicStorage(log, rootDir, topicName)
+	diskStorage, err := storage.NewDiskTopicStorage(log, rootDir, topicName, nil)
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/micvbang/go-helpy/filey"
 	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/tester"
@@ -178,7 +177,7 @@ func TestWrittenToS3BeforeCacheIsPopulated(t *testing.T) {
 	require.Equal(t, len(randomBytes), n)
 
 	expectedCachePath := filepath.Join(tempDir, recordBatchPath)
-	require.False(t, filey.Exists(expectedCachePath))
+	require.NoFileExists(t, expectedCachePath)
 
 	closeReturn := make(chan struct{})
 	go func() {
@@ -189,11 +188,11 @@ func TestWrittenToS3BeforeCacheIsPopulated(t *testing.T) {
 
 	// simulate PutObject taking some time to finish
 	time.Sleep(250 * time.Millisecond)
-	require.False(t, filey.Exists(expectedCachePath))
+	require.NoFileExists(t, expectedCachePath)
 
 	close(putReturn) // make PutObject return
 	<-closeReturn    // wait for wtr.Close() to write file to cache and return
-	require.True(t, filey.Exists(expectedCachePath))
+	require.FileExists(t, expectedCachePath)
 }
 
 // TestListFiles verifies that ListFiles returns a list of the files outputted

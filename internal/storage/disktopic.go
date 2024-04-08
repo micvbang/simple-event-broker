@@ -12,8 +12,8 @@ import (
 
 type DiskTopicStorage struct{}
 
-func NewDiskTopicStorage(log logger.Logger, rootDir string, topic string) (*TopicStorage, error) {
-	return NewTopicStorage(log, DiskTopicStorage{}, rootDir, topic)
+func NewDiskTopicStorage(log logger.Logger, rootDir string, topic string, cache *DiskCache) (*TopicStorage, error) {
+	return NewTopicStorage(log, DiskTopicStorage{}, rootDir, topic, cache)
 }
 
 func (DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {

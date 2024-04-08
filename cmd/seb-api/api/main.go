@@ -64,6 +64,7 @@ func makeBlockingS3Storage(log logger.Logger, sleepTime time.Duration, s3BucketN
 			BucketName: s3BucketName,
 			RootDir:    "/tmp/recordbatch",
 			TopicName:  topicName,
+			Cache:      &storage.DiskCache{},
 		})
 	}
 
