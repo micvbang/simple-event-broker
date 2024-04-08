@@ -16,7 +16,7 @@ import (
 
 type S3StorageInput struct {
 	S3             s3iface.S3API
-	LocalCacheRoot string
+	LocalCacheRoot *string
 	BucketName     string
 	RootDir        string
 	TopicName      string
@@ -30,12 +30,16 @@ type S3Storage struct {
 }
 
 func NewS3Storage(log logger.Logger, input S3StorageInput) (*TopicStorage, error) {
+	localCacheRoot := input.RootDir
+	if input.LocalCacheRoot != nil {
+		localCacheRoot = *input.LocalCacheRoot
+	}
 
 	s3Storage := &S3Storage{
 		log:            log,
 		s3:             input.S3,
 		bucketName:     input.BucketName,
-		localCacheRoot: input.LocalCacheRoot,
+		localCacheRoot: localCacheRoot,
 	}
 
 	return NewTopicStorage(log, s3Storage, input.RootDir, input.TopicName)
@@ -76,7 +80,7 @@ func (ss *S3Storage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 		// NOTE: we don't _need_ the temp file to be moved into the cache, so
 		// all is good if the following fails.
 		// However: IT'S VERY IMPORTANT that we don't add the file to the cache if it
-		// wasn't successfully uploaded to s3 since S3 IS OUR SOURCE OF TRUTH!
+		// wasn't successfully uploaded to s3 since s3 is our source of truth!
 		log.Debugf("creating cache dir")
 		err = ss.makeCacheDirs(cacheRecordBatchPath)
 		if err != nil {
