@@ -35,10 +35,10 @@ type storage struct {
 
 func New(log logger.Logger, createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error), createBatcher func(logger.Logger, *TopicStorage) RecordBatcher) Storage {
 	return &storage{
+		log:                log,
 		autoCreateTopics:   true,
 		createTopicStorage: createTopicStorage,
 		createBatcher:      createBatcher,
-		log:                log,
 		mu:                 &sync.Mutex{},
 		topicBatcher:       make(map[string]topicBatcher),
 	}
@@ -67,11 +67,14 @@ func (s *storage) GetRecord(topicName string, recordID uint64) (recordbatch.Reco
 }
 
 func (s *storage) getTopicBatcher(topicName string) (topicBatcher, error) {
+	log := s.log.WithField("topicName", topicName)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	tb, ok := s.topicBatcher[topicName]
 	if !ok {
+		log.Debugf("creating new topic batcher")
 		if !s.autoCreateTopics {
 			return topicBatcher{}, fmt.Errorf("%w: '%s'", ErrTopicNotFound, topicName)
 		}
