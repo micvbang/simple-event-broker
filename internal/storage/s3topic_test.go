@@ -3,7 +3,9 @@ package storage
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -139,6 +141,49 @@ func TestListFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, expectedFiles, gotFiles)
+}
+
+// TestListFilesOverlappingNames verifies that ListFiles formats Prefix in
+// requests to S3 ListObjectPages correctly, i.e. removes any prefix "/", and
+// ensures that it has "/" as a suffix.
+func TestListFilesOverlappingNames(t *testing.T) {
+	mockListObjectPagesCalled := 0
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockListObjectPages = func(input *s3.ListObjectsInput, f func(*s3.ListObjectsOutput, bool) bool) error {
+		// Assert
+		require.False(t, strings.HasPrefix(*input.Prefix, "/"))
+		require.True(t, strings.HasSuffix(*input.Prefix, "/"))
+
+		mockListObjectPagesCalled += 1
+
+		return nil
+	}
+
+	s3Storage := &S3TopicStorage{
+		log:        log,
+		s3:         s3Mock,
+		bucketName: "mybucket",
+	}
+
+	// Act
+	testPrefixes := []string{
+		"dummy/dir",
+		"/dummy/dir",
+		"dummy/dir/",
+		"/dummy/dir/",
+	}
+
+	for _, prefix := range testPrefixes {
+		t.Run(fmt.Sprintf("prefix '%s'", prefix), func(t *testing.T) {
+			_, err := s3Storage.ListFiles(prefix, ".ext")
+			require.NoError(t, err)
+		})
+	}
+
+	// Assert that MockListObjectPages has been called (and its assertions have
+	// been run)
+	require.Equal(t, len(testPrefixes), mockListObjectPagesCalled)
 }
 
 func listObjectsOutputFromFiles(files []File) *s3.ListObjectsOutput {

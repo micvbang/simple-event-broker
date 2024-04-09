@@ -82,6 +82,9 @@ func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File,
 	files := make([]File, 0, 128)
 
 	topicPath, _ = strings.CutPrefix(topicPath, "/")
+	if !strings.HasSuffix(topicPath, "/") {
+		topicPath += "/"
+	}
 
 	log.Debugf("listing objects in s3")
 	err := ss.s3.ListObjectsPages(&s3.ListObjectsInput{
