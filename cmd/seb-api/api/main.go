@@ -58,13 +58,18 @@ func makeBlockingS3Storage(log logger.Logger, sleepTime time.Duration, s3BucketN
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
+	diskCache, err := storage.NewDiskCache(log.Name("disk cache"), "/tmp/seb-cache")
+	if err != nil {
+		return nil, fmt.Errorf("creating disk cache: %w", err)
+	}
+
 	s3TopicStorage := func(log logger.Logger, topicName string) (*storage.TopicStorage, error) {
 		return storage.NewS3TopicStorage(log.Name("s3 storage"), storage.S3StorageInput{
 			S3:         s3.New(session),
 			BucketName: s3BucketName,
 			RootDir:    "/tmp/recordbatch",
 			TopicName:  topicName,
-			Cache:      storage.NewDiskCache(log.Name("disk cache"), "/tmp/seb-cache"),
+			Cache:      diskCache,
 		})
 	}
 
