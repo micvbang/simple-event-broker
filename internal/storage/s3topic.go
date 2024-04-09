@@ -26,6 +26,7 @@ type S3TopicStorage struct {
 	bucketName string
 }
 
+// NewS3TopicStorage returns a *TopicStorage that stores data in AWS S3.
 func NewS3TopicStorage(log logger.Logger, input S3StorageInput) (*TopicStorage, error) {
 	s3Storage := &S3TopicStorage{
 		log:        log,
@@ -48,9 +49,9 @@ func (ss *S3TopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error)
 
 	log.Debugf("creating s3WriteCloser")
 	writeCloser := &s3WriteCloser{
+		log:        ss.log.Name("s3UploadWriteCloser"),
 		f:          tmpFile,
 		s3:         ss.s3,
-		log:        ss.log.Name("s3UploadWriteCloser"),
 		bucketName: ss.bucketName,
 		objectKey:  recordBatchPath,
 	}

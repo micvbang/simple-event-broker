@@ -45,7 +45,7 @@ func Run() {
 	log.Fatalf("ListenAndServe returned: %s", err)
 }
 
-func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTime time.Duration, s3BucketName string) (storage.Storage, error) {
+func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTime time.Duration, s3BucketName string) (*storage.Storage, error) {
 	contextCreator := func() context.Context {
 		ctx, cancel := context.WithTimeout(context.Background(), sleepTime)
 		go func() {

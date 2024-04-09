@@ -6,10 +6,14 @@ import (
 	"net/http"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/storage"
+	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
-func AddRecord(log logger.Logger, s storage.Storage) http.HandlerFunc {
+type RecordAdder interface {
+	AddRecord(topicName string, record recordbatch.Record) error
+}
+
+func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		log.Debugf("hit %s", r.URL)

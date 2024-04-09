@@ -7,10 +7,15 @@ import (
 
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/storage"
 )
 
-func GetRecord(log logger.Logger, s storage.Storage) http.HandlerFunc {
+type RecordGetter interface {
+	GetRecord(topicName string, recordID uint64) (recordbatch.Record, error)
+}
+
+func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("hit %s", r.URL)
 

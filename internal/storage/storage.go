@@ -17,12 +17,7 @@ type topicBatcher struct {
 	storage *TopicStorage
 }
 
-type Storage interface {
-	AddRecord(topicName string, record recordbatch.Record) error
-	GetRecord(topicName string, recordID uint64) (recordbatch.Record, error)
-}
-
-type storage struct {
+type Storage struct {
 	log logger.Logger
 
 	autoCreateTopics   bool
@@ -33,8 +28,17 @@ type storage struct {
 	topicBatcher map[string]topicBatcher
 }
 
-func New(log logger.Logger, createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error), createBatcher func(logger.Logger, *TopicStorage) RecordBatcher) Storage {
-	return &storage{
+// New returns a Storage that utilizes the given createTopicStorage and
+// createBatcher to implement the Storage interface. createTopicStorage is used
+// to initialize the TopicStorage for each individual topic, and createBatcher
+// is used to initialize the batching strategy used for the created
+// TopicStorage.
+func New(
+	log logger.Logger,
+	createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error),
+	createBatcher func(logger.Logger, *TopicStorage) RecordBatcher,
+) *Storage {
+	return &Storage{
 		log:                log,
 		autoCreateTopics:   true,
 		createTopicStorage: createTopicStorage,
@@ -44,7 +48,7 @@ func New(log logger.Logger, createTopicStorage func(log logger.Logger, topicName
 	}
 }
 
-func (s *storage) AddRecord(topicName string, record recordbatch.Record) error {
+func (s *Storage) AddRecord(topicName string, record recordbatch.Record) error {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return err
@@ -57,7 +61,7 @@ func (s *storage) AddRecord(topicName string, record recordbatch.Record) error {
 	return nil
 }
 
-func (s *storage) GetRecord(topicName string, recordID uint64) (recordbatch.Record, error) {
+func (s *Storage) GetRecord(topicName string, recordID uint64) (recordbatch.Record, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
@@ -66,7 +70,7 @@ func (s *storage) GetRecord(topicName string, recordID uint64) (recordbatch.Reco
 	return tb.storage.ReadRecord(recordID)
 }
 
-func (s *storage) getTopicBatcher(topicName string) (topicBatcher, error) {
+func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 	log := s.log.WithField("topicName", topicName)
 
 	s.mu.Lock()

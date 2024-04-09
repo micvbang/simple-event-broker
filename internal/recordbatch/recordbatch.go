@@ -87,15 +87,15 @@ func Parse(rdr io.ReadSeeker) (*Parser, error) {
 		return nil, fmt.Errorf("reading header: %w", err)
 	}
 
-	recordIndices := make([]uint32, header.NumRecords)
-	err = binary.Read(rdr, byteOrder, &recordIndices)
+	recordIndex := make([]uint32, header.NumRecords)
+	err = binary.Read(rdr, byteOrder, &recordIndex)
 	if err != nil {
 		return nil, fmt.Errorf("reading record index: %w", err)
 	}
 
 	return &Parser{
 		Header:      header,
-		recordIndex: recordIndices,
+		recordIndex: recordIndex,
 		rdr:         rdr,
 	}, nil
 }

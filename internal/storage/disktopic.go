@@ -12,6 +12,8 @@ import (
 
 type DiskTopicStorage struct{}
 
+// NewDiskTopicStorage returns a *TopicStorage that stores its data on local
+// disk.
 func NewDiskTopicStorage(log logger.Logger, rootDir string, topic string, cache *DiskCache) (*TopicStorage, error) {
 	return NewTopicStorage(log, DiskTopicStorage{}, rootDir, topic, cache)
 }
