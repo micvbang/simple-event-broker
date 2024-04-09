@@ -101,8 +101,7 @@ func (c *DiskCache) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 	}
 
 	now := time.Now()
-	log.Debugf("hit for '%s'", recordBatchPath)
-	log.Debugf("setting used at: %v", now)
+	log.Debugf("hit for '%s', updating used at", recordBatchPath)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
