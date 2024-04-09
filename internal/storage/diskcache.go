@@ -6,21 +6,25 @@ import (
 	"io"
 	"os"
 	"path"
+
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
 // DiskCache is used to cache RecordBatches on the local disk.
 type DiskCache struct {
+	log     logger.Logger
 	rootdir string
 }
 
-func NewCache(rootDir string) *DiskCache {
-	return &DiskCache{rootdir: rootDir}
+func NewDiskCache(log logger.Logger, rootDir string) *DiskCache {
+	return &DiskCache{log: log, rootdir: rootDir}
 }
 
 // TODO: somehow to track how much disk space is being used
 // TODO: somehow to throw away "old" (no longer needed) data
 
 func (c *DiskCache) Writer(recordBatchPath string) (io.WriteCloser, error) {
+	c.log.Debugf("adding '%s'", recordBatchPath)
 	tmpFile, err := os.CreateTemp("", "seb_*")
 	if err != nil {
 		return nil, fmt.Errorf("creating temp file: %w", err)
@@ -38,6 +42,7 @@ func (c *DiskCache) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 		return nil, errors.Join(ErrNotInCache, fmt.Errorf("opening record batch '%s': %w", recordBatchPath, err))
 	}
 
+	c.log.Debugf("hit for '%s'", recordBatchPath)
 	return f, nil
 }
 

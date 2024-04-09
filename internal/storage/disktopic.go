@@ -30,7 +30,7 @@ func (DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 	return f, nil
 }
 
-func (DiskTopicStorage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
+func (DiskTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
 	f, err := os.Open(recordBatchPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening record batch '%s': %w", recordBatchPath, err)

@@ -4,10 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/micvbang/go-helpy/stringy"
@@ -21,9 +18,6 @@ var log = logger.NewDefault(context.Background())
 // TestS3WriteToS3 verifies that Writer creates an io.WriteCloser that calls
 // s3's PutObject method with the given data once the io.WriteCloser is closed.
 func TestS3WriteToS3(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "seb_*")
-	require.NoError(t, err)
-
 	bucketName := "mybucket"
 	recordBatchPath := "topicName/000123.record_batch"
 	randomBytes := []byte(stringy.RandomN(500))
@@ -42,13 +36,12 @@ func TestS3WriteToS3(t *testing.T) {
 	}
 
 	s3Storage := &S3TopicStorage{
-		log:            log,
-		s3:             s3Mock,
-		localCacheRoot: tempDir,
-		bucketName:     bucketName,
+		log:        log,
+		s3:         s3Mock,
+		bucketName: bucketName,
 	}
 
-	// Test
+	// Act
 	rbWriter, err := s3Storage.Writer(recordBatchPath)
 	require.NoError(t, err)
 
@@ -56,7 +49,7 @@ func TestS3WriteToS3(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(randomBytes), n)
 
-	// Verify
+	// Assert
 	// file should not be written to s3 before it's closed
 	require.False(t, s3Mock.PutObjectCalled)
 
@@ -66,53 +59,9 @@ func TestS3WriteToS3(t *testing.T) {
 	require.True(t, s3Mock.PutObjectCalled)
 }
 
-// TestS3WriteToCache verifies that Writer creates an io.WriteCloser that writes
-// the data written to it to a file in the given cache directory.
-func TestS3WriteToCache(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "seb_*")
-	require.NoError(t, err)
-
-	recordBatchPath := "topicName/000123.record_batch"
-	expectedBytes := []byte(stringy.RandomN(500))
-
-	s3Mock := &tester.S3Mock{}
-	s3Mock.MockPutObject = func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
-		return nil, nil
-	}
-
-	s3Storage := &S3TopicStorage{
-		log:            log,
-		s3:             s3Mock,
-		localCacheRoot: tempDir,
-		bucketName:     "mybucket",
-	}
-
-	// Test
-	rbWriter, err := s3Storage.Writer(recordBatchPath)
-	require.NoError(t, err)
-
-	n, err := rbWriter.Write(expectedBytes)
-	require.NoError(t, err)
-	require.Equal(t, len(expectedBytes), n)
-
-	err = rbWriter.Close()
-	require.NoError(t, err)
-
-	// Verify
-	rd, err := s3Storage.Reader(recordBatchPath)
-	require.NoError(t, err)
-
-	gotBytes, err := io.ReadAll(rd)
-	require.NoError(t, err)
-	require.Equal(t, expectedBytes, gotBytes)
-}
-
-// TestS3ReadFromCache verifies that Reader returns an io.Reader that returns
+// TestS3ReadFromS3 verifies that Reader returns an io.Reader that returns
 // the bytes that were fetched from S3.
-func TestS3ReadFromCache(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "seb_*")
-	require.NoError(t, err)
-
+func TestS3ReadFromS3(t *testing.T) {
 	recordBatchPath := "topicName/000123.record_batch"
 	expectedBytes := []byte(stringy.RandomN(500))
 
@@ -124,83 +73,26 @@ func TestS3ReadFromCache(t *testing.T) {
 	}
 
 	s3Storage := &S3TopicStorage{
-		log:            log,
-		s3:             s3Mock,
-		localCacheRoot: tempDir,
-		bucketName:     "mybucket",
+		log:        log,
+		s3:         s3Mock,
+		bucketName: "mybucket",
 	}
 
+	// Act
 	rdr, err := s3Storage.Reader(recordBatchPath)
 	require.NoError(t, err)
 	defer rdr.Close()
 
+	// Assert
 	gotBytes, err := io.ReadAll(rdr)
 	require.NoError(t, err)
 
 	require.Equal(t, expectedBytes, gotBytes)
 }
 
-// TestWrittenToS3BeforeCacheIsPopulated verifies that the payload has reached
-// S3 before it's written to the cache.
-// This is super important since S3 is our source of truth. If we write to the
-// cache before uploading to S3 and the server dies before our S3 upload is
-// complete, we could be in the situation where we served a request to retrieve
-// the data that only exists in the local cache but not in S3. This data is now
-// lost, and subsequent requests for the same id will not return the same data.
-func TestWrittenToS3BeforeCacheIsPopulated(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "seb_*")
-	require.NoError(t, err)
-
-	recordBatchPath := "topicName/000123.record_batch"
-	randomBytes := []byte(stringy.RandomN(500))
-
-	putReturn := make(chan struct{})
-	s3Mock := &tester.S3Mock{}
-	s3Mock.MockPutObject = func(poi *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
-		// block until putReturn is closed
-		<-putReturn
-		return nil, nil
-	}
-
-	s3Storage := &S3TopicStorage{
-		log:            log,
-		s3:             s3Mock,
-		localCacheRoot: tempDir,
-		bucketName:     "mybucket",
-	}
-
-	wtr, err := s3Storage.Writer(recordBatchPath)
-	require.NoError(t, err)
-
-	n, err := wtr.Write(randomBytes)
-	require.NoError(t, err)
-	require.Equal(t, len(randomBytes), n)
-
-	expectedCachePath := filepath.Join(tempDir, recordBatchPath)
-	require.NoFileExists(t, expectedCachePath)
-
-	closeReturn := make(chan struct{})
-	go func() {
-		err := wtr.Close()
-		require.NoError(t, err)
-		close(closeReturn)
-	}()
-
-	// simulate PutObject taking some time to finish
-	time.Sleep(250 * time.Millisecond)
-	require.NoFileExists(t, expectedCachePath)
-
-	close(putReturn) // make PutObject return
-	<-closeReturn    // wait for wtr.Close() to write file to cache and return
-	require.FileExists(t, expectedCachePath)
-}
-
 // TestListFiles verifies that ListFiles returns a list of the files outputted
 // by s3's ListObjectsPages's successive calls to the provided callback.
 func TestListFiles(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "seb_*")
-	require.NoError(t, err)
-
 	listObjectOutputBatches := [][]File{
 		{
 			{Path: "dummy1/name1.ext", Size: 101},
@@ -238,10 +130,9 @@ func TestListFiles(t *testing.T) {
 	}
 
 	s3Storage := &S3TopicStorage{
-		log:            log,
-		s3:             s3Mock,
-		localCacheRoot: tempDir,
-		bucketName:     "mybucket",
+		log:        log,
+		s3:         s3Mock,
+		bucketName: "mybucket",
 	}
 
 	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext")

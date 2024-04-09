@@ -4,59 +4,40 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	"github.com/micvbang/go-helpy/filey"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
 type S3StorageInput struct {
-	S3             s3iface.S3API
-	LocalCacheRoot *string
-	BucketName     string
-	RootDir        string
-	TopicName      string
-	Cache          *DiskCache
+	S3         s3iface.S3API
+	BucketName string
+	RootDir    string
+	TopicName  string
+	Cache      *DiskCache
 }
 
 type S3TopicStorage struct {
-	log            logger.Logger
-	s3             s3iface.S3API
-	localCacheRoot string
-	bucketName     string
+	log        logger.Logger
+	s3         s3iface.S3API
+	bucketName string
 }
 
 func NewS3TopicStorage(log logger.Logger, input S3StorageInput) (*TopicStorage, error) {
-	localCacheRoot := input.RootDir
-	if input.LocalCacheRoot != nil {
-		localCacheRoot = *input.LocalCacheRoot
-	}
-
 	s3Storage := &S3TopicStorage{
-		log:            log,
-		s3:             input.S3,
-		bucketName:     input.BucketName,
-		localCacheRoot: localCacheRoot,
+		log:        log,
+		s3:         input.S3,
+		bucketName: input.BucketName,
 	}
 
 	return NewTopicStorage(log, s3Storage, input.RootDir, input.TopicName, input.Cache)
 }
 
 func (ss *S3TopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
-	cacheRecordBatchPath := ss.recordBatchCachePath(recordBatchPath)
-	log := ss.log.
-		WithField("cacheRecordBatchPath", cacheRecordBatchPath).
-		WithField("recordBatchPath", recordBatchPath)
-
-	log.Debugf("checking cache for record batch")
-	if filey.Exists(cacheRecordBatchPath) {
-		log.Errorf("Record already exists. This should not happen!")
-		return nil, fmt.Errorf("file already exists '%s'", cacheRecordBatchPath)
-	}
+	log := ss.log.WithField("recordBatchPath", recordBatchPath)
 
 	log.Debugf("creating temp file")
 	tmpFile, err := os.CreateTemp("", "seb_*")
@@ -66,65 +47,21 @@ func (ss *S3TopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error)
 	log = log.WithField("temp file", tmpFile.Name())
 
 	log.Debugf("creating s3WriteCloser")
-
-	writeCloser := &s3WriteCloser{f: tmpFile, s3Upload: func(rd io.ReadSeeker) error {
-		log.Infof("uploading to s3")
-		_, err := ss.s3.PutObject(&s3.PutObjectInput{
-			Bucket: &ss.bucketName,
-			Key:    &recordBatchPath,
-			Body:   rd,
-		})
-		if err != nil {
-			return err
-		}
-
-		// NOTE: we don't _need_ the temp file to be moved into the cache, so
-		// all is good if the following fails.
-		// However: IT'S VERY IMPORTANT that we don't add the file to the cache if it
-		// wasn't successfully uploaded to s3 since s3 is our source of truth!
-		log.Debugf("creating cache dir")
-		err = ss.makeCacheDirs(cacheRecordBatchPath)
-		if err != nil {
-			return nil
-		}
-
-		err = tmpFile.Close()
-		if err != nil {
-			return nil
-		}
-
-		log.Debugf("moving temporary file to cache")
-		err = os.Rename(tmpFile.Name(), cacheRecordBatchPath)
-		if err != nil {
-			return nil
-		}
-
-		return nil
-	}}
+	writeCloser := &s3WriteCloser{
+		f:          tmpFile,
+		s3:         ss.s3,
+		log:        ss.log.Name("s3UploadWriteCloser"),
+		bucketName: ss.bucketName,
+		objectKey:  recordBatchPath,
+	}
 
 	return writeCloser, nil
 }
 
-func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
-	cacheRecordBatchPath := ss.recordBatchCachePath(recordBatchPath)
-	log := ss.log.
-		WithField("cacheRecordBatchPath", cacheRecordBatchPath).
-		WithField("recordBatchPath", recordBatchPath)
-
-	log.Debugf("checking cache for record batch")
-
-	// check if file is already cached
-	f, err := os.Open(cacheRecordBatchPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("checking for file in cache '%s': %w", cacheRecordBatchPath, err)
-	}
-	if f != nil {
-		// file in cache, don't fetch from s3
-		return f, nil
-	}
+func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
+	log := ss.log.WithField("recordBatchPath", recordBatchPath)
 
 	log.Debugf("fetching record batch from s3")
-	// file not in cache
 	obj, err := ss.s3.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(ss.bucketName),
 		Key:    &recordBatchPath,
@@ -132,26 +69,9 @@ func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadSeekCloser, err
 	if err != nil {
 		return nil, fmt.Errorf("retrieving s3 object: %w", err)
 	}
-	defer obj.Body.Close()
 
-	log.Debugf("creating cache file")
-	f, err = ss.createCacheFile(cacheRecordBatchPath)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debugf("copying s3 object to cache file")
-	_, err = io.Copy(f, obj.Body)
-	if err != nil {
-		return nil, fmt.Errorf("writing s3 object to disk '%s': %w", cacheRecordBatchPath, err)
-	}
-
-	_, err = f.Seek(0, io.SeekStart)
-	if err != nil {
-		return nil, fmt.Errorf("seeking to beginning of file: %w", err)
-	}
-
-	return f, nil
+	// NOTE: intentionally not closing obj.Body, this is caller's responsibility
+	return obj.Body, nil
 }
 
 func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File, error) {
@@ -190,57 +110,33 @@ func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File,
 	return files, err
 }
 
-func (ss *S3TopicStorage) recordBatchCachePath(recordBatchPath string) string {
-	return filepath.Join(ss.localCacheRoot, recordBatchPath)
-}
-
-func (ss *S3TopicStorage) createCacheFile(cacheRecordBatchPath string) (*os.File, error) {
-	ss.log.Debugf("creating cache dir")
-	err := ss.makeCacheDirs(cacheRecordBatchPath)
-	if err != nil {
-		return nil, err
-	}
-
-	ss.log.Debugf("creating cache file")
-	f, err := os.Create(cacheRecordBatchPath)
-	if err != nil {
-		return nil, fmt.Errorf("creating cache record batch '%s': %w", cacheRecordBatchPath, err)
-	}
-
-	return f, err
-}
-
-func (ss *S3TopicStorage) makeCacheDirs(cacheRecordBatchPath string) error {
-	ss.log.Debugf("creating cache dirs")
-	err := os.MkdirAll(filepath.Dir(cacheRecordBatchPath), os.ModePerm)
-	if err != nil {
-		return fmt.Errorf("creating cache topic dir: %w", err)
-	}
-
-	return nil
-}
-
 type s3WriteCloser struct {
-	f        *os.File
-	s3Upload func(io.ReadSeeker) error
+	log logger.Logger
+	s3  s3iface.S3API
+
+	f          *os.File
+	bucketName string
+	objectKey  string
 }
 
-func (swc *s3WriteCloser) Write(b []byte) (int, error) {
-	return swc.f.Write(b)
+func (wc *s3WriteCloser) Write(b []byte) (int, error) {
+	return wc.f.Write(b)
 }
 
-func (swc *s3WriteCloser) Close() error {
-	_, err := swc.f.Seek(0, io.SeekStart)
+func (wc *s3WriteCloser) Close() error {
+	_, err := wc.f.Seek(0, io.SeekStart)
 	if err != nil {
 		return fmt.Errorf("seeking to beginning: %w", err)
 	}
 
-	err = swc.s3Upload(swc.f)
+	wc.log.Infof("uploading to s3")
+	_, err = wc.s3.PutObject(&s3.PutObjectInput{
+		Bucket: &wc.bucketName,
+		Key:    &wc.objectKey,
+		Body:   wc.f,
+	})
 	if err != nil {
 		return fmt.Errorf("uploading to s3: %w", err)
 	}
-
-	// NOTE: swc.s3Upload() is responsible for closing swc.f.
-
-	return nil
+	return wc.f.Close()
 }

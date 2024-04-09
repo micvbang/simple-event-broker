@@ -24,7 +24,7 @@ func TestCacheWriterWritesToDisk(t *testing.T) {
 	_, err = rand.Read(expectedBytes)
 	require.NoError(t, err)
 
-	c := NewCache(tempDir)
+	c := NewDiskCache(log, tempDir)
 
 	// Act
 	f, err := c.Writer(cachePath)
@@ -64,7 +64,7 @@ func TestCacheReaderReadsFromDisk(t *testing.T) {
 	_, err = rand.Read(expectedBytes)
 	require.NoError(t, err)
 
-	c := NewCache(tempDir)
+	c := NewDiskCache(log, tempDir)
 
 	f, err := c.Writer(cachePath)
 	require.NoError(t, err)
@@ -92,7 +92,7 @@ func TestCacheReaderFileNotCached(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "seb_*")
 	require.NoError(t, err)
 
-	c := NewCache(tempDir)
+	c := NewDiskCache(log, tempDir)
 
 	// Act, assert
 	_, err = c.Reader("non/existing/path")
