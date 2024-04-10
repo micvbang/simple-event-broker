@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
@@ -30,7 +31,9 @@ func Run() {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
-	blockingS3Storage, err := makeBlockingS3Storage(log, diskCache, flags.sleepTime, flags.bucketName)
+	go cacheEviction(log.Name("cache eviction"), diskCache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
+
+	blockingS3Storage, err := makeBlockingS3Storage(log, diskCache, flags.batchBlockTime, flags.bucketName)
 	if err != nil {
 		log.Fatalf("making blocking s3 storage: %s", err)
 	}
@@ -43,6 +46,27 @@ func Run() {
 	log.Infof("Listening on %s", addr)
 	err = http.ListenAndServe(addr, mux)
 	log.Fatalf("ListenAndServe returned: %s", err)
+}
+
+func cacheEviction(log logger.Logger, cache *storage.DiskCache, cacheMaxBytes int64, interval time.Duration) {
+	log = log.
+		WithField("max bytes", cacheMaxBytes).
+		WithField("interval", interval)
+
+	for {
+		cacheSize := cache.Size()
+		log.Infof("potential cache eviction of size %d", cacheSize)
+
+		if cacheSize > cacheMaxBytes {
+			err := cache.EvictLeastRecentlyUsed(cacheMaxBytes)
+			if err != nil {
+				log.Errorf("failed to evict cache: %s", err)
+			}
+		}
+
+		log.Debugf("sleeping")
+		time.Sleep(interval)
+	}
 }
 
 func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTime time.Duration, s3BucketName string) (*storage.Storage, error) {
@@ -87,10 +111,13 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTim
 
 type flags struct {
 	bucketName        string
-	sleepTime         time.Duration
-	cacheDir          string
+	batchBlockTime    time.Duration
 	httpListenAddress string
 	httpListenPort    int
+
+	cacheDir              string
+	cacheMaxBytes         int64
+	cacheEvictionInterval time.Duration
 }
 
 func parseFlags() flags {
@@ -99,10 +126,12 @@ func parseFlags() flags {
 	f := flags{}
 
 	fs.StringVar(&f.bucketName, "b", "simple-commit-log-delete-me", "Bucket name")
-	fs.DurationVar(&f.sleepTime, "s", time.Second, "Amount of time to wait between receiving first message in batch and committing it")
-	fs.StringVar(&f.cacheDir, "c", path.Join(os.TempDir(), "seb-cache"), "Local dir to use when caching record batches")
+	fs.DurationVar(&f.batchBlockTime, "s", time.Second, "Amount of time to wait between receiving first message in batch and committing it")
 	fs.StringVar(&f.httpListenAddress, "l", "127.0.0.1", "Address to listen for HTTP traffic")
 	fs.IntVar(&f.httpListenPort, "p", 8080, "Port to listen for HTTP traffic")
+	fs.StringVar(&f.cacheDir, "c", path.Join(os.TempDir(), "seb-cache"), "Local dir to use when caching record batches")
+	fs.Int64Var(&f.cacheMaxBytes, "cache-size", 1*sizey.GB, "Maximum number of bytes to keep in the cache (soft limit)")
+	fs.DurationVar(&f.cacheEvictionInterval, "cache-eviction-interval", 5*time.Minute, "Amount of time between enforcing maximum cache size")
 
 	err := fs.Parse(os.Args[1:])
 	if err != nil {
