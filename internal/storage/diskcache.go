@@ -99,7 +99,6 @@ func (c *DiskCache) EvictLeastRecentlyUsed(maxSize int64) error {
 	log := c.log.WithField("maxSize", maxSize)
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	cacheItems := mapy.Values(c.cacheItems)
 	sort.Slice(cacheItems, func(i, j int) bool {
@@ -135,7 +134,9 @@ func (c *DiskCache) EvictLeastRecentlyUsed(maxSize int64) error {
 		bytesDeleted += item.size
 		delete(c.cacheItems, item.path)
 	}
-	log.Infof("deleted %d items (%d bytes)", itemsDeleted, bytesDeleted)
+	c.mu.Unlock()
+
+	log.Infof("deleted %d items (%d bytes) -> cache is now %d bytes", itemsDeleted, bytesDeleted, c.Size())
 
 	return nil
 }
@@ -158,10 +159,10 @@ func (c *DiskCache) Reader(key string) (io.ReadSeekCloser, error) {
 	cachePath := c.cachePath(key)
 	f, err := os.Open(cachePath)
 	if err != nil {
-		log.Debugf("miss", key)
+		log.Debugf("miss")
 		return nil, errors.Join(ErrNotInCache, fmt.Errorf("opening record batch '%s': %w", key, err))
 	}
-	log.Debugf("hit", key)
+	log.Debugf("hit")
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
