@@ -1,4 +1,4 @@
-package api
+package app
 
 import (
 	"context"
@@ -39,8 +39,8 @@ func Run() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /add", httphandlers.AddRecord(log, blockingS3Storage))
-	mux.HandleFunc("GET /get", httphandlers.GetRecord(log, blockingS3Storage))
+	mux.HandleFunc("POST /record", httphandlers.AddRecord(log, blockingS3Storage))
+	mux.HandleFunc("GET /record", httphandlers.GetRecord(log, blockingS3Storage))
 
 	addr := fmt.Sprintf("%s:%d", flags.httpListenAddress, flags.httpListenPort)
 	log.Infof("Listening on %s", addr)

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/micvbang/simple-event-broker/cmd/seb-api/api"
+	"github.com/micvbang/simple-event-broker/cmd/seb-api/app"
 )
 
 func main() {
-	api.Run()
+	app.Run()
 }
