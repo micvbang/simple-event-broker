@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/simple-event-broker/internal/storage"
@@ -15,7 +16,7 @@ import (
 )
 
 // TestS3WriteToS3 verifies that Writer creates an io.WriteCloser that calls
-// s3's PutObject method with the given data once the io.WriteCloser is closed.
+// S3's PutObject method with the given data once the io.WriteCloser is closed.
 func TestS3WriteToS3(t *testing.T) {
 	bucketName := "mybucket"
 	recordBatchPath := "topicName/000123.record_batch"
@@ -55,7 +56,7 @@ func TestS3WriteToS3(t *testing.T) {
 }
 
 // TestS3ReadFromS3 verifies that Reader returns an io.Reader that returns
-// the bytes that were fetched from S3.
+// calls S3's GetObject method, returning the bytes that were fetched from S3.
 func TestS3ReadFromS3(t *testing.T) {
 	recordBatchPath := "topicName/000123.record_batch"
 	expectedBytes := []byte(stringy.RandomN(500))
@@ -82,7 +83,7 @@ func TestS3ReadFromS3(t *testing.T) {
 }
 
 // TestListFiles verifies that ListFiles returns a list of the files outputted
-// by s3's ListObjectsPages's successive calls to the provided callback.
+// by S3's ListObjectsPages's successive calls to the provided callback.
 func TestListFiles(t *testing.T) {
 	listObjectOutputBatches := [][]storage.File{
 		{
@@ -180,4 +181,21 @@ func listObjectsOutputFromFiles(files []storage.File) *s3.ListObjectsOutput {
 	return &s3.ListObjectsOutput{
 		Contents: s3Objects,
 	}
+}
+
+func TestS3ReadFromS3NotFound(t *testing.T) {
+	recordBatchPath := "topicName/000123.record_batch"
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+		return nil, awserr.New(s3.ErrCodeNoSuchKey, "", nil)
+	}
+
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket")
+
+	// Act
+	_, err := s3Storage.Reader(recordBatchPath)
+
+	// Assert
+	require.ErrorIs(t, err, storage.ErrNotInStorage)
 }

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -35,6 +36,10 @@ func (DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 func (DiskTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
 	f, err := os.Open(recordBatchPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			err = errors.Join(err, ErrNotInStorage)
+		}
+
 		return nil, fmt.Errorf("opening record batch '%s': %w", recordBatchPath, err)
 	}
 

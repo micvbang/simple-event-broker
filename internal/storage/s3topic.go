@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -69,6 +71,13 @@ func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) 
 		Key:    &recordBatchPath,
 	})
 	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case s3.ErrCodeNoSuchKey:
+				err = errors.Join(err, ErrNotInStorage)
+			}
+		}
+
 		return nil, fmt.Errorf("retrieving s3 object: %w", err)
 	}
 
