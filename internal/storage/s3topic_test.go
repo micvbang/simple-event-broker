@@ -35,7 +35,7 @@ func TestS3WriteToS3(t *testing.T) {
 		return nil, nil
 	}
 
-	s3Storage := storage.NewS3TopicStorageForTests(log, s3Mock, bucketName)
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, bucketName)
 
 	// Act
 	rbWriter, err := s3Storage.Writer(recordBatchPath)
@@ -68,7 +68,7 @@ func TestS3ReadFromS3(t *testing.T) {
 		}, nil
 	}
 
-	s3Storage := storage.NewS3TopicStorageForTests(log, s3Mock, "mybucket")
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket")
 
 	// Act
 	rdr, err := s3Storage.Reader(recordBatchPath)
@@ -121,7 +121,7 @@ func TestListFiles(t *testing.T) {
 		return nil
 	}
 
-	s3Storage := storage.NewS3TopicStorageForTests(log, s3Mock, "mybucket")
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket")
 
 	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext")
 	require.NoError(t, err)
@@ -146,7 +146,7 @@ func TestListFilesOverlappingNames(t *testing.T) {
 		return nil
 	}
 
-	s3Storage := storage.NewS3TopicStorageForTests(log, s3Mock, "mybucket")
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket")
 
 	// Act
 	testPrefixes := []string{

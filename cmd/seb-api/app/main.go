@@ -90,13 +90,9 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTim
 
 	s3TopicStorage := func(log logger.Logger, topicName string) (*storage.TopicStorage, error) {
 		storageLogger := log.Name("s3 storage").WithField("topic-name", topicName)
-		return storage.NewS3TopicStorage(storageLogger, storage.S3StorageInput{
-			S3:         s3.New(session),
-			BucketName: s3BucketName,
-			RootDir:    "/tmp/recordbatch",
-			TopicName:  topicName,
-			Cache:      cache,
-		})
+		s3Storage := storage.NewS3TopicStorage(storageLogger, s3.New(session), s3BucketName)
+
+		return storage.NewTopicStorage(log, s3Storage, "", topicName, cache)
 	}
 
 	blockingBatcher := func(log logger.Logger, ts *storage.TopicStorage) storage.RecordBatcher {

@@ -15,14 +15,6 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
-type S3StorageInput struct {
-	S3         s3iface.S3API
-	BucketName string
-	RootDir    string
-	TopicName  string
-	Cache      *DiskCache
-}
-
 type S3TopicStorage struct {
 	log        logger.Logger
 	s3         s3iface.S3API
@@ -30,14 +22,12 @@ type S3TopicStorage struct {
 }
 
 // NewS3TopicStorage returns a *TopicStorage that stores data in AWS S3.
-func NewS3TopicStorage(log logger.Logger, input S3StorageInput) (*TopicStorage, error) {
-	s3Storage := &S3TopicStorage{
+func NewS3TopicStorage(log logger.Logger, s3 s3iface.S3API, bucketName string) *S3TopicStorage {
+	return &S3TopicStorage{
 		log:        log,
-		s3:         input.S3,
-		bucketName: input.BucketName,
+		s3:         s3,
+		bucketName: bucketName,
 	}
-
-	return NewTopicStorage(log, s3Storage, input.RootDir, input.TopicName, input.Cache)
 }
 
 func (ss *S3TopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
