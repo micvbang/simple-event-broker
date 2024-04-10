@@ -28,7 +28,7 @@ func main() {
 	topicName := filepath.Base(absInputPath)
 	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromRecordID, flags.startFromRecordID+flags.numRecords-1, topicName)
 
-	cache, err := storage.NewDiskCache(log.Name("disk cache"), path.Join(os.TempDir(), "seb"))
+	cache, err := storage.NewDiskCacheDefault(log.Name("disk cache"), path.Join(os.TempDir(), "seb"))
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}

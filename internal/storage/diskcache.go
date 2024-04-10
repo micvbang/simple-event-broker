@@ -6,29 +6,36 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/micvbang/go-helpy/filepathy"
+	"github.com/micvbang/go-helpy/mapy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
 type cacheItem struct {
-	size      int64
-	createdAt time.Time
-	usedAt    time.Time
+	size       int64
+	accessedAt time.Time
+	path       string
 }
 
-// DiskCache is used to cache RecordBatches on the local disk.
+// DiskCache is a key-value store for caching data in files on the local disk.
 type DiskCache struct {
 	log     logger.Logger
-	rootdir string
+	rootDir string
+	now     func() time.Time
 
 	mu         sync.Mutex
 	cacheItems map[string]cacheItem
 }
 
-func NewDiskCache(log logger.Logger, rootDir string) (*DiskCache, error) {
+func NewDiskCacheDefault(log logger.Logger, rootDir string) (*DiskCache, error) {
+	return NewDiskCacheWithNow(log, rootDir, time.Now)
+}
+
+func NewDiskCacheWithNow(log logger.Logger, rootDir string, now func() time.Time) (*DiskCache, error) {
 	cacheItems := make(map[string]cacheItem, 64)
 
 	fileWalkConfig := filepathy.WalkConfig{
@@ -37,8 +44,9 @@ func NewDiskCache(log logger.Logger, rootDir string) (*DiskCache, error) {
 	}
 	err := filepathy.Walk(rootDir, fileWalkConfig, func(path string, info os.FileInfo, err error) error {
 		cacheItems[path] = cacheItem{
-			size:      info.Size(),
-			createdAt: info.ModTime(),
+			size:       info.Size(),
+			accessedAt: info.ModTime(),
+			path:       path,
 		}
 		return nil
 	})
@@ -46,37 +54,90 @@ func NewDiskCache(log logger.Logger, rootDir string) (*DiskCache, error) {
 		return nil, fmt.Errorf("reading existing cache: %w", err)
 	}
 
-	return &DiskCache{log: log, rootdir: rootDir, cacheItems: cacheItems}, nil
+	return &DiskCache{
+		log:        log,
+		rootDir:    rootDir,
+		cacheItems: cacheItems,
+		now:        now,
+	}, nil
 }
 
-// TODO: somehow to throw away "old" (no longer needed) data
+func (c *DiskCache) Writer(key string) (io.WriteCloser, error) {
+	log := c.log.WithField("key", key)
 
-func (c *DiskCache) Writer(recordBatchPath string) (io.WriteCloser, error) {
-	log := c.log.WithField("recordBatchPath", recordBatchPath)
+	log.Debugf("adding '%s'", key)
 
-	log.Debugf("adding '%s'", recordBatchPath)
-	tmpFile, err := os.CreateTemp("", "seb_*")
+	cachePath := c.cachePath(key)
+
+	return newCacheWriter(cachePath, func(size int64) {
+		log.Debugf("adding to cache items")
+
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		c.cacheItems[cachePath] = cacheItem{
+			size:       size,
+			accessedAt: c.now(),
+			path:       cachePath,
+		}
+	})
+}
+
+func (c *DiskCache) Write(key string, bs []byte) (int, error) {
+	wtr, err := c.Writer(key)
 	if err != nil {
-		return nil, fmt.Errorf("creating temp file: %w", err)
+		return 0, fmt.Errorf("creating writer: %w", err)
+	}
+	defer wtr.Close()
+
+	return wtr.Write(bs)
+}
+
+// EvictLeastRecentlyUsed removes items from the cache until it has the given maxSize.
+// The least recently used items will be removed first.
+func (c *DiskCache) EvictLeastRecentlyUsed(maxSize int64) error {
+	log := c.log.WithField("maxSize", maxSize)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cacheItems := mapy.Values(c.cacheItems)
+	sort.Slice(cacheItems, func(i, j int) bool {
+		// NOTE: sorts most recently used first
+		return cacheItems[j].accessedAt.Before(cacheItems[i].accessedAt)
+	})
+
+	curSize := int64(0)
+	var cacheItemsToDelete []cacheItem
+	for i, item := range cacheItems {
+		curSize += item.size
+		if curSize > maxSize {
+			cacheItemsToDelete = cacheItems[i:]
+			break
+		}
 	}
 
-	cachePath := c.cachePath(recordBatchPath)
+	if len(cacheItemsToDelete) > 0 {
+		log.Debugf("deleting all items last accessed at <= %v", cacheItemsToDelete[0])
+	}
 
-	return &cacheWriter{
-		tmpFile:  tmpFile,
-		destPath: cachePath,
-		reportFileSize: func(size int64) {
-			log.Debugf("adding to cache items")
+	bytesDeleted := int64(0)
+	itemsDeleted := 0
+	for _, item := range cacheItemsToDelete {
+		log.Debugf("deleting %s (%d bytes)", item.path, item.size)
+		err := os.Remove(item.path)
+		if err != nil {
+			log.Errorf("deleting '%s': %w", err)
+			return fmt.Errorf("deleting %s: %w", item.path, err)
+		}
 
-			c.mu.Lock()
-			defer c.mu.Unlock()
+		itemsDeleted += 1
+		bytesDeleted += item.size
+		delete(c.cacheItems, item.path)
+	}
+	log.Infof("deleted %d items (%d bytes)", itemsDeleted, bytesDeleted)
 
-			c.cacheItems[cachePath] = cacheItem{
-				size:      size,
-				createdAt: time.Now(),
-			}
-		},
-	}, nil
+	return nil
 }
 
 func (c *DiskCache) Size() int64 {
@@ -91,17 +152,16 @@ func (c *DiskCache) Size() int64 {
 	return size
 }
 
-func (c *DiskCache) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
-	log := c.log.WithField("recordBatchPath", recordBatchPath)
+func (c *DiskCache) Reader(key string) (io.ReadSeekCloser, error) {
+	log := c.log.WithField("key", key)
 
-	cachePath := c.cachePath(recordBatchPath)
+	cachePath := c.cachePath(key)
 	f, err := os.Open(cachePath)
 	if err != nil {
-		return nil, errors.Join(ErrNotInCache, fmt.Errorf("opening record batch '%s': %w", recordBatchPath, err))
+		log.Debugf("miss", key)
+		return nil, errors.Join(ErrNotInCache, fmt.Errorf("opening record batch '%s': %w", key, err))
 	}
-
-	now := time.Now()
-	log.Debugf("hit for '%s', updating used at", recordBatchPath)
+	log.Debugf("hit", key)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -111,19 +171,32 @@ func (c *DiskCache) Reader(recordBatchPath string) (io.ReadSeekCloser, error) {
 		fileInfo, err := os.Stat(cachePath)
 		if err == nil {
 			item = cacheItem{
-				size:      fileInfo.Size(),
-				createdAt: fileInfo.ModTime(),
+				size:       fileInfo.Size(),
+				accessedAt: fileInfo.ModTime(),
 			}
 		}
 	}
-	item.usedAt = now
+	item.accessedAt = c.now()
 	c.cacheItems[cachePath] = item
 
 	return f, nil
 }
 
-func (c *DiskCache) cachePath(recordBatchPath string) string {
-	return path.Join(c.rootdir, recordBatchPath)
+func (c *DiskCache) cachePath(key string) string {
+	return path.Join(c.rootDir, key)
+}
+
+func newCacheWriter(destPath string, reportFileSize func(size int64)) (*cacheWriter, error) {
+	tmpFile, err := os.CreateTemp("", "seb_*")
+	if err != nil {
+		return nil, fmt.Errorf("creating temp file: %w", err)
+	}
+
+	return &cacheWriter{
+		tmpFile:        tmpFile,
+		destPath:       destPath,
+		reportFileSize: reportFileSize,
+	}, nil
 }
 
 type cacheWriter struct {
