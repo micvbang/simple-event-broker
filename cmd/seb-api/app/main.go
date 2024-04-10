@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/subtle"
 	"flag"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/micvbang/simple-event-broker/internal/storage"
 )
 
@@ -39,8 +41,7 @@ func Run() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /record", httphandlers.AddRecord(log, blockingS3Storage))
-	mux.HandleFunc("GET /record", httphandlers.GetRecord(log, blockingS3Storage))
+	registerRoutes(log, mux, blockingS3Storage, flags.httpAPIKey)
 
 	addr := fmt.Sprintf("%s:%d", flags.httpListenAddress, flags.httpListenPort)
 	log.Infof("Listening on %s", addr)
@@ -69,6 +70,20 @@ func cacheEviction(log logger.Logger, cache *storage.DiskCache, cacheMaxBytes in
 		log.Debugf("sleeping")
 		time.Sleep(interval)
 	}
+}
+
+func registerRoutes(log logger.Logger, mux *http.ServeMux, storage *storage.Storage, apiKey string) {
+	// TODO: we don't want something more secure and easier to manage than a
+	// single, static API key.
+	apiKeyBs := []byte(apiKey)
+
+	requireAPIKey := sebhttp.NewAPIKeyHandler(log.Name("api key handler"), func(ctx context.Context, apiKey string) (bool, error) {
+		apiKeyIsValid := subtle.ConstantTimeCompare(apiKeyBs, []byte(apiKey)) == 1
+		return apiKeyIsValid, nil
+	})
+
+	mux.HandleFunc("POST /record", requireAPIKey(httphandlers.AddRecord(log, storage)))
+	mux.HandleFunc("GET /record", requireAPIKey(httphandlers.GetRecord(log, storage)))
 }
 
 func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTime time.Duration, s3BucketName string) (*storage.Storage, error) {
@@ -112,11 +127,13 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTim
 }
 
 type flags struct {
-	bucketName        string
-	batchBlockTime    time.Duration
+	bucketName     string
+	batchBlockTime time.Duration
+	logLevel       int
+
 	httpListenAddress string
 	httpListenPort    int
-	logLevel          int
+	httpAPIKey        string
 
 	cacheDir              string
 	cacheMaxBytes         int64
@@ -130,12 +147,15 @@ func parseFlags() flags {
 
 	fs.StringVar(&f.bucketName, "b", "simple-commit-log-delete-me", "Bucket name")
 	fs.DurationVar(&f.batchBlockTime, "s", time.Second, "Amount of time to wait between receiving first message in batch and committing it")
+	fs.IntVar(&f.logLevel, "log-level", int(logger.LevelInfo), "Log level, info=4, debug=5")
+
 	fs.StringVar(&f.httpListenAddress, "l", "127.0.0.1", "Address to listen for HTTP traffic")
 	fs.IntVar(&f.httpListenPort, "p", 8080, "Port to listen for HTTP traffic")
+	fs.StringVar(&f.httpAPIKey, "api-key", "api-key", "API key for authorizing HTTP requests (this is not safe and needs to be changed)")
+
 	fs.StringVar(&f.cacheDir, "c", path.Join(os.TempDir(), "seb-cache"), "Local dir to use when caching record batches")
 	fs.Int64Var(&f.cacheMaxBytes, "cache-size", 1*sizey.GB, "Maximum number of bytes to keep in the cache (soft limit)")
 	fs.DurationVar(&f.cacheEvictionInterval, "cache-eviction-interval", 5*time.Minute, "Amount of time between enforcing maximum cache size")
-	fs.IntVar(&f.logLevel, "log-level", int(logger.LevelInfo), "Log level, info=4, debug=5")
 
 	err := fs.Parse(os.Args[1:])
 	if err != nil {
