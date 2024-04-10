@@ -1,8 +1,7 @@
-package storage
+package storage_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -10,12 +9,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/micvbang/go-helpy/stringy"
-	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
 )
-
-var log = logger.NewDefault(context.Background())
 
 // TestS3WriteToS3 verifies that Writer creates an io.WriteCloser that calls
 // s3's PutObject method with the given data once the io.WriteCloser is closed.
@@ -37,11 +34,7 @@ func TestS3WriteToS3(t *testing.T) {
 		return nil, nil
 	}
 
-	s3Storage := &S3TopicStorage{
-		log:        log,
-		s3:         s3Mock,
-		bucketName: bucketName,
-	}
+	s3Storage := storage.NewS3TopicStorageForTests(log, s3Mock, bucketName)
 
 	// Act
 	rbWriter, err := s3Storage.Writer(recordBatchPath)
@@ -74,11 +67,7 @@ func TestS3ReadFromS3(t *testing.T) {
 		}, nil
 	}
 
-	s3Storage := &S3TopicStorage{
-		log:        log,
-		s3:         s3Mock,
-		bucketName: "mybucket",
-	}
+	s3Storage := storage.NewS3TopicStorageForTests(log, s3Mock, "mybucket")
 
 	// Act
 	rdr, err := s3Storage.Reader(recordBatchPath)
@@ -95,7 +84,7 @@ func TestS3ReadFromS3(t *testing.T) {
 // TestListFiles verifies that ListFiles returns a list of the files outputted
 // by s3's ListObjectsPages's successive calls to the provided callback.
 func TestListFiles(t *testing.T) {
-	listObjectOutputBatches := [][]File{
+	listObjectOutputBatches := [][]storage.File{
 		{
 			{Path: "dummy1/name1.ext", Size: 101},
 			{Path: "dummy1/name2.ext", Size: 102},
@@ -111,7 +100,7 @@ func TestListFiles(t *testing.T) {
 		},
 	}
 
-	expectedFiles := []File{}
+	expectedFiles := []storage.File{}
 	for _, batch := range listObjectOutputBatches {
 		expectedFiles = append(expectedFiles, batch...)
 	}
@@ -131,11 +120,7 @@ func TestListFiles(t *testing.T) {
 		return nil
 	}
 
-	s3Storage := &S3TopicStorage{
-		log:        log,
-		s3:         s3Mock,
-		bucketName: "mybucket",
-	}
+	s3Storage := storage.NewS3TopicStorageForTests(log, s3Mock, "mybucket")
 
 	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext")
 	require.NoError(t, err)
@@ -160,11 +145,7 @@ func TestListFilesOverlappingNames(t *testing.T) {
 		return nil
 	}
 
-	s3Storage := &S3TopicStorage{
-		log:        log,
-		s3:         s3Mock,
-		bucketName: "mybucket",
-	}
+	s3Storage := storage.NewS3TopicStorageForTests(log, s3Mock, "mybucket")
 
 	// Act
 	testPrefixes := []string{
@@ -186,7 +167,7 @@ func TestListFilesOverlappingNames(t *testing.T) {
 	require.Equal(t, len(testPrefixes), mockListObjectPagesCalled)
 }
 
-func listObjectsOutputFromFiles(files []File) *s3.ListObjectsOutput {
+func listObjectsOutputFromFiles(files []storage.File) *s3.ListObjectsOutput {
 	s3Objects := make([]*s3.Object, len(files))
 
 	for i := range files {

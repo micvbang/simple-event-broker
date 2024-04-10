@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/subtle"
 	"flag"
 	"fmt"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/micvbang/go-helpy/sizey"
-	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/sebhttp"
@@ -41,7 +39,7 @@ func Run() {
 	}
 
 	mux := http.NewServeMux()
-	registerRoutes(log, mux, blockingS3Storage, flags.httpAPIKey)
+	sebhttp.RegisterRoutes(log, mux, blockingS3Storage, flags.httpAPIKey)
 
 	addr := fmt.Sprintf("%s:%d", flags.httpListenAddress, flags.httpListenPort)
 	log.Infof("Listening on %s", addr)
@@ -72,20 +70,6 @@ func cacheEviction(log logger.Logger, cache *storage.DiskCache, cacheMaxBytes in
 	}
 }
 
-func registerRoutes(log logger.Logger, mux *http.ServeMux, storage *storage.Storage, apiKey string) {
-	// TODO: we don't want something more secure and easier to manage than a
-	// single, static API key.
-	apiKeyBs := []byte(apiKey)
-
-	requireAPIKey := sebhttp.NewAPIKeyHandler(log.Name("api key handler"), func(ctx context.Context, apiKey string) (bool, error) {
-		apiKeyIsValid := subtle.ConstantTimeCompare(apiKeyBs, []byte(apiKey)) == 1
-		return apiKeyIsValid, nil
-	})
-
-	mux.HandleFunc("POST /record", requireAPIKey(httphandlers.AddRecord(log, storage)))
-	mux.HandleFunc("GET /record", requireAPIKey(httphandlers.GetRecord(log, storage)))
-}
-
 func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTime time.Duration, s3BucketName string) (*storage.Storage, error) {
 	contextCreator := func() context.Context {
 		ctx, cancel := context.WithTimeout(context.Background(), sleepTime)
@@ -105,7 +89,8 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTim
 	}
 
 	s3TopicStorage := func(log logger.Logger, topicName string) (*storage.TopicStorage, error) {
-		return storage.NewS3TopicStorage(log.Name("s3 storage"), storage.S3StorageInput{
+		storageLogger := log.Name("s3 storage").WithField("topic-name", topicName)
+		return storage.NewS3TopicStorage(storageLogger, storage.S3StorageInput{
 			S3:         s3.New(session),
 			BucketName: s3BucketName,
 			RootDir:    "/tmp/recordbatch",
@@ -115,10 +100,11 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTim
 	}
 
 	blockingBatcher := func(log logger.Logger, ts *storage.TopicStorage) storage.RecordBatcher {
-		return recordbatch.NewBlockingBatcher(log.Name("blocking batcher"), contextCreator, func(b recordbatch.RecordBatch) error {
+		batchLogger := log.Name("blocking batcher")
+		return recordbatch.NewBlockingBatcher(batchLogger, contextCreator, func(b recordbatch.RecordBatch) error {
 			t0 := time.Now()
 			err := ts.AddRecordBatch(b)
-			log.Debugf("persisting to s3: %v", time.Since(t0))
+			batchLogger.Debugf("persisting to s3: %v", time.Since(t0))
 			return err
 		})
 	}
