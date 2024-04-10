@@ -14,16 +14,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var log = logger.NewDefault(context.Background())
+var (
+	log              = logger.NewDefault(context.Background())
+	storageFactories = map[string]func() storage.BackingStorage{
+		"memory": func() storage.BackingStorage { return storage.NewMemoryTopicStorage(log) },
+		"disk":   func() storage.BackingStorage { return storage.NewDiskTopicStorage(log) },
+	}
+)
 
 // TestStorageEmpty verifies that reading from an empty topic returns
 // ErrOutOfBounds.
 func TestStorageEmpty(t *testing.T) {
+	for name, storageFactory := range storageFactories {
+		t.Run(name, func(t *testing.T) {
+			testStorageEmpty(t, storageFactory())
+		})
+	}
+}
+func testStorageEmpty(t *testing.T, backingStorage storage.BackingStorage) {
 	tempDir := tester.TempDir(t)
 
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, "mytopic", cache)
+	s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache)
 	require.NoError(t, err)
 
 	// Test
@@ -37,11 +50,18 @@ func TestStorageEmpty(t *testing.T) {
 // single Record batch can be read back, and that reading out of bounds returns
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
+	for name, storageFactory := range storageFactories {
+		t.Run(name, func(t *testing.T) {
+			testStorageWriteRecordBatchSingleBatch(t, storageFactory())
+		})
+	}
+}
+func testStorageWriteRecordBatchSingleBatch(t *testing.T, backingStorage storage.BackingStorage) {
 	tempDir := tester.TempDir(t)
 
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, "mytopic", cache)
+	s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache)
 	require.NoError(t, err)
 
 	recordBatch := tester.MakeRandomRecordBatch(5)
@@ -70,11 +90,18 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 // again, and that reading beyond the number of existing records yields
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
+	for name, storageFactory := range storageFactories {
+		t.Run(name, func(t *testing.T) {
+			testStorageWriteRecordBatchMultipleBatches(t, storageFactory())
+		})
+	}
+}
+func testStorageWriteRecordBatchMultipleBatches(t *testing.T, backingStorage storage.BackingStorage) {
 	tempDir := tester.TempDir(t)
 
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, "mytopic", cache)
+	s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache)
 	require.NoError(t, err)
 
 	recordBatch1 := tester.MakeRandomRecordBatch(5)
@@ -102,6 +129,13 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 // TestStorageOpenExistingStorage verifies that storage.Storage correctly
 // initializes from a topic that already exists and has many data files.
 func TestStorageOpenExistingStorage(t *testing.T) {
+	for name, storageFactory := range storageFactories {
+		t.Run(name, func(t *testing.T) {
+			testStorageOpenExistingStorage(t, storageFactory())
+		})
+	}
+}
+func testStorageOpenExistingStorage(t *testing.T, backingStorage storage.BackingStorage) {
 	const topicName = "my_topic"
 
 	tempDir := tester.TempDir(t)
@@ -117,7 +151,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	{
 		cache, err := storage.NewDiskCacheDefault(log, tempDir)
 		require.NoError(t, err)
-		s1, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, topicName, cache)
+		s1, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache)
 		require.NoError(t, err)
 
 		for _, recordBatch := range recordBatches {
@@ -129,7 +163,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	// Test
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s2, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, topicName, cache)
+	s2, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache)
 	require.NoError(t, err)
 
 	// Verify
@@ -155,6 +189,13 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 // NOTE: this is a regression test that handles an off by one error in
 // NewTopicStorage().
 func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
+	for name, storageFactory := range storageFactories {
+		t.Run(name, func(t *testing.T) {
+			testStorageOpenExistingStorageAndAppend(t, storageFactory())
+		})
+	}
+}
+func testStorageOpenExistingStorageAndAppend(t *testing.T, backingStorage storage.BackingStorage) {
 	const topicName = "my_topic"
 
 	tempDir := tester.TempDir(t)
@@ -163,7 +204,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 	{
 		cache, err := storage.NewDiskCacheDefault(log, tempDir)
 		require.NoError(t, err)
-		s1, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, topicName, cache)
+		s1, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache)
 		require.NoError(t, err)
 
 		err = s1.AddRecordBatch(recordBatch1)
@@ -172,7 +213,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s2, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, topicName, cache)
+	s2, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache)
 	require.NoError(t, err)
 
 	// Test
@@ -199,6 +240,13 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 // TestStorageCacheWrite verifies that AddRecordBatch uses the cache to cache
 // the record batch.
 func TestStorageCacheWrite(t *testing.T) {
+	for name, storageFactory := range storageFactories {
+		t.Run(name, func(t *testing.T) {
+			testStorageCacheWrite(t, storageFactory())
+		})
+	}
+}
+func testStorageCacheWrite(t *testing.T, backingStorage storage.BackingStorage) {
 	const topicName = "my_topic"
 
 	storageDir := tester.TempDir(t)
@@ -207,11 +255,11 @@ func TestStorageCacheWrite(t *testing.T) {
 	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
 	require.NoError(t, err)
 
-	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), storageDir, topicName, cache)
+	s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache)
 	require.NoError(t, err)
 
 	expectedStorageDir := path.Join(storageDir, storage.RecordBatchPath(topicName, 0))
-	expectedCachedFile := path.Join(cacheDir, expectedStorageDir)
+	// expectedCachedFile := path.Join(cacheDir, expectedStorageDir)
 
 	expectedRecordBatch := tester.MakeRandomRecordBatch(5)
 
@@ -222,8 +270,11 @@ func TestStorageCacheWrite(t *testing.T) {
 	// Assert
 
 	// record batch must be written to both backing storage and cache.
-	require.FileExists(t, expectedStorageDir)
-	require.FileExists(t, expectedCachedFile)
+	_, err = cache.Reader(expectedStorageDir)
+	require.NoError(t, err)
+
+	_, err = backingStorage.Reader(expectedStorageDir)
+	require.NoError(t, err)
 
 	for recordID, expected := range expectedRecordBatch {
 		got, err := s.ReadRecord(uint64(recordID))
@@ -235,6 +286,13 @@ func TestStorageCacheWrite(t *testing.T) {
 // TestStorageCacheWrite verifies that ReadRecord uses the cache to read
 // results.
 func TestStorageCacheReadFromCache(t *testing.T) {
+	for name, storageFactory := range storageFactories {
+		t.Run(name, func(t *testing.T) {
+			testStorageCacheReadFromCache(t, storageFactory())
+		})
+	}
+}
+func testStorageCacheReadFromCache(t *testing.T, backingStorage storage.BackingStorage) {
 	const topicName = "my_topic"
 
 	storageDir := tester.TempDir(t)
@@ -243,7 +301,7 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
 	require.NoError(t, err)
 
-	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), storageDir, topicName, cache)
+	s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache)
 	require.NoError(t, err)
 
 	expectedRecordBatch := tester.MakeRandomRecordBatch(5)
@@ -251,10 +309,10 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// NOTE: in order to prove that we're reading from the cache and not from the
-	// backing storage, we're removing the file from the backing storage
-	expectedStorageDir := path.Join(storageDir, storage.RecordBatchPath(topicName, 0))
-	err = os.Remove(expectedStorageDir)
+	// backing storage, we're making the file in the backing storage zero bytes long.
+	wtr, err := backingStorage.Writer(storage.RecordBatchPath(topicName, 0))
 	require.NoError(t, err)
+	tester.WriteAndClose(t, wtr, []byte{})
 
 	for recordID, expected := range expectedRecordBatch {
 		// Act
@@ -269,6 +327,13 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 // TestStorageCacheReadFileNotInCache verifies that ReadRecord can fetch record
 // batches from the backing storage if it's not in the cache.
 func TestStorageCacheReadFileNotInCache(t *testing.T) {
+	for name, storageFactory := range storageFactories {
+		t.Run(name, func(t *testing.T) {
+			testStorageCacheReadFileNotInCache(t, storageFactory())
+		})
+	}
+}
+func testStorageCacheReadFileNotInCache(t *testing.T, backingStorage storage.BackingStorage) {
 	const topicName = "my_topic"
 
 	storageDir := tester.TempDir(t)
@@ -277,7 +342,7 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
 	require.NoError(t, err)
 
-	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), storageDir, topicName, cache)
+	s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache)
 	require.NoError(t, err)
 
 	expectedRecordBatch := tester.MakeRandomRecordBatch(5)
