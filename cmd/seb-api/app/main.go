@@ -20,10 +20,10 @@ import (
 
 func Run() {
 	ctx := context.Background()
-	log := logger.NewWithLevel(ctx, logger.LevelDebug)
 
 	flags := parseFlags()
 
+	log := logger.NewWithLevel(ctx, logger.LogLevel(flags.logLevel))
 	log.Debugf("flags: %v", flags)
 
 	diskCache, err := storage.NewDiskCacheDefault(log.Name("disk cache"), flags.cacheDir)
@@ -114,6 +114,7 @@ type flags struct {
 	batchBlockTime    time.Duration
 	httpListenAddress string
 	httpListenPort    int
+	logLevel          int
 
 	cacheDir              string
 	cacheMaxBytes         int64
@@ -132,6 +133,7 @@ func parseFlags() flags {
 	fs.StringVar(&f.cacheDir, "c", path.Join(os.TempDir(), "seb-cache"), "Local dir to use when caching record batches")
 	fs.Int64Var(&f.cacheMaxBytes, "cache-size", 1*sizey.GB, "Maximum number of bytes to keep in the cache (soft limit)")
 	fs.DurationVar(&f.cacheEvictionInterval, "cache-eviction-interval", 5*time.Minute, "Amount of time between enforcing maximum cache size")
+	fs.IntVar(&f.logLevel, "log-level", int(logger.LevelInfo), "Log level, info=4, debug=5")
 
 	err := fs.Parse(os.Args[1:])
 	if err != nil {
