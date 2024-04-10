@@ -47,7 +47,7 @@ func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir s
 	}
 
 	storage := &TopicStorage{
-		log:            log.WithField("topic", topicName),
+		log:            log.WithField("topic-name", topicName),
 		backingStorage: backingStorage,
 		topicPath:      topicPath,
 		recordBatchIDs: recordBatchIDs,

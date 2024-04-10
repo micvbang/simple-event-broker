@@ -6,25 +6,32 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/micvbang/go-helpy/filepathy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
-type DiskTopicStorage struct{}
+type DiskTopicStorage struct {
+	log logger.Logger
+}
 
 // NewDiskTopicStorage returns a *TopicStorage that stores its data on local
 // disk.
-func NewDiskTopicStorage(log logger.Logger, rootDir string, topic string, cache *DiskCache) (*TopicStorage, error) {
-	return NewTopicStorage(log, DiskTopicStorage{}, rootDir, topic, cache)
+func NewDiskTopicStorage(log logger.Logger) *DiskTopicStorage {
+	return &DiskTopicStorage{log: log}
 }
 
-func (DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
+func (ds *DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
+	log := ds.log.WithField("recordBatchPath", recordBatchPath)
+
+	log.Debugf("creating dirs")
 	err := os.MkdirAll(filepath.Dir(recordBatchPath), os.ModePerm)
 	if err != nil {
 		return nil, fmt.Errorf("creating topic dir: %w", err)
 	}
 
+	log.Debugf("creating file")
 	f, err := os.Create(recordBatchPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening file '%s': %w", recordBatchPath, err)
@@ -33,7 +40,10 @@ func (DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
 	return f, nil
 }
 
-func (DiskTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
+func (ds *DiskTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
+	log := ds.log.WithField("recordBatchPath", recordBatchPath)
+
+	log.Debugf("opening file")
 	f, err := os.Open(recordBatchPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -46,9 +56,15 @@ func (DiskTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
 	return f, nil
 }
 
-func (DiskTopicStorage) ListFiles(topicPath string, extension string) ([]File, error) {
-	files := make([]File, 0, 128)
+func (ds *DiskTopicStorage) ListFiles(topicPath string, extension string) ([]File, error) {
+	log := ds.log.
+		WithField("topicPath", topicPath).
+		WithField("extension", extension)
 
+	log.Debugf("listing files")
+	t0 := time.Now()
+
+	files := make([]File, 0, 128)
 	walkConfig := filepathy.WalkConfig{Files: true, Extensions: []string{extension}}
 	err := filepathy.Walk(topicPath, walkConfig, func(path string, info os.FileInfo, _ error) error {
 		files = append(files, File{
@@ -57,6 +73,8 @@ func (DiskTopicStorage) ListFiles(topicPath string, extension string) ([]File, e
 		})
 		return nil
 	})
+
+	log.Debugf("found %d files (%s)", len(files), time.Since(t0))
 
 	return files, err
 }

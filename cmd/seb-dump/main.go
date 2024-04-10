@@ -33,13 +33,15 @@ func main() {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
-	diskStorage, err := storage.NewDiskTopicStorage(log, rootDir, topicName, cache)
+	diskTopicStorage := storage.NewDiskTopicStorage(log)
+
+	topicStorage, err := storage.NewTopicStorage(log, diskTopicStorage, rootDir, topicName, cache)
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}
 
 	for i := flags.startFromRecordID; i < flags.startFromRecordID+flags.numRecords; i++ {
-		record, err := diskStorage.ReadRecord(uint64(i))
+		record, err := topicStorage.ReadRecord(uint64(i))
 		if err != nil {
 			if errors.Is(err, storage.ErrOutOfBounds) {
 				fmt.Printf("out of bounds\n")

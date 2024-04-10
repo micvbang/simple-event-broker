@@ -23,7 +23,7 @@ func TestStorageEmpty(t *testing.T) {
 
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, tempDir, "mytopic", cache)
+	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, "mytopic", cache)
 	require.NoError(t, err)
 
 	// Test
@@ -41,7 +41,7 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, tempDir, "mytopic", cache)
+	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, "mytopic", cache)
 	require.NoError(t, err)
 
 	recordBatch := tester.MakeRandomRecordBatch(5)
@@ -74,7 +74,7 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, tempDir, "mytopic", cache)
+	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, "mytopic", cache)
 	require.NoError(t, err)
 
 	recordBatch1 := tester.MakeRandomRecordBatch(5)
@@ -117,7 +117,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	{
 		cache, err := storage.NewDiskCacheDefault(log, tempDir)
 		require.NoError(t, err)
-		s1, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, tempDir, topicName, cache)
+		s1, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, topicName, cache)
 		require.NoError(t, err)
 
 		for _, recordBatch := range recordBatches {
@@ -129,7 +129,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 	// Test
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s2, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, tempDir, topicName, cache)
+	s2, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, topicName, cache)
 	require.NoError(t, err)
 
 	// Verify
@@ -163,7 +163,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 	{
 		cache, err := storage.NewDiskCacheDefault(log, tempDir)
 		require.NoError(t, err)
-		s1, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, tempDir, topicName, cache)
+		s1, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, topicName, cache)
 		require.NoError(t, err)
 
 		err = s1.AddRecordBatch(recordBatch1)
@@ -172,7 +172,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 
 	cache, err := storage.NewDiskCacheDefault(log, tempDir)
 	require.NoError(t, err)
-	s2, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, tempDir, topicName, cache)
+	s2, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), tempDir, topicName, cache)
 	require.NoError(t, err)
 
 	// Test
@@ -207,7 +207,7 @@ func TestStorageCacheWrite(t *testing.T) {
 	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
 	require.NoError(t, err)
 
-	s, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, storageDir, topicName, cache)
+	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), storageDir, topicName, cache)
 	require.NoError(t, err)
 
 	expectedStorageDir := path.Join(storageDir, storage.RecordBatchPath(topicName, 0))
@@ -243,7 +243,7 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
 	require.NoError(t, err)
 
-	s, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, storageDir, topicName, cache)
+	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), storageDir, topicName, cache)
 	require.NoError(t, err)
 
 	expectedRecordBatch := tester.MakeRandomRecordBatch(5)
@@ -277,7 +277,7 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
 	require.NoError(t, err)
 
-	s, err := storage.NewTopicStorage(log, storage.DiskTopicStorage{}, storageDir, topicName, cache)
+	s, err := storage.NewTopicStorage(log, storage.NewDiskTopicStorage(log), storageDir, topicName, cache)
 	require.NoError(t, err)
 
 	expectedRecordBatch := tester.MakeRandomRecordBatch(5)

@@ -80,8 +80,6 @@ func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File,
 		WithField("topicPath", topicPath).
 		WithField("extension", extension)
 
-	files := make([]File, 0, 128)
-
 	topicPath, _ = strings.CutPrefix(topicPath, "/")
 	if !strings.HasSuffix(topicPath, "/") {
 		topicPath += "/"
@@ -89,6 +87,8 @@ func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File,
 
 	log.Debugf("listing objects in s3")
 	t0 := time.Now()
+
+	files := make([]File, 0, 128)
 	err := ss.s3.ListObjectsPages(&s3.ListObjectsInput{
 		Bucket: aws.String(ss.bucketName),
 		Prefix: &topicPath,
