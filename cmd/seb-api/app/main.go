@@ -55,9 +55,11 @@ func cacheEviction(log logger.Logger, cache *storage.DiskCache, cacheMaxBytes in
 
 	for {
 		cacheSize := cache.Size()
-		log.Infof("potential cache eviction of size %d", cacheSize)
 
 		if cacheSize > cacheMaxBytes {
+			fillLevel := float32(cacheSize) / float32(cacheMaxBytes) * 100
+
+			log.Infof("cache full (%.2f%%, %d/%d bytes), evicting items", fillLevel, cacheSize, cacheMaxBytes)
 			err := cache.EvictLeastRecentlyUsed(cacheMaxBytes)
 			if err != nil {
 				log.Errorf("failed to evict cache: %s", err)
