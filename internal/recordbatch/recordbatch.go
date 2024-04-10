@@ -33,6 +33,14 @@ var UnixEpochUs = func() int64 {
 type Record []byte
 type RecordBatch []Record
 
+func (rb RecordBatch) Size() int64 {
+	size := 0
+	for _, record := range rb {
+		size += len(record)
+	}
+	return int64(size)
+}
+
 // Write writes a RecordBatch file to wtr, consisting of a header, a record
 // index, and the given records.
 func Write(wtr io.Writer, rb RecordBatch) error {

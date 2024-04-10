@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -69,16 +70,18 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error
 	recordBatchID := s.nextRecordID
 
 	rbPath := RecordBatchPath(s.topicPath, recordBatchID)
-	f, err := s.backingStorage.Writer(rbPath)
+	wtr, err := s.backingStorage.Writer(rbPath)
 	if err != nil {
 		return fmt.Errorf("opening writer '%s': %w", rbPath, err)
 	}
-	defer f.Close()
 
-	err = recordbatch.Write(f, recordBatch)
+	t0 := time.Now()
+	err = recordbatch.Write(wtr, recordBatch)
 	if err != nil {
 		return fmt.Errorf("writing record batch: %w", err)
 	}
+	wtr.Close()
+	s.log.Infof("wrote %d records (%d bytes) to %s (%s)", len(recordBatch), recordBatch.Size(), rbPath, time.Since(t0))
 
 	s.recordBatchIDs = append(s.recordBatchIDs, recordBatchID)
 	s.nextRecordID = recordBatchID + uint64(len(recordBatch))

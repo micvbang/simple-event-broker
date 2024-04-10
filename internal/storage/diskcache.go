@@ -117,7 +117,7 @@ func (c *DiskCache) EvictLeastRecentlyUsed(maxSize int64) error {
 	}
 
 	if len(cacheItemsToDelete) > 0 {
-		log.Debugf("deleting all items last accessed at <= %v", cacheItemsToDelete[0])
+		log.Debugf("deleting all items last accessed at <= %s", cacheItemsToDelete[0].accessedAt)
 	}
 
 	bytesDeleted := int64(0)

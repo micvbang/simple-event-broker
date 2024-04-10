@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -88,6 +89,7 @@ func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File,
 	}
 
 	log.Debugf("listing objects in s3")
+	t0 := time.Now()
 	err := ss.s3.ListObjectsPages(&s3.ListObjectsInput{
 		Bucket: aws.String(ss.bucketName),
 		Prefix: &topicPath,
@@ -109,7 +111,7 @@ func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File,
 		return true
 	})
 
-	log.Debugf("found %d files", len(files))
+	log.Debugf("found %d files (%s)", len(files), time.Since(t0))
 
 	return files, err
 }
@@ -133,7 +135,8 @@ func (wc *s3WriteCloser) Close() error {
 		return fmt.Errorf("seeking to beginning: %w", err)
 	}
 
-	wc.log.Infof("uploading to s3")
+	wc.log.Debugf("uploading to %s%s", wc.bucketName, wc.objectKey)
+	t0 := time.Now()
 	_, err = wc.s3.PutObject(&s3.PutObjectInput{
 		Bucket: &wc.bucketName,
 		Key:    &wc.objectKey,
@@ -142,5 +145,7 @@ func (wc *s3WriteCloser) Close() error {
 	if err != nil {
 		return fmt.Errorf("uploading to s3: %w", err)
 	}
+	wc.log.Debugf("uploaded to %s%s (%s)", wc.bucketName, wc.objectKey, time.Since(t0))
+
 	return wc.f.Close()
 }
