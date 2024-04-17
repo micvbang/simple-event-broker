@@ -5,7 +5,7 @@ go 1.22
 require (
 	github.com/aws/aws-sdk-go v1.49.8
 	github.com/klauspost/compress v1.17.8
-	github.com/micvbang/go-helpy v0.1.13
+	github.com/micvbang/go-helpy v0.1.14
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
 )
