@@ -2,9 +2,11 @@ package sebhttp
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"strings"
 
+	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
@@ -19,7 +21,6 @@ const (
 func NewAPIKeyHandler(log logger.Logger, allowed func(ctx context.Context, apiKey string) (bool, error)) func(http.HandlerFunc) http.HandlerFunc {
 	return func(hf http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-
 			requestAPIKey := r.Header.Get(APIKeyHeader)
 			if len(requestAPIKey) == 0 {
 				invalidAuth(w, r)
@@ -28,7 +29,8 @@ func NewAPIKeyHandler(log logger.Logger, allowed func(ctx context.Context, apiKe
 
 			requestAPIKey = strings.TrimPrefix(requestAPIKey, bearerPrefix)
 
-			log.Debugf("checking api key")
+			apiKeyLogLength := inty.Min(int(math.Floor(float64(len(requestAPIKey))*0.5)), 10)
+			log.Debugf("checking api key '%s' (len %d)", requestAPIKey[:apiKeyLogLength], len(requestAPIKey))
 			ok, err := allowed(r.Context(), requestAPIKey)
 			if err != nil {
 				internalServerError(w, r)
