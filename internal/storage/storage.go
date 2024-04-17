@@ -91,7 +91,7 @@ func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 			return topicBatcher{}, fmt.Errorf("creating topic '%s': %w", topicName, err)
 		}
 
-		batchLogger := s.log.Name(fmt.Sprintf("batcher (%s)", topicName))
+		batchLogger := s.log.Name("batcher").WithField("topic-name", topicName)
 		batcher := s.createBatcher(batchLogger, topicStorage)
 
 		tb = topicBatcher{

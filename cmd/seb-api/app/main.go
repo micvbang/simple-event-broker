@@ -33,7 +33,7 @@ func Run() {
 
 	go cacheEviction(log.Name("cache eviction"), diskCache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-	blockingS3Storage, err := makeBlockingS3Storage(log, diskCache, flags.batchBlockTime, flags.bucketName)
+	blockingS3Storage, err := makeBlockingS3Storage(log, diskCache, flags.recordBatchBlockTime, flags.bucketName)
 	if err != nil {
 		log.Fatalf("making blocking s3 storage: %s", err)
 	}
@@ -70,19 +70,7 @@ func cacheEviction(log logger.Logger, cache *storage.DiskCache, cacheMaxBytes in
 	}
 }
 
-func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTime time.Duration, s3BucketName string) (*storage.Storage, error) {
-	contextCreator := func() context.Context {
-		ctx, cancel := context.WithTimeout(context.Background(), sleepTime)
-		go func() {
-			// We have to cancel the context. Just ensure that it's cancelled at
-			// some point in the future.
-			time.Sleep(sleepTime * 2)
-			cancel()
-		}()
-
-		return ctx
-	}
-
+func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
 	session, err := session.NewSession()
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)
@@ -97,7 +85,7 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTim
 
 	blockingBatcher := func(log logger.Logger, ts *storage.TopicStorage) storage.RecordBatcher {
 		batchLogger := log.Name("blocking batcher")
-		return recordbatch.NewBlockingBatcher(batchLogger, contextCreator, func(b recordbatch.RecordBatch) error {
+		return recordbatch.NewBlockingBatcher(batchLogger, blockTime, func(b recordbatch.RecordBatch) error {
 			t0 := time.Now()
 			err := ts.AddRecordBatch(b)
 			batchLogger.Debugf("persisting to s3: %v", time.Since(t0))
@@ -109,9 +97,9 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, sleepTim
 }
 
 type flags struct {
-	bucketName     string
-	batchBlockTime time.Duration
-	logLevel       int
+	bucketName           string
+	recordBatchBlockTime time.Duration
+	logLevel             int
 
 	httpListenAddress string
 	httpListenPort    int
@@ -128,7 +116,7 @@ func parseFlags() flags {
 	f := flags{}
 
 	fs.StringVar(&f.bucketName, "b", "simple-commit-log-delete-me", "Bucket name")
-	fs.DurationVar(&f.batchBlockTime, "s", time.Second, "Amount of time to wait between receiving first message in batch and committing it")
+	fs.DurationVar(&f.recordBatchBlockTime, "s", time.Second, "Amount of time to wait between receiving first message in batch and committing it")
 	fs.IntVar(&f.logLevel, "log-level", int(logger.LevelInfo), "Log level, info=4, debug=5")
 
 	fs.StringVar(&f.httpListenAddress, "l", "127.0.0.1", "Address to listen for HTTP traffic")

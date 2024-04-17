@@ -26,7 +26,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		returnedErr error
 	)
 
-	makeContext := func() context.Context {
+	contextFactory := func() context.Context {
 		return ctx
 	}
 
@@ -43,7 +43,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		"no error": {expected: nil},
 	}
 
-	batcher := recordbatch.NewBlockingBatcher(log, makeContext, persistRecordBatch)
+	batcher := recordbatch.NewBlockingBatcherWithContextFactory(log, persistRecordBatch, contextFactory)
 
 	for name, test := range tests {
 		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -67,7 +67,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 func TestBlockingBatcherAddBlocks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	makeContext := func() context.Context {
+	contextFactory := func() context.Context {
 		return ctx
 	}
 
@@ -78,7 +78,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 		return returnedErr
 	}
 
-	batcher := recordbatch.NewBlockingBatcher(log, makeContext, persistRecordBatch)
+	batcher := recordbatch.NewBlockingBatcherWithContextFactory(log, persistRecordBatch, contextFactory)
 
 	const numRecordBatches = 25
 
@@ -102,20 +102,20 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 	}
 
 	// wait for all above go-routines to be scheduled and block on Add()
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(1 * time.Millisecond)
 
 	// expire ctx to make Batcher persist data (call persistRecordBatch())
 	cancel()
 
 	// wait a long time before verifying that none of the Add() callers have returned
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 	require.False(t, addReturned.Load())
 
 	// allow persistRecordBatch to return
 	close(blockPersistRecordBatch)
 
 	// wait for persistRecordBatch() return value to propagate to Add() callers
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(1 * time.Millisecond)
 
 	require.True(t, addReturned.Load())
 

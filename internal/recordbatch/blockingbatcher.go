@@ -18,18 +18,22 @@ type BlockingBatcher struct {
 	mu              sync.Mutex
 	collectingBatch bool
 
-	makeContext func() context.Context
-	blockedAdds chan blockedAdd
+	contextFactory func() context.Context
+	blockedAdds    chan blockedAdd
 
 	persistRecordBatch func(RecordBatch) error
 }
 
-func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, persistRecordBatch func(RecordBatch) error) *BlockingBatcher {
+func NewBlockingBatcher(log logger.Logger, blockTime time.Duration, persistRecordBatch func(RecordBatch) error) *BlockingBatcher {
+	return NewBlockingBatcherWithContextFactory(log, persistRecordBatch, NewContextFactory(blockTime))
+}
+
+func NewBlockingBatcherWithContextFactory(log logger.Logger, persistRecordBatch func(RecordBatch) error, contextFactory func() context.Context) *BlockingBatcher {
 	return &BlockingBatcher{
 		log:                log,
 		mu:                 sync.Mutex{},
 		blockedAdds:        make(chan blockedAdd, 32),
-		makeContext:        makeContext,
+		contextFactory:     contextFactory,
 		persistRecordBatch: persistRecordBatch,
 	}
 }
@@ -37,9 +41,9 @@ func NewBlockingBatcher(log logger.Logger, makeContext func() context.Context, p
 // AddRecord adds record to the ongoing record batch and blocks until
 // persistRecordBatch() has been called and completed.
 //
-// persistRecordBatch() will be called once the most recent context
-// returned by makeContext() has expired. This means that, if makeContext()
-// returns a very long living context, AddRecord() will block for a long time.
+// persistRecordBatch() will be called once the most recent context returned by
+// contextFactory() has expired. This means that, if contextFactory() returns a
+// very long living context, AddRecord() will block for a long time.
 func (b *BlockingBatcher) AddRecord(r Record) error {
 	errCh := make(chan error)
 
@@ -62,7 +66,7 @@ func (b *BlockingBatcher) AddRecord(r Record) error {
 }
 
 func (b *BlockingBatcher) collectBatch() {
-	ctx := b.makeContext()
+	ctx := b.contextFactory()
 	handledAdds := make([]blockedAdd, 0, 64)
 
 	t0 := time.Now()
@@ -106,5 +110,19 @@ func (b *BlockingBatcher) collectBatch() {
 
 			return
 		}
+	}
+}
+
+func NewContextFactory(blockTime time.Duration) func() context.Context {
+	return func() context.Context {
+		ctx, cancel := context.WithTimeout(context.Background(), blockTime)
+		go func() {
+			// We have to cancel the context. Just ensure that it's cancelled at
+			// some point in the future.
+			time.Sleep(blockTime * 2)
+			cancel()
+		}()
+
+		return ctx
 	}
 }
