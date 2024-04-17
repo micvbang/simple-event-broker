@@ -57,15 +57,3 @@ func (ms *MemoryTopicStorage) ListFiles(topicPath string, extension string) ([]F
 
 	return files, nil
 }
-
-type nopWriteCloser struct {
-	io.Writer
-}
-
-func NopWriteCloser(wtr io.Writer) io.WriteCloser {
-	return &nopWriteCloser{wtr}
-}
-
-func (nopWriteCloser) Close() error {
-	return nil
-}
