@@ -1,0 +1,54 @@
+package tester
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/storage"
+	"github.com/stretchr/testify/require"
+)
+
+var (
+	log logger.Logger = logger.NewDefault(context.Background())
+
+	cacheStorageFactories = map[string]func(t *testing.T) storage.CacheStorage{
+		"disk":   func(t *testing.T) storage.CacheStorage { return storage.NewDiskCache(log, TempDir(t)) },
+		"memory": func(t *testing.T) storage.CacheStorage { return storage.NewMemoryCache(log) },
+	}
+
+	storageFactories = map[string]func() storage.BackingStorage{
+		"memory": func() storage.BackingStorage { return storage.NewMemoryTopicStorage(log) },
+		"disk":   func() storage.BackingStorage { return storage.NewDiskTopicStorage(log) },
+	}
+)
+
+// TestCacheStorage makes it easy to test all storage.CacheStorage
+// implementations in the same test.
+func TestCacheStorage(t *testing.T, f func(*testing.T, storage.CacheStorage)) {
+	t.Helper()
+
+	for testName, cacheStorageFactory := range cacheStorageFactories {
+		t.Run(testName, func(t *testing.T) {
+			f(t, cacheStorageFactory(t))
+		})
+	}
+}
+
+// TestBackingStorageAndCache makes it easy to test all storage.BackingStorage
+// and storage.CacheStorage implementations in the same test.
+func TestBackingStorageAndCache(t *testing.T, f func(*testing.T, storage.BackingStorage, *storage.Cache)) {
+	t.Helper()
+
+	for storageName, backingStorageFactory := range storageFactories {
+		for cacheName, cacheStorageFactory := range cacheStorageFactories {
+			t.Run(fmt.Sprintf("storage:%s/cache:%s", storageName, cacheName), func(t *testing.T) {
+				cache, err := storage.NewCacheDefault(log, cacheStorageFactory(t))
+				require.NoError(t, err)
+
+				f(t, backingStorageFactory(), cache)
+			})
+		}
+	}
+}
