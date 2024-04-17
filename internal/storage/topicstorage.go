@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/klauspost/compress/gzip"
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
@@ -24,6 +25,11 @@ type BackingStorage interface {
 	ListFiles(topicPath string, extension string) ([]File, error)
 }
 
+type Compress interface {
+	NewWriter(io.Writer) (io.WriteCloser, error)
+	NewReader(io.Reader) (io.ReadCloser, error)
+}
+
 type TopicStorage struct {
 	log            logger.Logger
 	topicPath      string
@@ -32,9 +38,10 @@ type TopicStorage struct {
 
 	backingStorage BackingStorage
 	cache          *DiskCache
+	compress       Compress
 }
 
-func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topicName string, cache *DiskCache) (*TopicStorage, error) {
+func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topicName string, cache *DiskCache, compress Compress) (*TopicStorage, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache required")
 	}
@@ -52,6 +59,7 @@ func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir s
 		topicPath:      topicPath,
 		recordBatchIDs: recordBatchIDs,
 		cache:          cache,
+		compress:       compress,
 	}
 
 	if len(recordBatchIDs) > 0 {
@@ -70,17 +78,27 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error
 	recordBatchID := s.nextRecordID
 
 	rbPath := RecordBatchPath(s.topicPath, recordBatchID)
-	wtr, err := s.backingStorage.Writer(rbPath)
+	backingWriter, err := s.backingStorage.Writer(rbPath)
 	if err != nil {
 		return fmt.Errorf("opening writer '%s': %w", rbPath, err)
 	}
 
+	w := backingWriter
+	if s.compress != nil {
+		w = gzip.NewWriter(backingWriter)
+	}
+
 	t0 := time.Now()
-	err = recordbatch.Write(wtr, recordBatch)
+	err = recordbatch.Write(w, recordBatch)
 	if err != nil {
 		return fmt.Errorf("writing record batch: %w", err)
 	}
-	wtr.Close()
+
+	if s.compress != nil {
+		w.Close()
+	}
+	backingWriter.Close()
+
 	s.log.Infof("wrote %d records (%d bytes) to %s (%s)", len(recordBatch), recordBatch.Size(), rbPath, time.Since(t0))
 
 	s.recordBatchIDs = append(s.recordBatchIDs, recordBatchID)
@@ -150,16 +168,28 @@ func (s *TopicStorage) parseRecordBatch(recordBatchID uint64) (*recordbatch.Pars
 			return nil, fmt.Errorf("opening reader '%s': %w", recordBatchPath, err)
 		}
 
+		r := backingReader
+		if s.compress != nil {
+			r, err = gzip.NewReader(backingReader)
+			if err != nil {
+				return nil, fmt.Errorf("creating gzip reader: %w", err)
+			}
+		}
+
 		// write to cache
 		cacheFile, err := s.cache.Writer(recordBatchPath)
 		if err != nil {
 			return nil, fmt.Errorf("writing backing storage result to cache: %w", err)
 		}
-
-		_, err = io.Copy(cacheFile, backingReader)
+		_, err = io.Copy(cacheFile, r)
 		if err != nil {
 			return nil, fmt.Errorf("copying backing storage result to cache: %w", err)
 		}
+
+		if s.compress != nil {
+			r.Close()
+		}
+
 		cacheFile.Close()
 		backingReader.Close()
 

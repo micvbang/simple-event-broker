@@ -35,7 +35,8 @@ func main() {
 
 	diskTopicStorage := storage.NewDiskTopicStorage(log)
 
-	topicStorage, err := storage.NewTopicStorage(log, diskTopicStorage, rootDir, topicName, cache)
+	// TODO: make compress configurable
+	topicStorage, err := storage.NewTopicStorage(log, diskTopicStorage, rootDir, topicName, cache, storage.Gzip{})
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}

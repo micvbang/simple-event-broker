@@ -20,9 +20,9 @@ type topicBatcher struct {
 type Storage struct {
 	log logger.Logger
 
-	autoCreateTopics   bool
-	createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error)
-	createBatcher      func(logger.Logger, *TopicStorage) RecordBatcher
+	autoCreateTopics    bool
+	topicStorageFactory func(log logger.Logger, topicName string) (*TopicStorage, error)
+	batcherFactory      func(logger.Logger, *TopicStorage) RecordBatcher
 
 	mu           *sync.Mutex
 	topicBatcher map[string]topicBatcher
@@ -35,16 +35,16 @@ type Storage struct {
 // TopicStorage.
 func New(
 	log logger.Logger,
-	createTopicStorage func(log logger.Logger, topicName string) (*TopicStorage, error),
-	createBatcher func(logger.Logger, *TopicStorage) RecordBatcher,
+	topicStorageFactory func(log logger.Logger, topicName string) (*TopicStorage, error),
+	batcherFactory func(logger.Logger, *TopicStorage) RecordBatcher,
 ) *Storage {
 	return &Storage{
-		log:                log,
-		autoCreateTopics:   true,
-		createTopicStorage: createTopicStorage,
-		createBatcher:      createBatcher,
-		mu:                 &sync.Mutex{},
-		topicBatcher:       make(map[string]topicBatcher),
+		log:                 log,
+		autoCreateTopics:    true,
+		topicStorageFactory: topicStorageFactory,
+		batcherFactory:      batcherFactory,
+		mu:                  &sync.Mutex{},
+		topicBatcher:        make(map[string]topicBatcher),
 	}
 }
 
@@ -86,13 +86,13 @@ func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 		// NOTE: this could block for a long time. We're holding the lock, so
 		// this is terrible.
 		topicLogger := s.log.Name(fmt.Sprintf("topic storage (%s)", topicName))
-		topicStorage, err := s.createTopicStorage(topicLogger, topicName)
+		topicStorage, err := s.topicStorageFactory(topicLogger, topicName)
 		if err != nil {
 			return topicBatcher{}, fmt.Errorf("creating topic '%s': %w", topicName, err)
 		}
 
 		batchLogger := s.log.Name("batcher").WithField("topic-name", topicName)
-		batcher := s.createBatcher(batchLogger, topicStorage)
+		batcher := s.batcherFactory(batchLogger, topicStorage)
 
 		tb = topicBatcher{
 			batcher: batcher,
