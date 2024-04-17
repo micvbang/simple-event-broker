@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -28,7 +27,8 @@ func main() {
 	topicName := filepath.Base(absInputPath)
 	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromRecordID, flags.startFromRecordID+flags.numRecords-1, topicName)
 
-	cache, err := storage.NewDiskCacheDefault(log.Name("disk cache"), path.Join(os.TempDir(), "seb"))
+	cacheStorage := storage.NewMemoryCache(log.Name("disk cache"))
+	cache, err := storage.NewCacheDefault(log, cacheStorage)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}

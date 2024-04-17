@@ -7,4 +7,5 @@ var (
 	ErrTopicNotFound = fmt.Errorf("topic not found")
 	ErrNotInCache    = fmt.Errorf("not in cache")
 	ErrNotInStorage  = fmt.Errorf("not in storage")
+	ErrUnauthorized  = fmt.Errorf("unauthorized")
 )

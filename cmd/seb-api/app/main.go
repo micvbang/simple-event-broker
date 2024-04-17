@@ -26,14 +26,15 @@ func Run() {
 	log := logger.NewWithLevel(ctx, logger.LogLevel(flags.logLevel))
 	log.Debugf("flags: %v", flags)
 
-	diskCache, err := storage.NewDiskCacheDefault(log.Name("disk cache"), flags.cacheDir)
+	cacheStorage := storage.NewDiskCache(log.Name("disk cache"), flags.cacheDir)
+	cache, err := storage.NewCacheDefault(log, cacheStorage)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
-	go cacheEviction(log.Name("cache eviction"), diskCache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
+	go cacheEviction(log.Name("cache eviction"), cache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-	blockingS3Storage, err := makeBlockingS3Storage(log, diskCache, flags.recordBatchBlockTime, flags.bucketName)
+	blockingS3Storage, err := makeBlockingS3Storage(log, cache, flags.recordBatchBlockTime, flags.bucketName)
 	if err != nil {
 		log.Fatalf("making blocking s3 storage: %s", err)
 	}
@@ -47,7 +48,7 @@ func Run() {
 	log.Fatalf("ListenAndServe returned: %s", err)
 }
 
-func cacheEviction(log logger.Logger, cache *storage.DiskCache, cacheMaxBytes int64, interval time.Duration) {
+func cacheEviction(log logger.Logger, cache *storage.Cache, cacheMaxBytes int64, interval time.Duration) {
 	log = log.
 		WithField("max bytes", cacheMaxBytes).
 		WithField("interval", interval)
@@ -70,7 +71,7 @@ func cacheEviction(log logger.Logger, cache *storage.DiskCache, cacheMaxBytes in
 	}
 }
 
-func makeBlockingS3Storage(log logger.Logger, cache *storage.DiskCache, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
+func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
 	session, err := session.NewSession()
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)

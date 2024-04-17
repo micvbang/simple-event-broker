@@ -42,9 +42,9 @@ func httpRequest(t *testing.T, r *http.Request) (_ *httptest.ResponseRecorder, e
 type HTTPTestServer struct {
 	Server *httptest.Server
 
-	Mux       *http.ServeMux
-	DiskCache *storage.DiskCache
-	Storage   *storage.Storage
+	Mux     *http.ServeMux
+	Cache   *storage.Cache
+	Storage *storage.Storage
 }
 
 // HTTPServer calls HTTPServerWithAPIKey, using DefaultAPIKey.
@@ -63,12 +63,12 @@ func httpServer(t *testing.T, apiKey string) HTTPTestServer {
 	log := logger.NewDefault(context.Background())
 	mux := http.NewServeMux()
 
-	diskCache, err := storage.NewDiskCacheDefault(log, TempDir(t))
+	cache, err := storage.NewCacheDefault(log, storage.NewDiskCache(log, TempDir(t)))
 	require.NoError(t, err)
 
 	topicStorage := func(log logger.Logger, topicName string) (*storage.TopicStorage, error) {
 		memoryTopicStorage := storage.NewMemoryTopicStorage(log)
-		return storage.NewTopicStorage(log, memoryTopicStorage, "", topicName, diskCache, nil)
+		return storage.NewTopicStorage(log, memoryTopicStorage, "", topicName, cache, nil)
 	}
 
 	batcher := func(l logger.Logger, ts *storage.TopicStorage) storage.RecordBatcher {
@@ -79,9 +79,9 @@ func httpServer(t *testing.T, apiKey string) HTTPTestServer {
 	sebhttp.RegisterRoutes(log, mux, storage, apiKey)
 
 	return HTTPTestServer{
-		Server:    httptest.NewServer(mux),
-		Mux:       mux,
-		DiskCache: diskCache,
-		Storage:   storage,
+		Server:  httptest.NewServer(mux),
+		Mux:     mux,
+		Cache:   cache,
+		Storage: storage,
 	}
 }

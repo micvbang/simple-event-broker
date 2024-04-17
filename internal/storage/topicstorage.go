@@ -37,11 +37,11 @@ type TopicStorage struct {
 	recordBatchIDs []uint64
 
 	backingStorage BackingStorage
-	cache          *DiskCache
+	cache          *Cache
 	compress       Compress
 }
 
-func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topicName string, cache *DiskCache, compress Compress) (*TopicStorage, error) {
+func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topicName string, cache *Cache, compress Compress) (*TopicStorage, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache required")
 	}

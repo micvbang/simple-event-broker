@@ -2,7 +2,6 @@ package storage_test
 
 import (
 	"context"
-	"os"
 	"path"
 	"testing"
 
@@ -34,7 +33,7 @@ func TestStorageEmpty(t *testing.T) {
 func testStorageEmpty(t *testing.T, backingStorage storage.BackingStorage) {
 	tempDir := tester.TempDir(t)
 
-	cache, err := storage.NewDiskCacheDefault(log, tempDir)
+	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 	s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache, nil)
 	require.NoError(t, err)
@@ -59,7 +58,7 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 func testStorageWriteRecordBatchSingleBatch(t *testing.T, backingStorage storage.BackingStorage) {
 	tempDir := tester.TempDir(t)
 
-	cache, err := storage.NewDiskCacheDefault(log, tempDir)
+	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 	s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache, nil)
 	require.NoError(t, err)
@@ -99,7 +98,7 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 func testStorageWriteRecordBatchMultipleBatches(t *testing.T, backingStorage storage.BackingStorage) {
 	tempDir := tester.TempDir(t)
 
-	cache, err := storage.NewDiskCacheDefault(log, tempDir)
+	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 	s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache, nil)
 	require.NoError(t, err)
@@ -149,7 +148,7 @@ func testStorageOpenExistingStorage(t *testing.T, backingStorage storage.Backing
 	}
 
 	{
-		cache, err := storage.NewDiskCacheDefault(log, tempDir)
+		cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 		require.NoError(t, err)
 		s1, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
 		require.NoError(t, err)
@@ -161,7 +160,7 @@ func testStorageOpenExistingStorage(t *testing.T, backingStorage storage.Backing
 	}
 
 	// Test
-	cache, err := storage.NewDiskCacheDefault(log, tempDir)
+	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 	s2, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
 	require.NoError(t, err)
@@ -202,7 +201,7 @@ func testStorageOpenExistingStorageAndAppend(t *testing.T, backingStorage storag
 
 	recordBatch1 := tester.MakeRandomRecordBatch(1)
 	{
-		cache, err := storage.NewDiskCacheDefault(log, tempDir)
+		cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 		require.NoError(t, err)
 		s1, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
 		require.NoError(t, err)
@@ -211,7 +210,7 @@ func testStorageOpenExistingStorageAndAppend(t *testing.T, backingStorage storag
 		require.NoError(t, err)
 	}
 
-	cache, err := storage.NewDiskCacheDefault(log, tempDir)
+	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 	s2, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
 	require.NoError(t, err)
@@ -250,9 +249,9 @@ func testStorageCacheWrite(t *testing.T, backingStorage storage.BackingStorage) 
 	const topicName = "my_topic"
 
 	storageDir := tester.TempDir(t)
-	cacheDir := tester.TempDir(t)
 
-	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
+	cacheStorage := storage.NewMemoryCache(log)
+	cache, err := storage.NewCacheDefault(log, cacheStorage)
 	require.NoError(t, err)
 
 	s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, nil)
@@ -295,8 +294,7 @@ func testStorageCacheReadFromCache(t *testing.T, backingStorage storage.BackingS
 
 	storageDir := tester.TempDir(t)
 
-	cacheDir := tester.TempDir(t)
-	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
+	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 
 	s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, nil)
@@ -336,8 +334,8 @@ func testStorageCacheReadFileNotInCache(t *testing.T, backingStorage storage.Bac
 
 	storageDir := tester.TempDir(t)
 
-	cacheDir := tester.TempDir(t)
-	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
+	cacheStorage := storage.NewMemoryCache(log)
+	cache, err := storage.NewCacheDefault(log, cacheStorage)
 	require.NoError(t, err)
 
 	s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, nil)
@@ -349,8 +347,7 @@ func testStorageCacheReadFileNotInCache(t *testing.T, backingStorage storage.Bac
 
 	// NOTE: in order to prove that we're reading from the backing storage and
 	// not from the cache, we're removing the file from the cache.
-	expectedCachedFile := path.Join(cacheDir, getStorageKey(storageDir, topicName, 0))
-	err = os.Remove(expectedCachedFile)
+	err = cacheStorage.Remove(getStorageKey(storageDir, topicName, 0))
 	require.NoError(t, err)
 
 	for recordID, expected := range expectedRecordBatch {
@@ -374,8 +371,7 @@ func testStorageCompressFiles(t *testing.T, backingStorage storage.BackingStorag
 	const topicName = "topicName"
 	storageDir := tester.TempDir(t)
 
-	cacheDir := tester.TempDir(t)
-	cache, err := storage.NewDiskCacheDefault(log, cacheDir)
+	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 
 	compressor := storage.Gzip{}
