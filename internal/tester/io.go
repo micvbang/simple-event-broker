@@ -4,6 +4,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/micvbang/go-helpy/bytey"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,4 +29,12 @@ func ReadAndClose(t *testing.T, rdr io.ReadCloser) []byte {
 	require.NoError(t, err)
 
 	return bs
+}
+
+func ReadToMemory(t *testing.T, rdr io.ReadCloser) *bytey.Buffer {
+	bs, err := io.ReadAll(rdr)
+	require.NoError(t, err)
+
+	return bytey.NewBuffer(bs)
+
 }
