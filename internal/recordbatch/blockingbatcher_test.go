@@ -18,7 +18,7 @@ var log = logger.NewDefault(context.Background())
 
 // TestBlockingBatcherAddReturnValue verifies that the error returned by
 // persistRecordBatch() is returned all the way back up to callers of
-// batcher.Add().
+// batcher.AddRecord().
 func TestBlockingBatcherAddReturnValue(t *testing.T) {
 	var (
 		ctx         context.Context
@@ -43,7 +43,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		"no error": {expected: nil},
 	}
 
-	batcher := recordbatch.NewBlockingBatcherWithContextFactory(log, persistRecordBatch, contextFactory)
+	batcher := recordbatch.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
 
 	for name, test := range tests {
 		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -61,7 +61,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 	}
 }
 
-// TestBlockingBatcherAddBlocks verifies that calls to Add() block until
+// TestBlockingBatcherAddBlocks verifies that calls to AddRecord() block until
 // persistRecordBatch has returned. This ensures that data has been persisted
 // before giving control back to the caller.
 func TestBlockingBatcherAddBlocks(t *testing.T) {
@@ -78,9 +78,9 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 		return returnedErr
 	}
 
-	batcher := recordbatch.NewBlockingBatcherWithContextFactory(log, persistRecordBatch, contextFactory)
+	batcher := recordbatch.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
 
-	const numRecordBatches = 25
+	const numRecordBatches = 5
 
 	wg := sync.WaitGroup{}
 	wg.Add(numRecordBatches)
@@ -101,24 +101,77 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 		}()
 	}
 
-	// wait for all above go-routines to be scheduled and block on Add()
-	time.Sleep(1 * time.Millisecond)
+	// wait for all above go-routines to be scheduled and block on AddRecord()
+	time.Sleep(5 * time.Millisecond)
 
 	// expire ctx to make Batcher persist data (call persistRecordBatch())
 	cancel()
 
-	// wait a long time before verifying that none of the Add() callers have returned
+	// wait a long time before verifying that none of the AddRecord() callers have returned
 	time.Sleep(10 * time.Millisecond)
 	require.False(t, addReturned.Load())
 
 	// allow persistRecordBatch to return
 	close(blockPersistRecordBatch)
 
-	// wait for persistRecordBatch() return value to propagate to Add() callers
+	// wait for persistRecordBatch() return value to propagate to AddRecord() callers
 	time.Sleep(1 * time.Millisecond)
 
 	require.True(t, addReturned.Load())
 
-	// ensure that all Add()ers return
+	// ensure that all AddRecord()ers return
+	wg.Wait()
+}
+
+// TestBlockingBatcherSoftMax verifies that calls to AddRecord() will block
+// until the configured soft max bytes limit is hit, after which it unblocks and
+// persists all waiting records.
+func TestBlockingBatcherSoftMax(t *testing.T) {
+	ctx := context.Background()
+
+	contextFactory := func() context.Context {
+		return ctx
+	}
+
+	persistRecordBatch := func(rb recordbatch.RecordBatch) error {
+		return nil
+	}
+
+	const bytesSoftMax = 10
+
+	batcher := recordbatch.NewBlockingBatcherWithConfig(log, bytesSoftMax, persistRecordBatch, contextFactory)
+	addReturned := atomic.Bool{}
+
+	wg := &sync.WaitGroup{}
+	wg.Add(bytesSoftMax - 1)
+
+	// add too few bytes to trigger soft max
+	for range bytesSoftMax - 1 {
+		go func() {
+			defer wg.Done()
+
+			err := batcher.AddRecord([]byte("1"))
+			require.NoError(t, err)
+
+			addReturned.Store(true)
+		}()
+	}
+
+	// wait for all above go-routines to be scheduled and block on AddRecord()
+	// and ensure that none of the AddRecord() callers have returned
+	time.Sleep(5 * time.Millisecond)
+
+	require.False(t, addReturned.Load())
+
+	// add a record hitting the soft max, expecting it to be persisted
+	err := batcher.AddRecord([]byte("1"))
+	require.NoError(t, err)
+
+	// wait for persistRecordBatch() return value to propagate to AddRecord() callers
+	time.Sleep(1 * time.Millisecond)
+
+	require.True(t, addReturned.Load())
+
+	// ensure that all AddRecord()ers return
 	wg.Wait()
 }

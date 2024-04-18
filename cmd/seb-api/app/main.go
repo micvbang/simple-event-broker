@@ -34,7 +34,7 @@ func Run() {
 
 	go cacheEviction(log.Name("cache eviction"), cache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-	blockingS3Storage, err := makeBlockingS3Storage(log, cache, flags.recordBatchBlockTime, flags.bucketName)
+	blockingS3Storage, err := makeBlockingS3Storage(log, cache, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.bucketName)
 	if err != nil {
 		log.Fatalf("making blocking s3 storage: %s", err)
 	}
@@ -71,7 +71,7 @@ func cacheEviction(log logger.Logger, cache *storage.Cache, cacheMaxBytes int64,
 	}
 }
 
-func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
+func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
 	session, err := session.NewSession()
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)
@@ -86,7 +86,7 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, blockTime ti
 
 	blockingBatcher := func(log logger.Logger, ts *storage.TopicStorage) storage.RecordBatcher {
 		batchLogger := log.Name("blocking batcher")
-		return recordbatch.NewBlockingBatcher(batchLogger, blockTime, func(b recordbatch.RecordBatch) error {
+		return recordbatch.NewBlockingBatcher(batchLogger, blockTime, bytesSoftMax, func(b recordbatch.RecordBatch) error {
 			t0 := time.Now()
 			err := ts.AddRecordBatch(b)
 			batchLogger.Debugf("persisting to s3: %v", time.Since(t0))
@@ -98,9 +98,11 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, blockTime ti
 }
 
 type flags struct {
-	bucketName           string
-	recordBatchBlockTime time.Duration
-	logLevel             int
+	bucketName string
+	logLevel   int
+
+	recordBatchBlockTime    time.Duration
+	recordBatchSoftMaxBytes int
 
 	httpListenAddress string
 	httpListenPort    int
@@ -117,8 +119,10 @@ func parseFlags() flags {
 	f := flags{}
 
 	fs.StringVar(&f.bucketName, "b", "simple-commit-log-delete-me", "Bucket name")
-	fs.DurationVar(&f.recordBatchBlockTime, "s", time.Second, "Amount of time to wait between receiving first message in batch and committing it")
 	fs.IntVar(&f.logLevel, "log-level", int(logger.LevelInfo), "Log level, info=4, debug=5")
+
+	fs.DurationVar(&f.recordBatchBlockTime, "batch-wait-time", time.Second, "Amount of time to wait between receiving first record in batch and committing it")
+	fs.IntVar(&f.recordBatchSoftMaxBytes, "batch-bytes-max", 10*sizey.MB, "Soft maximum for the number of bytes to include in each record batch")
 
 	fs.StringVar(&f.httpListenAddress, "l", "127.0.0.1", "Address to listen for HTTP traffic")
 	fs.IntVar(&f.httpListenPort, "p", 8080, "Port to listen for HTTP traffic")

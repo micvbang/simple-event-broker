@@ -210,12 +210,6 @@ func (s *TopicStorage) recordBatchPath(recordBatchID uint64) string {
 	return RecordBatchPath(s.topicPath, recordBatchID)
 }
 
-// func readRecordBatchHeader(backingStorage BackingStorage, topicPath string, recordBatchID uint64) (recordbatch.Header, error) {
-// 	rbPath := RecordBatchPath(topicPath, recordBatchID)
-
-// 	return rb.Header, nil
-// }
-
 const recordBatchExtension = ".record_batch"
 
 func listRecordBatchIDs(backingStorage BackingStorage, topicPath string) ([]uint64, error) {

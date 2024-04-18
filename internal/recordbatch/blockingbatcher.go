@@ -17,6 +17,7 @@ type BlockingBatcher struct {
 	log             logger.Logger
 	mu              sync.Mutex
 	collectingBatch bool
+	bytesSoftMax    int
 
 	contextFactory func() context.Context
 	blockedAdds    chan blockedAdd
@@ -24,17 +25,18 @@ type BlockingBatcher struct {
 	persistRecordBatch func(RecordBatch) error
 }
 
-func NewBlockingBatcher(log logger.Logger, blockTime time.Duration, persistRecordBatch func(RecordBatch) error) *BlockingBatcher {
-	return NewBlockingBatcherWithContextFactory(log, persistRecordBatch, NewContextFactory(blockTime))
+func NewBlockingBatcher(log logger.Logger, blockTime time.Duration, bytesSoftMax int, persistRecordBatch func(RecordBatch) error) *BlockingBatcher {
+	return NewBlockingBatcherWithConfig(log, bytesSoftMax, persistRecordBatch, NewContextFactory(blockTime))
 }
 
-func NewBlockingBatcherWithContextFactory(log logger.Logger, persistRecordBatch func(RecordBatch) error, contextFactory func() context.Context) *BlockingBatcher {
+func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persistRecordBatch func(RecordBatch) error, contextFactory func() context.Context) *BlockingBatcher {
 	return &BlockingBatcher{
 		log:                log,
 		mu:                 sync.Mutex{},
 		blockedAdds:        make(chan blockedAdd, 32),
 		contextFactory:     contextFactory,
 		persistRecordBatch: persistRecordBatch,
+		bytesSoftMax:       bytesSoftMax,
 	}
 }
 
@@ -66,8 +68,11 @@ func (b *BlockingBatcher) AddRecord(r Record) error {
 }
 
 func (b *BlockingBatcher) collectBatch() {
-	ctx := b.contextFactory()
+	ctx, cancel := context.WithCancel(b.contextFactory())
+	defer cancel()
+
 	handledAdds := make([]blockedAdd, 0, 64)
+	batchBytes := 0
 
 	t0 := time.Now()
 
@@ -76,7 +81,17 @@ func (b *BlockingBatcher) collectBatch() {
 
 		case blockedAdd := <-b.blockedAdds:
 			handledAdds = append(handledAdds, blockedAdd)
+			batchBytes += len(blockedAdd.record)
 			b.log.Debugf("added record to batch (%d)", len(handledAdds))
+			if batchBytes >= b.bytesSoftMax {
+				b.log.Debugf("batch size exceeded soft max (%d/%d), collecting", batchBytes, b.bytesSoftMax)
+
+				// NOTE: this will not necessarily cause the batch collection
+				// branch of this select to be invoked; if there's more adds on
+				// handledAdds, it's likely that this branch will continue to
+				// process one or more of those.
+				cancel()
+			}
 
 		case <-ctx.Done():
 			b.log.Debugf("batch collection time: %v", time.Since(t0))
