@@ -2,7 +2,6 @@ package recordbatch
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -14,13 +13,11 @@ type blockedAdd struct {
 }
 
 type BlockingBatcher struct {
-	log             logger.Logger
-	mu              sync.Mutex
-	collectingBatch bool
-	bytesSoftMax    int
+	log          logger.Logger
+	bytesSoftMax int
 
 	contextFactory func() context.Context
-	blockedAdds    chan blockedAdd
+	callers        chan blockedAdd
 
 	persistRecordBatch func(RecordBatch) error
 }
@@ -30,100 +27,96 @@ func NewBlockingBatcher(log logger.Logger, blockTime time.Duration, bytesSoftMax
 }
 
 func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persistRecordBatch func(RecordBatch) error, contextFactory func() context.Context) *BlockingBatcher {
-	return &BlockingBatcher{
+	b := &BlockingBatcher{
 		log:                log,
-		mu:                 sync.Mutex{},
-		blockedAdds:        make(chan blockedAdd, 32),
+		callers:            make(chan blockedAdd, 32),
 		contextFactory:     contextFactory,
 		persistRecordBatch: persistRecordBatch,
 		bytesSoftMax:       bytesSoftMax,
 	}
+
+	// NOTE: this goroutine is never stopped
+	go b.collectBatches()
+
+	return b
 }
 
 // AddRecord adds record to the ongoing record batch and blocks until
 // persistRecordBatch() has been called and completed.
 //
 // persistRecordBatch() will be called once the most recent context returned by
-// contextFactory() has expired. This means that, if contextFactory() returns a
-// very long living context, AddRecord() will block for a long time.
+// contextFactory() has expired, or bytesSoftMax has been reached. Beware of
+// long-lived contexts returned by contextFactory(); AddRecord() could block all
+// callers until the context expires.
 func (b *BlockingBatcher) AddRecord(r Record) error {
 	errCh := make(chan error)
 
-	b.mu.Lock()
-	{
-		if !b.collectingBatch {
-			b.collectingBatch = true
-			go b.collectBatch()
-		}
-	}
-	b.mu.Unlock()
-
-	b.blockedAdds <- blockedAdd{
+	b.callers <- blockedAdd{
 		err:    errCh,
 		record: r,
 	}
 
-	// block until record has been peristed
+	// block caller until record has been peristed (or persisting failed)
 	return <-errCh
 }
 
-func (b *BlockingBatcher) collectBatch() {
-	ctx, cancel := context.WithCancel(b.contextFactory())
-	defer cancel()
-
-	handledAdds := make([]blockedAdd, 0, 64)
-	batchBytes := 0
-
-	t0 := time.Now()
-
+func (b *BlockingBatcher) collectBatches() {
 	for {
-		select {
+		blockedCallers := make([]blockedAdd, 0, 64)
 
-		case blockedAdd := <-b.blockedAdds:
-			handledAdds = append(handledAdds, blockedAdd)
-			batchBytes += len(blockedAdd.record)
-			b.log.Debugf("added record to batch (%d)", len(handledAdds))
-			if batchBytes >= b.bytesSoftMax {
-				b.log.Debugf("batch size exceeded soft max (%d/%d), collecting", batchBytes, b.bytesSoftMax)
+		// block until AddRecord() is called, starting a new batch collection
+		blockedCaller := <-b.callers
+		blockedCallers = append(blockedCallers, blockedCaller)
+		batchBytes := len(blockedCaller.record)
 
-				// NOTE: this will not necessarily cause the batch collection
-				// branch of this select to be invoked; if there's more adds on
-				// handledAdds, it's likely that this branch will continue to
-				// process one or more of those.
-				cancel()
-			}
+		ctx, cancel := context.WithCancel(b.contextFactory())
+		defer cancel()
+		t0 := time.Now()
 
-		case <-ctx.Done():
-			b.log.Debugf("batch collection time: %v", time.Since(t0))
+	innerLoop:
+		for {
+			select {
 
-			recordBatch := make(RecordBatch, len(handledAdds))
-			for i, add := range handledAdds {
-				recordBatch[i] = add.record
-			}
+			case blockedCaller := <-b.callers:
+				blockedCallers = append(blockedCallers, blockedCaller)
+				batchBytes += len(blockedCaller.record)
+				b.log.Debugf("added record to batch (%d)", len(blockedCallers))
+				if batchBytes >= b.bytesSoftMax {
+					b.log.Debugf("batch size exceeded soft max (%d/%d), collecting", batchBytes, b.bytesSoftMax)
 
-			err := b.persistRecordBatch(recordBatch)
-			b.log.Debugf("%d records persisted (err: %v)", len(recordBatch), err)
-			if err != nil {
-				b.log.Debugf("reporting error to %d waiting add()ers", len(recordBatch))
-				for _, handledAdd := range handledAdds {
-					handledAdd.err <- err
+					// NOTE: this will not necessarily cause the batch collection
+					// branch of this select to be invoked; if there's more adds on
+					// handledAdds, it's likely that this branch will continue to
+					// process one or more of those.
+					cancel()
 				}
+
+			case <-ctx.Done():
+				b.log.Debugf("batch collection time: %v", time.Since(t0))
+
+				recordBatch := make(RecordBatch, len(blockedCallers))
+				for i, add := range blockedCallers {
+					recordBatch[i] = add.record
+				}
+
+				// block until recordBatch is persisted or persisting failed
+				err := b.persistRecordBatch(recordBatch)
+				b.log.Debugf("%d records persisted (err: %v)", len(recordBatch), err)
+				if err != nil {
+					b.log.Debugf("reporting error to %d waiting callers", len(recordBatch))
+					for _, handledAdd := range blockedCallers {
+						handledAdd.err <- err
+					}
+				}
+
+				// unblock callers
+				for _, blockedCaller := range blockedCallers {
+					close(blockedCaller.err)
+				}
+
+				b.log.Debugf("done reporting results ")
+				break innerLoop
 			}
-
-			// Unblock Add()ers
-			for _, handledAdd := range handledAdds {
-				close(handledAdd.err)
-			}
-
-			b.log.Debugf("done reporting results")
-
-			b.mu.Lock()
-			{
-				b.collectingBatch = false
-			}
-			b.mu.Unlock()
-
-			return
 		}
 	}
 }
