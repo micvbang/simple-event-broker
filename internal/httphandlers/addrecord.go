@@ -5,12 +5,17 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
 type RecordAdder interface {
-	AddRecord(topicName string, record recordbatch.Record) error
+	AddRecord(topicName string, record recordbatch.Record) (uint64, error)
+}
+
+type AddRecordOutput struct {
+	RecordID uint64 `json:"record_id"`
 }
 
 func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
@@ -32,12 +37,20 @@ func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
 			return
 		}
 
-		err = s.AddRecord(params[topicNameKey], bs)
+		recordID, err := s.AddRecord(params[topicNameKey], bs)
 		if err != nil {
 			log.Errorf("failed to add: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, err.Error())
 			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		err = httphelpers.WriteJSON(w, AddRecordOutput{
+			RecordID: recordID,
+		})
+		if err != nil {
+			log.Errorf("failed to write json: %s", err)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
@@ -39,7 +40,7 @@ func (c *RecordClient) Add(topicName string, record []byte) error {
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	c.addQueryParams(req, map[string]string{"topic-name": topicName})
+	httphelpers.AddQueryParams(req, map[string]string{"topic-name": topicName})
 
 	res, err := c.client.Do(req)
 	if err != nil {
@@ -60,7 +61,7 @@ func (c *RecordClient) Get(topicName string, recordID uint64) (recordbatch.Recor
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	c.addQueryParams(req, map[string]string{
+	httphelpers.AddQueryParams(req, map[string]string{
 		"topic-name": topicName,
 		"record-id":  fmt.Sprintf("%d", recordID),
 	})
@@ -82,16 +83,6 @@ func (c *RecordClient) Get(topicName string, recordID uint64) (recordbatch.Recor
 	}
 
 	return recordbatch.Record(buf), nil
-}
-
-func (c *RecordClient) addQueryParams(r *http.Request, params map[string]string) {
-	url := r.URL
-
-	query := url.Query()
-	for key, value := range params {
-		query.Add(key, value)
-	}
-	url.RawQuery = query.Encode()
 }
 
 func (c *RecordClient) statusCode(res *http.Response) error {

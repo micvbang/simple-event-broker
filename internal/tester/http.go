@@ -2,7 +2,6 @@ package tester
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,30 +15,8 @@ import (
 
 const DefaultAPIKey = "api-key"
 
-func HTTPRequest(t *testing.T, r *http.Request) *httptest.ResponseRecorder {
-	res, err := httpRequest(t, r)
-	require.NoError(t, err)
-
-	return res
-}
-
-func httpRequest(t *testing.T, r *http.Request) (_ *httptest.ResponseRecorder, err error) {
-	defer func() {
-		if v := recover(); v != nil {
-			err = fmt.Errorf(
-				"http request \"%s %+v\" recovered from error: \"%s\"\nTIP: Check if you mocked authentication\nTIP: check if your dependencies are set correctly",
-				r.Method, r.URL, v)
-		}
-	}()
-
-	server := httpServer(t, DefaultAPIKey)
-
-	w := httptest.NewRecorder()
-	server.Mux.ServeHTTP(w, r)
-	return w, err
-}
-
 type HTTPTestServer struct {
+	t      *testing.T
 	Server *httptest.Server
 
 	Mux     *http.ServeMux
@@ -47,23 +24,44 @@ type HTTPTestServer struct {
 	Storage *storage.Storage
 }
 
+func (s *HTTPTestServer) Do(t *testing.T, r *http.Request) *http.Response {
+	return s.do(r, false)
+}
+
+func (s *HTTPTestServer) DoWithAuth(t *testing.T, r *http.Request) *http.Response {
+	return s.do(r, true)
+}
+
+func (s *HTTPTestServer) do(r *http.Request, addDefaultAuth bool) *http.Response {
+	if addDefaultAuth {
+		r.Header.Add("Authorization", DefaultAPIKey)
+	}
+
+	w := httptest.NewRecorder()
+	s.Mux.ServeHTTP(w, r)
+
+	return w.Result()
+}
+
 // HTTPServer calls HTTPServerWithAPIKey, using DefaultAPIKey.
-func HTTPServer(t *testing.T) HTTPTestServer {
+func HTTPServer(t *testing.T) *HTTPTestServer {
 	return httpServer(t, DefaultAPIKey)
 }
 
 // HTTPServer initializes and returns an HTTPTestServer with all routes
 // registered and HTTP endpoint dependencies created. The created dependencies
 // can be useful during testing and are accessible on the HTTPTestServer struct.
-func HTTPServerWithAPIKey(t *testing.T, apiKey string) HTTPTestServer {
+func HTTPServerWithAPIKey(t *testing.T, apiKey string) *HTTPTestServer {
 	return httpServer(t, apiKey)
 }
 
-func httpServer(t *testing.T, apiKey string) HTTPTestServer {
+func httpServer(t *testing.T, apiKey string) *HTTPTestServer {
+	t.Helper()
+
 	log := logger.NewDefault(context.Background())
 	mux := http.NewServeMux()
 
-	cache, err := storage.NewCacheDefault(log, storage.NewDiskCache(log, TempDir(t)))
+	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 
 	topicStorage := func(log logger.Logger, topicName string) (*storage.TopicStorage, error) {
@@ -78,7 +76,8 @@ func httpServer(t *testing.T, apiKey string) HTTPTestServer {
 	storage := storage.New(log, topicStorage, batcher)
 	sebhttp.RegisterRoutes(log, mux, storage, apiKey)
 
-	return HTTPTestServer{
+	return &HTTPTestServer{
+		t:       t,
 		Server:  httptest.NewServer(mux),
 		Mux:     mux,
 		Cache:   cache,
