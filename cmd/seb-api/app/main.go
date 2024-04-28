@@ -86,11 +86,11 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, bytesSoftMax
 
 	blockingBatcher := func(log logger.Logger, ts *storage.TopicStorage) storage.RecordBatcher {
 		batchLogger := log.Name("blocking batcher")
-		return recordbatch.NewBlockingBatcher(batchLogger, blockTime, bytesSoftMax, func(b recordbatch.RecordBatch) error {
+		return recordbatch.NewBlockingBatcher(batchLogger, blockTime, bytesSoftMax, func(b recordbatch.RecordBatch) ([]uint64, error) {
 			t0 := time.Now()
-			err := ts.AddRecordBatch(b)
+			recordIDs, err := ts.AddRecordBatch(b)
 			batchLogger.Debugf("persisting to s3: %v", time.Since(t0))
-			return err
+			return recordIDs, err
 		})
 	}
 

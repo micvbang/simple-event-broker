@@ -74,13 +74,13 @@ func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir s
 	return storage, nil
 }
 
-func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error {
+func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, error) {
 	recordBatchID := s.nextRecordID
 
 	rbPath := RecordBatchPath(s.topicPath, recordBatchID)
 	backingWriter, err := s.backingStorage.Writer(rbPath)
 	if err != nil {
-		return fmt.Errorf("opening writer '%s': %w", rbPath, err)
+		return nil, fmt.Errorf("opening writer '%s': %w", rbPath, err)
 	}
 
 	w := backingWriter
@@ -91,7 +91,7 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error
 	t0 := time.Now()
 	err = recordbatch.Write(w, recordBatch)
 	if err != nil {
-		return fmt.Errorf("writing record batch: %w", err)
+		return nil, fmt.Errorf("writing record batch: %w", err)
 	}
 
 	if s.compress != nil {
@@ -101,8 +101,14 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error
 
 	s.log.Infof("wrote %d records (%d bytes) to %s (%s)", len(recordBatch), recordBatch.Size(), rbPath, time.Since(t0))
 
+	recordIDs := make([]uint64, 0, len(recordBatch))
+	nextRecordID := recordBatchID + uint64(len(recordBatch))
+	for i := recordBatchID; i < nextRecordID; i++ {
+		recordIDs = append(recordIDs, i)
+	}
+
 	s.recordBatchIDs = append(s.recordBatchIDs, recordBatchID)
-	s.nextRecordID = recordBatchID + uint64(len(recordBatch))
+	s.nextRecordID = nextRecordID
 
 	// TODO: it would be nice to remove this from the "fastpath"
 	// NOTE: we are intentionally not returning caching errors to caller. It's
@@ -112,7 +118,7 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error
 		cacheWtr, err := s.cache.Writer(rbPath)
 		if err != nil {
 			s.log.Errorf("creating cache writer to cache (%s): %w", rbPath, err)
-			return nil
+			return recordIDs, nil
 		}
 
 		err = recordbatch.Write(cacheWtr, recordBatch)
@@ -126,7 +132,7 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) error
 		}
 	}
 
-	return nil
+	return recordIDs, nil
 }
 
 func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {

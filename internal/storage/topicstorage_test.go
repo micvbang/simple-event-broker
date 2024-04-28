@@ -44,11 +44,13 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 		s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache, nil)
 		require.NoError(t, err)
 
-		recordBatch := tester.MakeRandomRecordBatch(5)
+		const recordBatchSize = 5
+		recordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
 
 		// Test
-		err = s.AddRecordBatch(recordBatch)
+		recordIDs, err := s.AddRecordBatch(recordBatch)
 		require.NoError(t, err)
+		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
 
 		// Verify
 		for recordID, record := range recordBatch {
@@ -81,11 +83,13 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 		recordBatch2 := tester.MakeRandomRecordBatch(3)
 
 		// Test
-		err = s.AddRecordBatch(recordBatch1)
+		b1RecordIDs, err := s.AddRecordBatch(recordBatch1)
 		require.NoError(t, err)
+		tester.RequireRecordIDs(t, 0, 5, b1RecordIDs)
 
-		err = s.AddRecordBatch(recordBatch2)
+		b2RecordIDs, err := s.AddRecordBatch(recordBatch2)
 		require.NoError(t, err)
+		tester.RequireRecordIDs(t, 5, 8, b2RecordIDs)
 
 		// Verify
 		for recordID, record := range append(recordBatch1, recordBatch2...) {
@@ -122,9 +126,15 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 			s1, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
 			require.NoError(t, err)
 
+			batchStartID := uint64(0)
 			for _, recordBatch := range recordBatches {
-				err = s1.AddRecordBatch(recordBatch)
+				batchEndID := batchStartID + uint64(len(recordBatch))
+
+				recordIDs, err := s1.AddRecordBatch(recordBatch)
 				require.NoError(t, err)
+				tester.RequireRecordIDs(t, batchStartID, batchEndID, recordIDs)
+
+				batchStartID += uint64(len(recordBatch))
 			}
 		}
 
@@ -168,8 +178,9 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 			s1, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
 			require.NoError(t, err)
 
-			err = s1.AddRecordBatch(recordBatch1)
+			recordIDs, err := s1.AddRecordBatch(recordBatch1)
 			require.NoError(t, err)
+			tester.RequireRecordIDs(t, 0, 1, recordIDs)
 		}
 
 		s2, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
@@ -177,8 +188,9 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 
 		// Test
 		recordBatch2 := tester.MakeRandomRecordBatch(1)
-		err = s2.AddRecordBatch(recordBatch2)
+		recordIDs, err := s2.AddRecordBatch(recordBatch2)
 		require.NoError(t, err)
+		tester.RequireRecordIDs(t, 1, 2, recordIDs)
 
 		// Verify
 		recordID := 0
@@ -213,11 +225,13 @@ func TestStorageCacheWrite(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedStorageDir := getStorageKey(storageDir, topicName, 0)
-		expectedRecordBatch := tester.MakeRandomRecordBatch(5)
+		const recordBatchSize = 5
+		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
 
 		// Act
-		err = s.AddRecordBatch(expectedRecordBatch)
+		recordIDs, err := s.AddRecordBatch(expectedRecordBatch)
 		require.NoError(t, err)
+		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
 
 		// Assert
 
@@ -247,9 +261,11 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, nil)
 		require.NoError(t, err)
 
-		expectedRecordBatch := tester.MakeRandomRecordBatch(5)
-		err = s.AddRecordBatch(expectedRecordBatch)
+		const recordBatchSize = 5
+		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
+		recordIDs, err := s.AddRecordBatch(expectedRecordBatch)
 		require.NoError(t, err)
+		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
 
 		// NOTE: in order to prove that we're reading from the cache and not from the
 		// backing storage, we're making the file in the backing storage zero bytes long.
@@ -283,9 +299,11 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, nil)
 		require.NoError(t, err)
 
-		expectedRecordBatch := tester.MakeRandomRecordBatch(5)
-		err = s.AddRecordBatch(expectedRecordBatch)
+		const recordBatchSize = 5
+		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
+		recordIDs, err := s.AddRecordBatch(expectedRecordBatch)
 		require.NoError(t, err)
+		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
 
 		// NOTE: in order to prove that we're reading from the backing storage and
 		// not from the cache, we're removing the file from the cache.
@@ -312,9 +330,11 @@ func TestStorageCompressFiles(t *testing.T) {
 		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, compressor)
 		require.NoError(t, err)
 
-		expectedRecordBatch := tester.MakeRandomRecordBatch(5)
-		err = s.AddRecordBatch(expectedRecordBatch)
+		const recordBatchSize = 5
+		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
+		recordIDs, err := s.AddRecordBatch(expectedRecordBatch)
 		require.NoError(t, err)
+		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
 
 		backingStorageReader, err := backingStorage.Reader(getStorageKey(storageDir, topicName, 0))
 		require.NoError(t, err)

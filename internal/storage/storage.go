@@ -9,7 +9,7 @@ import (
 )
 
 type RecordBatcher interface {
-	AddRecord(r recordbatch.Record) error
+	AddRecord(r recordbatch.Record) (uint64, error)
 }
 
 type topicBatcher struct {
@@ -48,17 +48,17 @@ func New(
 	}
 }
 
-func (s *Storage) AddRecord(topicName string, record recordbatch.Record) error {
+func (s *Storage) AddRecord(topicName string, record recordbatch.Record) (uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	err = tb.batcher.AddRecord(record)
+	recordID, err := tb.batcher.AddRecord(record)
 	if err != nil {
-		return fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
+		return 0, fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
 	}
-	return nil
+	return recordID, nil
 }
 
 func (s *Storage) GetRecord(topicName string, recordID uint64) (recordbatch.Record, error) {

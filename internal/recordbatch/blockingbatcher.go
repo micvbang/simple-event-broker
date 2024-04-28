@@ -7,9 +7,16 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
+type Persist func(RecordBatch) ([]uint64, error)
+
 type blockedAdd struct {
-	record Record
-	err    chan<- error
+	record   Record
+	response chan<- addResponse
+}
+
+type addResponse struct {
+	recordID uint64
+	err      error
 }
 
 type BlockingBatcher struct {
@@ -19,20 +26,20 @@ type BlockingBatcher struct {
 	contextFactory func() context.Context
 	callers        chan blockedAdd
 
-	persistRecordBatch func(RecordBatch) error
+	persist Persist
 }
 
-func NewBlockingBatcher(log logger.Logger, blockTime time.Duration, bytesSoftMax int, persistRecordBatch func(RecordBatch) error) *BlockingBatcher {
+func NewBlockingBatcher(log logger.Logger, blockTime time.Duration, bytesSoftMax int, persistRecordBatch Persist) *BlockingBatcher {
 	return NewBlockingBatcherWithConfig(log, bytesSoftMax, persistRecordBatch, NewContextFactory(blockTime))
 }
 
-func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persistRecordBatch func(RecordBatch) error, contextFactory func() context.Context) *BlockingBatcher {
+func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persist Persist, contextFactory func() context.Context) *BlockingBatcher {
 	b := &BlockingBatcher{
-		log:                log,
-		callers:            make(chan blockedAdd, 32),
-		contextFactory:     contextFactory,
-		persistRecordBatch: persistRecordBatch,
-		bytesSoftMax:       bytesSoftMax,
+		log:            log,
+		callers:        make(chan blockedAdd, 32),
+		contextFactory: contextFactory,
+		persist:        persist,
+		bytesSoftMax:   bytesSoftMax,
 	}
 
 	// NOTE: this goroutine is never stopped
@@ -48,16 +55,17 @@ func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persistRe
 // contextFactory() has expired, or bytesSoftMax has been reached. Beware of
 // long-lived contexts returned by contextFactory(); AddRecord() could block all
 // callers until the context expires.
-func (b *BlockingBatcher) AddRecord(r Record) error {
-	errCh := make(chan error)
+func (b *BlockingBatcher) AddRecord(r Record) (uint64, error) {
+	responses := make(chan addResponse)
 
 	b.callers <- blockedAdd{
-		err:    errCh,
-		record: r,
+		response: responses,
+		record:   r,
 	}
 
 	// block caller until record has been peristed (or persisting failed)
-	return <-errCh
+	response := <-responses
+	return response.recordID, response.err
 }
 
 func (b *BlockingBatcher) collectBatches() {
@@ -100,21 +108,25 @@ func (b *BlockingBatcher) collectBatches() {
 				}
 
 				// block until recordBatch is persisted or persisting failed
-				err := b.persistRecordBatch(recordBatch)
+				recordIDs, err := b.persist(recordBatch)
 				b.log.Debugf("%d records persisted (err: %v)", len(recordBatch), err)
 				if err != nil {
 					b.log.Debugf("reporting error to %d waiting callers", len(recordBatch))
-					for _, handledAdd := range blockedCallers {
-						handledAdd.err <- err
-					}
+
+					// recordIDs should be 0 in all responses
+					recordIDs = make([]uint64, len(recordBatch))
 				}
 
 				// unblock callers
-				for _, blockedCaller := range blockedCallers {
-					close(blockedCaller.err)
+				for i, blockedCaller := range blockedCallers {
+					blockedCaller.response <- addResponse{
+						recordID: recordIDs[i],
+						err:      err,
+					}
+					close(blockedCaller.response)
 				}
 
-				b.log.Debugf("done reporting results ")
+				b.log.Debugf("done reporting results")
 				break innerLoop
 			}
 		}

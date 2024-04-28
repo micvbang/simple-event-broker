@@ -30,8 +30,12 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		return ctx
 	}
 
-	persistRecordBatch := func(rb recordbatch.RecordBatch) error {
-		return returnedErr
+	persistRecordBatch := func(rb recordbatch.RecordBatch) ([]uint64, error) {
+		if returnedErr != nil {
+			return nil, returnedErr
+		}
+
+		return make([]uint64, len(rb)), returnedErr
 	}
 
 	tests := map[string]struct {
@@ -53,7 +57,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 			returnedErr = test.expected
 
 			// Test
-			got := batcher.AddRecord(recordbatch.Record{})
+			_, got := batcher.AddRecord(recordbatch.Record{})
 
 			// Verify
 			require.ErrorIs(t, got, test.expected)
@@ -73,9 +77,9 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 
 	blockPersistRecordBatch := make(chan struct{})
 	returnedErr := fmt.Errorf("all is on fire!")
-	persistRecordBatch := func(rb recordbatch.RecordBatch) error {
+	persistRecordBatch := func(rb recordbatch.RecordBatch) ([]uint64, error) {
 		<-blockPersistRecordBatch
-		return returnedErr
+		return nil, returnedErr
 	}
 
 	batcher := recordbatch.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
@@ -93,7 +97,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 			defer wg.Done()
 
 			// Test
-			got := batcher.AddRecord(recordBatch)
+			_, got := batcher.AddRecord(recordBatch)
 			addReturned.Store(true)
 
 			// Verify
@@ -115,7 +119,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 	close(blockPersistRecordBatch)
 
 	// wait for persistRecordBatch() return value to propagate to AddRecord() callers
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	require.True(t, addReturned.Load())
 
@@ -133,8 +137,8 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 		return ctx
 	}
 
-	persistRecordBatch := func(rb recordbatch.RecordBatch) error {
-		return nil
+	persistRecordBatch := func(rb recordbatch.RecordBatch) ([]uint64, error) {
+		return make([]uint64, len(rb)), nil
 	}
 
 	const bytesSoftMax = 10
@@ -150,7 +154,7 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			err := batcher.AddRecord([]byte("1"))
+			_, err := batcher.AddRecord([]byte("1"))
 			require.NoError(t, err)
 
 			addReturned.Store(true)
@@ -164,7 +168,7 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 	require.False(t, addReturned.Load())
 
 	// add a record hitting the soft max, expecting it to be persisted
-	err := batcher.AddRecord([]byte("1"))
+	_, err := batcher.AddRecord([]byte("1"))
 	require.NoError(t, err)
 
 	// wait for persistRecordBatch() return value to propagate to AddRecord() callers
