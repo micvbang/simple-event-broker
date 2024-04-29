@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
+	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
 )
@@ -14,15 +16,26 @@ import (
 // TestAddRecordHappyPath verifies that http.StatusCreated is returned for a
 // valid request to POST /record.
 func TestAddRecordHappyPath(t *testing.T) {
+	const topicName = "topic"
+
+	// add record s.t. returned record id in HTTP response is not 0 (default value)
+	server := tester.HTTPServer(t)
+	_, err := server.Storage.AddRecord(topicName, recordbatch.Record("haps"))
+	require.NoError(t, err)
+
 	r := httptest.NewRequest("POST", "/record", bytes.NewReader(nil))
 	httphelpers.AddQueryParams(r, map[string]string{
-		"topic-name": "topic",
+		"topic-name": topicName,
 	})
 
-	response := tester.HTTPServer(t).DoWithAuth(t, r)
-	// response := srv.DoWithAuth(t, r)
-	// response := tester.HTTPRequestWitAuth(t, r)
+	response := server.DoWithAuth(t, r)
 	require.Equal(t, http.StatusCreated, response.StatusCode)
+
+	output := httphandlers.AddRecordOutput{}
+	err = httphelpers.ParseJSONAndClose(response.Body, &output)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(1), output.RecordID)
 }
 
 // Verifies that http.BadRequest is returned when leaving out the required
