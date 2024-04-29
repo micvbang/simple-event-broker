@@ -28,7 +28,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 		"topic-name": topicName,
 	})
 
-	response := server.DoWithAuth(t, r)
+	response := server.DoWithAuth(r)
 	require.Equal(t, http.StatusCreated, response.StatusCode)
 
 	output := httphandlers.AddRecordOutput{}
@@ -46,6 +46,6 @@ func TestAddRecordMissingTopic(t *testing.T) {
 		// NOTE: no topic-name set
 	})
 
-	response := tester.HTTPServer(t).DoWithAuth(t, r)
+	response := tester.HTTPServer(t).DoWithAuth(r)
 	require.Equal(t, http.StatusBadRequest, response.StatusCode)
 }

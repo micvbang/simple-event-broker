@@ -24,11 +24,11 @@ type HTTPTestServer struct {
 	Storage *storage.Storage
 }
 
-func (s *HTTPTestServer) Do(t *testing.T, r *http.Request) *http.Response {
+func (s *HTTPTestServer) Do(r *http.Request) *http.Response {
 	return s.do(r, false)
 }
 
-func (s *HTTPTestServer) DoWithAuth(t *testing.T, r *http.Request) *http.Response {
+func (s *HTTPTestServer) DoWithAuth(r *http.Request) *http.Response {
 	return s.do(r, true)
 }
 

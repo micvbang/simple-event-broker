@@ -53,7 +53,7 @@ func TestGetRecordExistence(t *testing.T) {
 			})
 
 			// Act
-			response := server.DoWithAuth(t, r)
+			response := server.DoWithAuth(r)
 
 			// Assert
 			require.Equal(t, test.statusCode, response.StatusCode)
