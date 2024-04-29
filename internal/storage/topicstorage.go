@@ -6,6 +6,8 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/micvbang/go-helpy/uint64y"
@@ -30,9 +32,11 @@ type Compress interface {
 }
 
 type TopicStorage struct {
-	log            logger.Logger
-	topicPath      string
-	nextRecordID   uint64
+	log          logger.Logger
+	topicPath    string
+	nextRecordID atomic.Uint64
+
+	mu             sync.Mutex
 	recordBatchIDs []uint64
 
 	backingStorage BackingStorage
@@ -67,14 +71,18 @@ func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir s
 		if err != nil {
 			return nil, fmt.Errorf("reading record batch header: %w", err)
 		}
-		storage.nextRecordID = newestRecordBatchID + uint64(parser.Header.NumRecords)
+		storage.nextRecordID.Store(newestRecordBatchID + uint64(parser.Header.NumRecords))
 	}
 
 	return storage, nil
 }
 
+// AddRecordBatch writes recordBatch to the topic's backing storage and returns
+// the ids of the newly added records in the same order as the records were given.
+// NOTE: AddRecordBatch is NOT thread safe. It's up to the caller to ensure that
+// this is not called concurrently.
 func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, error) {
-	recordBatchID := s.nextRecordID
+	recordBatchID := s.nextRecordID.Load()
 
 	rbPath := RecordBatchPath(s.topicPath, recordBatchID)
 	backingWriter, err := s.backingStorage.Writer(rbPath)
@@ -99,18 +107,26 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]ui
 	if s.compress != nil {
 		w.Close()
 	}
+	// once Close() returns, the data has been committed (stored in backing storage)
+	// and can be found
 	backingWriter.Close()
+
+	nextRecordID := recordBatchID + uint64(len(recordBatch))
 
 	s.log.Infof("wrote %d records (%d bytes) to %s (%s)", len(recordBatch), recordBatch.Size(), rbPath, time.Since(t0))
 
 	recordIDs := make([]uint64, 0, len(recordBatch))
-	nextRecordID := recordBatchID + uint64(len(recordBatch))
 	for i := recordBatchID; i < nextRecordID; i++ {
 		recordIDs = append(recordIDs, i)
 	}
 
+	// once Store() returns, the newly added records are visible in
+	// ReadRecord(). NOTE: recordBatchIDs must also have been updated before
+	// this is true.
+	s.mu.Lock()
 	s.recordBatchIDs = append(s.recordBatchIDs, recordBatchID)
-	s.nextRecordID = nextRecordID
+	s.mu.Unlock()
+	s.nextRecordID.Store(nextRecordID)
 
 	// TODO: it would be nice to remove this from the "fastpath"
 	// NOTE: we are intentionally not returning caching errors to caller. It's
@@ -138,10 +154,11 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]ui
 }
 
 func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
-	if recordID >= s.nextRecordID {
+	if recordID >= s.nextRecordID.Load() {
 		return nil, fmt.Errorf("record ID does not exist: %w", ErrOutOfBounds)
 	}
 
+	s.mu.Lock()
 	var recordBatchID uint64
 	for i := len(s.recordBatchIDs) - 1; i >= 0; i-- {
 		curBatchID := s.recordBatchIDs[i]
@@ -150,6 +167,7 @@ func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
 			break
 		}
 	}
+	s.mu.Unlock()
 
 	rb, err := s.parseRecordBatch(recordBatchID)
 	if err != nil {
