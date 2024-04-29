@@ -16,6 +16,14 @@ func WriteJSON(w http.ResponseWriter, v interface{}) error {
 	return WriteJSONRaw(w, bs)
 }
 
+// WriteJSONWithStatusCode sets statusCode and writes JSON marshalled v to w.
+func WriteJSONWithStatusCode(w http.ResponseWriter, statusCode int, v any) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	return WriteJSON(w, v)
+}
+
 // WriteJSONRaw writes raw json ([]byte) to w.
 func WriteJSONRaw(w http.ResponseWriter, bs []byte) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -36,10 +44,5 @@ func ParseJSONAndClose(r io.ReadCloser, v interface{}) error {
 		return err
 	}
 
-	err = json.Unmarshal(buf, v)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return json.Unmarshal(buf, v)
 }

@@ -45,8 +45,7 @@ func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
 			return
 		}
 
-		w.WriteHeader(http.StatusCreated)
-		err = httphelpers.WriteJSON(w, AddRecordOutput{
+		err = httphelpers.WriteJSONWithStatusCode(w, http.StatusCreated, AddRecordOutput{
 			RecordID: recordID,
 		})
 		if err != nil {

@@ -30,6 +30,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 
 	response := server.DoWithAuth(r)
 	require.Equal(t, http.StatusCreated, response.StatusCode)
+	require.Equal(t, "application/json", response.Header.Get("Content-Type"))
 
 	output := httphandlers.AddRecordOutput{}
 	err = httphelpers.ParseJSONAndClose(response.Body, &output)
