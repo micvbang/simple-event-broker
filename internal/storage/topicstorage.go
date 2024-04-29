@@ -181,6 +181,11 @@ func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
 	return record, nil
 }
 
+// EndRecordID returns the topic's largest record id (most recent record added).
+func (s *TopicStorage) EndRecordID() uint64 {
+	return s.nextRecordID.Load()
+}
+
 func (s *TopicStorage) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, error) {
 	recordBatchPath := s.recordBatchPath(recordBatchID)
 	f, err := s.cache.Reader(recordBatchPath)

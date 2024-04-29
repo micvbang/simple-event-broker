@@ -364,6 +364,36 @@ func TestStorageCompressFiles(t *testing.T) {
 	})
 }
 
+// TestTopicStorageEndRecordID verifies that EndRecordID returns the record id
+// of the next record that is added, i.e. the id of most-recently-added+1.
+func TestTopicStorageEndRecordID(t *testing.T) {
+	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
+		storageDir := tester.TempDir(t)
+		const topicName = "topicName"
+		compressor := storage.Gzip{}
+		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, compressor)
+		require.NoError(t, err)
+
+		// no record added yet, next id should be 0
+		recordID := s.EndRecordID()
+		require.Equal(t, uint64(0), recordID)
+
+		nextRecordID := uint64(0)
+		for range 10 {
+			recordBatch := tester.MakeRandomRecordBatch(1 + inty.RandomN(10))
+			recordIDs, err := s.AddRecordBatch(recordBatch)
+			require.NoError(t, err)
+			tester.RequireRecordIDs(t, nextRecordID, nextRecordID+uint64(len(recordBatch)), recordIDs)
+
+			nextRecordID += uint64(len(recordBatch))
+
+			// Act, Assert
+			recordID := s.EndRecordID()
+			require.Equal(t, nextRecordID, recordID)
+		}
+	})
+}
+
 func getStorageKey(storageDir string, topicName string, recordID uint64) string {
 	return path.Join(storageDir, storage.RecordBatchPath(topicName, recordID))
 }

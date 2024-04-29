@@ -70,6 +70,16 @@ func (s *Storage) GetRecord(topicName string, recordID uint64) (recordbatch.Reco
 	return tb.storage.ReadRecord(recordID)
 }
 
+// EndRecordID returns the most recent record id
+func (s *Storage) EndRecordID(topicName string) (uint64, error) {
+	tb, err := s.getTopicBatcher(topicName)
+	if err != nil {
+		return 0, err
+	}
+
+	return tb.storage.EndRecordID(), nil
+}
+
 func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 	log := s.log.WithField("topicName", topicName)
 
