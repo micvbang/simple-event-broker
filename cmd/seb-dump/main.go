@@ -35,14 +35,13 @@ func main() {
 
 	diskTopicStorage := storage.NewDiskTopicStorage(log)
 
-	// TODO: make compress configurable
-	topicStorage, err := storage.NewTopicStorage(log, diskTopicStorage, rootDir, topicName, cache, storage.Gzip{})
+	topic, err := storage.NewTopic(log, diskTopicStorage, rootDir, topicName, cache, storage.Gzip{})
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}
 
 	for i := flags.startFromRecordID; i < flags.startFromRecordID+flags.numRecords; i++ {
-		record, err := topicStorage.ReadRecord(uint64(i))
+		record, err := topic.ReadRecord(uint64(i))
 		if err != nil {
 			if errors.Is(err, storage.ErrOutOfBounds) {
 				fmt.Printf("out of bounds\n")

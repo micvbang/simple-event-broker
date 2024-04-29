@@ -15,13 +15,13 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
+// S3TopicStorage is an Amazon S3 backing storage that can be used in Topic.
 type S3TopicStorage struct {
 	log        logger.Logger
 	s3         s3iface.S3API
 	bucketName string
 }
 
-// NewS3TopicStorage returns a *TopicStorage that stores data in AWS S3.
 func NewS3TopicStorage(log logger.Logger, s3 s3iface.S3API, bucketName string) *S3TopicStorage {
 	return &S3TopicStorage{
 		log:        log,

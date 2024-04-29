@@ -8,12 +8,13 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
+// MemoryTopicStorage is an in-memory backing storage that can be used in Topic.
+// It is mostly useful for testing.
 type MemoryTopicStorage struct {
 	mu      sync.Mutex
 	storage map[string]*bytes.Buffer
 }
 
-// NewMemoryTopicStorage returns a *TopicStorage that stores its data in memory
 func NewMemoryTopicStorage(log logger.Logger) *MemoryTopicStorage {
 	return &MemoryTopicStorage{
 		storage: make(map[string]*bytes.Buffer, 64),

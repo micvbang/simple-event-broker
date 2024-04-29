@@ -23,7 +23,7 @@ func TestStorageEmpty(t *testing.T) {
 	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
 		tempDir := tester.TempDir(t)
 
-		s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache, nil)
+		s, err := storage.NewTopic(log, backingStorage, tempDir, "mytopic", cache, nil)
 		require.NoError(t, err)
 
 		// Test
@@ -41,7 +41,7 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
 		tempDir := tester.TempDir(t)
 
-		s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache, nil)
+		s, err := storage.NewTopic(log, backingStorage, tempDir, "mytopic", cache, nil)
 		require.NoError(t, err)
 
 		const recordBatchSize = 5
@@ -76,7 +76,7 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
 		tempDir := tester.TempDir(t)
 
-		s, err := storage.NewTopicStorage(log, backingStorage, tempDir, "mytopic", cache, nil)
+		s, err := storage.NewTopic(log, backingStorage, tempDir, "mytopic", cache, nil)
 		require.NoError(t, err)
 
 		recordBatch1 := tester.MakeRandomRecordBatch(5)
@@ -123,7 +123,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 		{
 			cache, err := storage.NewCache(log, storage.NewMemoryCache(log))
 			require.NoError(t, err)
-			s1, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
+			s1, err := storage.NewTopic(log, backingStorage, tempDir, topicName, cache, nil)
 			require.NoError(t, err)
 
 			batchStartID := uint64(0)
@@ -139,7 +139,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 		}
 
 		// Test
-		s2, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
+		s2, err := storage.NewTopic(log, backingStorage, tempDir, topicName, cache, nil)
 		require.NoError(t, err)
 
 		// Verify
@@ -164,7 +164,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 // initializes from a topic that already exists, and can correctly append
 // records to it.
 // NOTE: this is a regression test that handles an off by one error in
-// NewTopicStorage().
+// NewTopic().
 func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
 		const topicName = "my_topic"
@@ -175,7 +175,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 		{
 			cache, err := storage.NewCache(log, storage.NewMemoryCache(log))
 			require.NoError(t, err)
-			s1, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
+			s1, err := storage.NewTopic(log, backingStorage, tempDir, topicName, cache, nil)
 			require.NoError(t, err)
 
 			recordIDs, err := s1.AddRecordBatch(recordBatch1)
@@ -183,7 +183,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 			tester.RequireRecordIDs(t, 0, 1, recordIDs)
 		}
 
-		s2, err := storage.NewTopicStorage(log, backingStorage, tempDir, topicName, cache, nil)
+		s2, err := storage.NewTopic(log, backingStorage, tempDir, topicName, cache, nil)
 		require.NoError(t, err)
 
 		// Test
@@ -221,7 +221,7 @@ func TestStorageCacheWrite(t *testing.T) {
 		cache, err := storage.NewCache(log, cacheStorage)
 		require.NoError(t, err)
 
-		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, nil)
+		s, err := storage.NewTopic(log, backingStorage, storageDir, topicName, cache, nil)
 		require.NoError(t, err)
 
 		expectedStorageDir := getStorageKey(storageDir, topicName, 0)
@@ -258,7 +258,7 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 
 		storageDir := tester.TempDir(t)
 
-		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, nil)
+		s, err := storage.NewTopic(log, backingStorage, storageDir, topicName, cache, nil)
 		require.NoError(t, err)
 
 		const recordBatchSize = 5
@@ -296,7 +296,7 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 		cache, err := storage.NewCache(log, cacheStorage)
 		require.NoError(t, err)
 
-		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, nil)
+		s, err := storage.NewTopic(log, backingStorage, storageDir, topicName, cache, nil)
 		require.NoError(t, err)
 
 		const recordBatchSize = 5
@@ -321,7 +321,7 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 	})
 }
 
-// TestStorageCompressFiles verifies that TopicStorage uses the given Compressor
+// TestStorageCompressFiles verifies that Topic uses the given Compressor
 // to seemlessly compresses and decompresses files when they're written to the
 // backing storage.
 func TestStorageCompressFiles(t *testing.T) {
@@ -330,7 +330,7 @@ func TestStorageCompressFiles(t *testing.T) {
 		storageDir := tester.TempDir(t)
 
 		compressor := storage.Gzip{}
-		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, compressor)
+		s, err := storage.NewTopic(log, backingStorage, storageDir, topicName, cache, compressor)
 		require.NoError(t, err)
 
 		const recordBatchSize = 5
@@ -364,14 +364,14 @@ func TestStorageCompressFiles(t *testing.T) {
 	})
 }
 
-// TestTopicStorageEndRecordID verifies that EndRecordID returns the record id
-// of the next record that is added, i.e. the id of most-recently-added+1.
-func TestTopicStorageEndRecordID(t *testing.T) {
+// TestTopicEndRecordID verifies that EndRecordID returns the record id of the
+// next record that is added, i.e. the id of most-recently-added+1.
+func TestTopicEndRecordID(t *testing.T) {
 	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
 		storageDir := tester.TempDir(t)
 		const topicName = "topicName"
 		compressor := storage.Gzip{}
-		s, err := storage.NewTopicStorage(log, backingStorage, storageDir, topicName, cache, compressor)
+		s, err := storage.NewTopic(log, backingStorage, storageDir, topicName, cache, compressor)
 		require.NoError(t, err)
 
 		// no record added yet, next id should be 0

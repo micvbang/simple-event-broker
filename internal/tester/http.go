@@ -64,16 +64,16 @@ func httpServer(t *testing.T, apiKey string) *HTTPTestServer {
 	cache, err := storage.NewCache(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 
-	topicStorage := func(log logger.Logger, topicName string) (*storage.TopicStorage, error) {
+	topic := func(log logger.Logger, topicName string) (*storage.Topic, error) {
 		memoryTopicStorage := storage.NewMemoryTopicStorage(log)
-		return storage.NewTopicStorage(log, memoryTopicStorage, "", topicName, cache, nil)
+		return storage.NewTopic(log, memoryTopicStorage, "", topicName, cache, nil)
 	}
 
-	batcher := func(l logger.Logger, ts *storage.TopicStorage) storage.RecordBatcher {
+	batcher := func(l logger.Logger, ts *storage.Topic) storage.RecordBatcher {
 		return recordbatch.NewNullBatcher(ts.AddRecordBatch)
 	}
 
-	storage := storage.New(log, topicStorage, batcher)
+	storage := storage.New(log, topic, batcher)
 	sebhttp.RegisterRoutes(log, mux, storage, apiKey)
 
 	return &HTTPTestServer{

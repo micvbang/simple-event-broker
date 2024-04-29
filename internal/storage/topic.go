@@ -31,7 +31,7 @@ type Compress interface {
 	NewReader(io.Reader) (io.ReadCloser, error)
 }
 
-type TopicStorage struct {
+type Topic struct {
 	log          logger.Logger
 	topicPath    string
 	nextRecordID atomic.Uint64
@@ -44,7 +44,7 @@ type TopicStorage struct {
 	compress       Compress
 }
 
-func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir string, topicName string, cache *Cache, compress Compress) (*TopicStorage, error) {
+func NewTopic(log logger.Logger, backingStorage BackingStorage, rootDir string, topicName string, cache *Cache, compress Compress) (*Topic, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache required")
 	}
@@ -56,7 +56,7 @@ func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir s
 		return nil, fmt.Errorf("listing record batches: %w", err)
 	}
 
-	storage := &TopicStorage{
+	storage := &Topic{
 		log:            log.WithField("topic-name", topicName),
 		backingStorage: backingStorage,
 		topicPath:      topicPath,
@@ -81,7 +81,7 @@ func NewTopicStorage(log logger.Logger, backingStorage BackingStorage, rootDir s
 // the ids of the newly added records in the same order as the records were given.
 // NOTE: AddRecordBatch is NOT thread safe. It's up to the caller to ensure that
 // this is not called concurrently.
-func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, error) {
+func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, error) {
 	recordBatchID := s.nextRecordID.Load()
 
 	rbPath := RecordBatchPath(s.topicPath, recordBatchID)
@@ -153,7 +153,7 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]ui
 	return recordIDs, nil
 }
 
-func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
+func (s *Topic) ReadRecord(recordID uint64) (recordbatch.Record, error) {
 	if recordID >= s.nextRecordID.Load() {
 		return nil, fmt.Errorf("record ID does not exist: %w", ErrOutOfBounds)
 	}
@@ -182,11 +182,11 @@ func (s *TopicStorage) ReadRecord(recordID uint64) (recordbatch.Record, error) {
 }
 
 // EndRecordID returns the topic's largest record id (most recent record added).
-func (s *TopicStorage) EndRecordID() uint64 {
+func (s *Topic) EndRecordID() uint64 {
 	return s.nextRecordID.Load()
 }
 
-func (s *TopicStorage) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, error) {
+func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, error) {
 	recordBatchPath := s.recordBatchPath(recordBatchID)
 	f, err := s.cache.Reader(recordBatchPath)
 	if err != nil {
@@ -237,7 +237,7 @@ func (s *TopicStorage) parseRecordBatch(recordBatchID uint64) (*recordbatch.Pars
 	return rb, nil
 }
 
-func (s *TopicStorage) recordBatchPath(recordBatchID uint64) string {
+func (s *Topic) recordBatchPath(recordBatchID uint64) string {
 	return RecordBatchPath(s.topicPath, recordBatchID)
 }
 

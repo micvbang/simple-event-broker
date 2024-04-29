@@ -77,14 +77,14 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, bytesSoftMax
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
-	s3TopicStorage := func(log logger.Logger, topicName string) (*storage.TopicStorage, error) {
+	s3Topic := func(log logger.Logger, topicName string) (*storage.Topic, error) {
 		storageLogger := log.Name("s3 storage").WithField("topic-name", topicName)
 		s3Storage := storage.NewS3TopicStorage(storageLogger, s3.New(session), s3BucketName)
 
-		return storage.NewTopicStorage(log, s3Storage, "", topicName, cache, storage.Gzip{})
+		return storage.NewTopic(log, s3Storage, "", topicName, cache, storage.Gzip{})
 	}
 
-	blockingBatcher := func(log logger.Logger, ts *storage.TopicStorage) storage.RecordBatcher {
+	blockingBatcher := func(log logger.Logger, ts *storage.Topic) storage.RecordBatcher {
 		batchLogger := log.Name("blocking batcher")
 		return recordbatch.NewBlockingBatcher(batchLogger, blockTime, bytesSoftMax, func(b recordbatch.RecordBatch) ([]uint64, error) {
 			t0 := time.Now()
@@ -94,7 +94,7 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, bytesSoftMax
 		})
 	}
 
-	return storage.New(log.Name("storage"), s3TopicStorage, blockingBatcher), nil
+	return storage.New(log.Name("storage"), s3Topic, blockingBatcher), nil
 }
 
 type flags struct {
