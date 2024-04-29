@@ -50,6 +50,7 @@ func TestGetTopicHappyPath(t *testing.T) {
 			err := httphelpers.ParseJSONAndClose(response.Body, &output)
 			require.NoError(t, err)
 			require.Equal(t, test.recordID, output.RecordID)
+			require.Equal(t, "application/json", response.Header.Get("Content-Type"))
 		})
 	}
 }

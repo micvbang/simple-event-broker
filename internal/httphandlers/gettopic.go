@@ -42,7 +42,9 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 			log.Errorf("reading record: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "failed to read record '%d': %s", recordID, err)
+			return
 		}
+
 		httphelpers.WriteJSON(w, &GetTopicOutput{
 			RecordID: recordID,
 		})
