@@ -46,6 +46,7 @@ func (c *RecordClient) Add(topicName string, record []byte) error {
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}
+	defer res.Body.Close()
 
 	err = c.statusCode(res)
 	if err != nil {
