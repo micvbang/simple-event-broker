@@ -28,7 +28,7 @@ type Cache struct {
 	cacheItems map[string]cacheItem
 }
 
-func NewCacheDefault(log logger.Logger, cacheStorage CacheStorage) (*Cache, error) {
+func NewCache(log logger.Logger, cacheStorage CacheStorage) (*Cache, error) {
 	return NewCacheWithNow(log, cacheStorage, time.Now)
 }
 

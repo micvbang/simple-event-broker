@@ -61,7 +61,7 @@ func httpServer(t *testing.T, apiKey string) *HTTPTestServer {
 	log := logger.NewDefault(context.Background())
 	mux := http.NewServeMux()
 
-	cache, err := storage.NewCacheDefault(log, storage.NewMemoryCache(log))
+	cache, err := storage.NewCache(log, storage.NewMemoryCache(log))
 	require.NoError(t, err)
 
 	topicStorage := func(log logger.Logger, topicName string) (*storage.TopicStorage, error) {

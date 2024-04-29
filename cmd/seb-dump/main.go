@@ -28,7 +28,7 @@ func main() {
 	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromRecordID, flags.startFromRecordID+flags.numRecords-1, topicName)
 
 	cacheStorage := storage.NewMemoryCache(log.Name("disk cache"))
-	cache, err := storage.NewCacheDefault(log, cacheStorage)
+	cache, err := storage.NewCache(log, cacheStorage)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}

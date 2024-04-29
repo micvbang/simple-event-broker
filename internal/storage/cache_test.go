@@ -89,7 +89,7 @@ func TestCacheEvictLeastRecentlyUsed(t *testing.T) {
 // number of bytes, potentially evicting more than one item per call.
 func TestCacheEvictLeastRecentlyUsedMaxBytes(t *testing.T) {
 	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
-		c, err := storage.NewCacheDefault(log, cacheStorage)
+		c, err := storage.NewCache(log, cacheStorage)
 		require.NoError(t, err)
 
 		bs := tester.RandomBytes(t, 10)
@@ -141,7 +141,7 @@ func TestCacheEvictLeastRecentlyEmptyCache(t *testing.T) {
 // when attempting to read a file from cache that does not exist.
 func TestCacheReaderFileNotCached(t *testing.T) {
 	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
-		c, err := storage.NewCacheDefault(log, cacheStorage)
+		c, err := storage.NewCache(log, cacheStorage)
 		require.NoError(t, err)
 
 		// Act, assert
@@ -153,7 +153,7 @@ func TestCacheReaderFileNotCached(t *testing.T) {
 // TestCacheSize verifies that Size() returns the expected number of bytes.
 func TestCacheSize(t *testing.T) {
 	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
-		c, err := storage.NewCacheDefault(log, cacheStorage)
+		c, err := storage.NewCache(log, cacheStorage)
 		require.NoError(t, err)
 
 		expectedSize := 0
@@ -180,7 +180,7 @@ func TestCacheSizeWithExistingFiles(t *testing.T) {
 	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
 		expectedSize := 0
 		{
-			c1, err := storage.NewCacheDefault(log, cacheStorage)
+			c1, err := storage.NewCache(log, cacheStorage)
 			require.NoError(t, err)
 
 			for i := 0; i < 10; i++ {
@@ -197,7 +197,7 @@ func TestCacheSizeWithExistingFiles(t *testing.T) {
 		}
 
 		// Act
-		c2, err := storage.NewCacheDefault(log, cacheStorage)
+		c2, err := storage.NewCache(log, cacheStorage)
 		require.NoError(t, err)
 
 		// Assert
@@ -224,7 +224,7 @@ func TestCacheSizeWithExistingFiles(t *testing.T) {
 // bytes when items in the cache are overwritten.
 func TestCacheSizeOverwriteItem(t *testing.T) {
 	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
-		c, err := storage.NewCacheDefault(log, cacheStorage)
+		c, err := storage.NewCache(log, cacheStorage)
 		require.NoError(t, err)
 
 		itemsToCache := [][]byte{

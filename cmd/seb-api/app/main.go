@@ -27,7 +27,7 @@ func Run() {
 	log.Debugf("flags: %v", flags)
 
 	cacheStorage := storage.NewDiskCache(log.Name("disk cache"), flags.cacheDir)
-	cache, err := storage.NewCacheDefault(log, cacheStorage)
+	cache, err := storage.NewCache(log, cacheStorage)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}

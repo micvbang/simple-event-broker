@@ -56,7 +56,7 @@ func TestBackingStorageAndCache(t *testing.T, f func(*testing.T, storage.Backing
 	for storageName, backingStorageFactory := range storageFactories {
 		for cacheName, cacheStorageFactory := range cacheStorageFactories {
 			t.Run(fmt.Sprintf("storage:%s/cache:%s", storageName, cacheName), func(t *testing.T) {
-				cache, err := storage.NewCacheDefault(log, cacheStorageFactory(t))
+				cache, err := storage.NewCache(log, cacheStorageFactory(t))
 				require.NoError(t, err)
 
 				f(t, backingStorageFactory(), cache)
