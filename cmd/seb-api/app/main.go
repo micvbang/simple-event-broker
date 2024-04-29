@@ -134,6 +134,7 @@ func parseFlags() flags {
 
 	err := fs.Parse(os.Args[1:])
 	if err != nil {
+		fmt.Println(err.Error())
 		fs.Usage()
 		os.Exit(1)
 	}
