@@ -8,7 +8,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/klauspost/compress/gzip"
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
@@ -85,7 +84,10 @@ func (s *TopicStorage) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]ui
 
 	w := backingWriter
 	if s.compress != nil {
-		w = gzip.NewWriter(backingWriter)
+		w, err = s.compress.NewWriter(backingWriter)
+		if err != nil {
+			return nil, fmt.Errorf("creating compression writer: %w", err)
+		}
 	}
 
 	t0 := time.Now()
@@ -176,9 +178,9 @@ func (s *TopicStorage) parseRecordBatch(recordBatchID uint64) (*recordbatch.Pars
 
 		r := backingReader
 		if s.compress != nil {
-			r, err = gzip.NewReader(backingReader)
+			r, err = s.compress.NewReader(backingReader)
 			if err != nil {
-				return nil, fmt.Errorf("creating gzip reader: %w", err)
+				return nil, fmt.Errorf("creating compression reader: %w", err)
 			}
 		}
 

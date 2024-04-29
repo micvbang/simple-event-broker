@@ -287,7 +287,7 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 // TestStorageCacheReadFileNotInCache verifies that ReadRecord can fetch record
 // batches from the backing storage if it's not in the cache.
 func TestStorageCacheReadFileNotInCache(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
+	tester.TestBackingStorage(t, func(t *testing.T, backingStorage storage.BackingStorage) {
 		const topicName = "my_topic"
 
 		storageDir := tester.TempDir(t)
@@ -321,6 +321,9 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 	})
 }
 
+// TestStorageCompressFiles verifies that TopicStorage uses the given Compressor
+// to seemlessly compresses and decompresses files when they're written to the
+// backing storage.
 func TestStorageCompressFiles(t *testing.T) {
 	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
 		const topicName = "topicName"

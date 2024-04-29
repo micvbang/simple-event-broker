@@ -36,6 +36,18 @@ func TestCacheStorage(t *testing.T, f func(*testing.T, storage.CacheStorage)) {
 	}
 }
 
+// TestCacheStorage makes it easy to test all storage.BackingStorage
+// implementations in the same test.
+func TestBackingStorage(t *testing.T, f func(*testing.T, storage.BackingStorage)) {
+	t.Helper()
+
+	for storageName, backingStorageFactory := range storageFactories {
+		t.Run(fmt.Sprintf("storage:%s", storageName), func(t *testing.T) {
+			f(t, backingStorageFactory())
+		})
+	}
+}
+
 // TestBackingStorageAndCache makes it easy to test all storage.BackingStorage
 // and storage.CacheStorage implementations in the same test.
 func TestBackingStorageAndCache(t *testing.T, f func(*testing.T, storage.BackingStorage, *storage.Cache)) {
