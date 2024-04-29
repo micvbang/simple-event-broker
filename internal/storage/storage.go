@@ -98,8 +98,8 @@ func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 			batcher: batcher,
 			storage: topicStorage,
 		}
+		s.topicBatcher[topicName] = tb
 	}
-	s.topicBatcher[topicName] = tb
 
 	return tb, nil
 }
