@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -20,13 +21,15 @@ type S3TopicStorage struct {
 	log        logger.Logger
 	s3         s3iface.S3API
 	bucketName string
+	keyPrefix  string
 }
 
-func NewS3TopicStorage(log logger.Logger, s3 s3iface.S3API, bucketName string) *S3TopicStorage {
+func NewS3TopicStorage(log logger.Logger, s3 s3iface.S3API, bucketName string, keyPrefix string) *S3TopicStorage {
 	return &S3TopicStorage{
 		log:        log,
 		s3:         s3,
 		bucketName: bucketName,
+		keyPrefix:  keyPrefix,
 	}
 }
 
@@ -46,7 +49,7 @@ func (ss *S3TopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error)
 		f:          tmpFile,
 		s3:         ss.s3,
 		bucketName: ss.bucketName,
-		objectKey:  recordBatchPath,
+		objectKey:  path.Join(ss.keyPrefix, recordBatchPath),
 	}
 
 	return writeCloser, nil
@@ -58,7 +61,7 @@ func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) 
 	log.Debugf("fetching record batch from s3")
 	obj, err := ss.s3.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(ss.bucketName),
-		Key:    &recordBatchPath,
+		Key:    aws.String(path.Join(ss.keyPrefix, recordBatchPath)),
 	})
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
@@ -75,14 +78,15 @@ func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) 
 	return obj.Body, nil
 }
 
-func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File, error) {
+func (ss *S3TopicStorage) ListFiles(topicName string, extension string) ([]File, error) {
 	log := ss.log.
-		WithField("topicPath", topicPath).
+		WithField("topicPath", topicName).
 		WithField("extension", extension)
 
-	topicPath, _ = strings.CutPrefix(topicPath, "/")
-	if !strings.HasSuffix(topicPath, "/") {
-		topicPath += "/"
+	topicName = path.Join(ss.keyPrefix, topicName)
+	topicName, _ = strings.CutPrefix(topicName, "/")
+	if !strings.HasSuffix(topicName, "/") {
+		topicName += "/"
 	}
 
 	log.Debugf("listing objects in s3")
@@ -91,7 +95,7 @@ func (ss *S3TopicStorage) ListFiles(topicPath string, extension string) ([]File,
 	files := make([]File, 0, 128)
 	err := ss.s3.ListObjectsPages(&s3.ListObjectsInput{
 		Bucket: aws.String(ss.bucketName),
-		Prefix: &topicPath,
+		Prefix: &topicName,
 	}, func(objects *s3.ListObjectsOutput, b bool) bool {
 		for _, obj := range objects.Contents {
 			if obj == nil || obj.Key == nil {

@@ -14,13 +14,13 @@ var (
 	log logger.Logger = logger.NewDefault(context.Background())
 
 	cacheStorageFactories = map[string]func(t *testing.T) storage.CacheStorage{
-		"disk":   func(t *testing.T) storage.CacheStorage { return storage.NewDiskCache(log, TempDir(t)) },
 		"memory": func(t *testing.T) storage.CacheStorage { return storage.NewMemoryCache(log) },
+		"disk":   func(t *testing.T) storage.CacheStorage { return storage.NewDiskCache(log, t.TempDir()) },
 	}
 
-	storageFactories = map[string]func() storage.BackingStorage{
-		"memory": func() storage.BackingStorage { return storage.NewMemoryTopicStorage(log) },
-		"disk":   func() storage.BackingStorage { return storage.NewDiskTopicStorage(log) },
+	storageFactories = map[string]func(t *testing.T) storage.BackingStorage{
+		"memory": func(t *testing.T) storage.BackingStorage { return storage.NewMemoryTopicStorage(log) },
+		"disk":   func(t *testing.T) storage.BackingStorage { return storage.NewDiskTopicStorage(log, t.TempDir()) },
 	}
 )
 
@@ -43,7 +43,7 @@ func TestBackingStorage(t *testing.T, f func(*testing.T, storage.BackingStorage)
 
 	for storageName, backingStorageFactory := range storageFactories {
 		t.Run(fmt.Sprintf("storage:%s", storageName), func(t *testing.T) {
-			f(t, backingStorageFactory())
+			f(t, backingStorageFactory(t))
 		})
 	}
 }
@@ -59,7 +59,7 @@ func TestBackingStorageAndCache(t *testing.T, f func(*testing.T, storage.Backing
 				cache, err := storage.NewCache(log, cacheStorageFactory(t))
 				require.NoError(t, err)
 
-				f(t, backingStorageFactory(), cache)
+				f(t, backingStorageFactory(t), cache)
 			})
 		}
 	}

@@ -13,18 +13,23 @@ import (
 )
 
 type DiskTopicStorage struct {
-	log logger.Logger
+	log     logger.Logger
+	rootDir string
 }
 
-// NewDiskTopicStorage returns a *TopicStorage that stores its data on local
-// disk.
-func NewDiskTopicStorage(log logger.Logger) *DiskTopicStorage {
-	return &DiskTopicStorage{log: log}
+// NewDiskTopicStorage returns a *TopicStorage that stores its data in rootDir
+// on local disk.
+func NewDiskTopicStorage(log logger.Logger, rootDir string) *DiskTopicStorage {
+	return &DiskTopicStorage{
+		log:     log,
+		rootDir: rootDir,
+	}
 }
 
-func (ds *DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
-	log := ds.log.WithField("recordBatchPath", recordBatchPath)
+func (ds *DiskTopicStorage) Writer(recordBatchKey string) (io.WriteCloser, error) {
+	log := ds.log.WithField("recordBatchKey", recordBatchKey)
 
+	recordBatchPath := ds.recordBatchPath(recordBatchKey)
 	log.Debugf("creating dirs")
 	err := os.MkdirAll(filepath.Dir(recordBatchPath), os.ModePerm)
 	if err != nil {
@@ -40,8 +45,10 @@ func (ds *DiskTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, erro
 	return f, nil
 }
 
-func (ds *DiskTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
-	log := ds.log.WithField("recordBatchPath", recordBatchPath)
+func (ds *DiskTopicStorage) Reader(recordBatchKey string) (io.ReadCloser, error) {
+	log := ds.log.WithField("recordBatchName", recordBatchKey)
+
+	recordBatchPath := ds.recordBatchPath(recordBatchKey)
 
 	log.Debugf("opening file")
 	f, err := os.Open(recordBatchPath)
@@ -56,13 +63,15 @@ func (ds *DiskTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error
 	return f, nil
 }
 
-func (ds *DiskTopicStorage) ListFiles(topicPath string, extension string) ([]File, error) {
+func (ds *DiskTopicStorage) ListFiles(topicName string, extension string) ([]File, error) {
 	log := ds.log.
-		WithField("topicPath", topicPath).
+		WithField("topicName", topicName).
 		WithField("extension", extension)
 
 	log.Debugf("listing files")
 	t0 := time.Now()
+
+	topicPath := ds.recordBatchPath(topicName)
 
 	files := make([]File, 0, 128)
 	walkConfig := filepathy.WalkConfig{Files: true, Extensions: []string{extension}}
@@ -77,4 +86,8 @@ func (ds *DiskTopicStorage) ListFiles(topicPath string, extension string) ([]Fil
 	log.Debugf("found %d files (%s)", len(files), time.Since(t0))
 
 	return files, err
+}
+
+func (ds *DiskTopicStorage) recordBatchPath(recordBatchKey string) string {
+	return filepath.Join(ds.rootDir, recordBatchKey)
 }

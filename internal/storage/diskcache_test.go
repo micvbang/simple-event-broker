@@ -15,7 +15,7 @@ import (
 // Writer() writes the expected bytes to the cache file, and does not write the
 // file to the cache destination until Close() is called.
 func TestCacheWriterWritesToDisk(t *testing.T) {
-	tempDir := tester.TempDir(t)
+	tempDir := t.TempDir()
 
 	const cachePath = "/some/topic/name/123"
 	expectedCachedFile := path.Join(tempDir, cachePath)
@@ -57,7 +57,7 @@ func TestDiskCacheReaderReadsFromDisk(t *testing.T) {
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
-	c := storage.NewDiskCache(log, tester.TempDir(t))
+	c := storage.NewDiskCache(log, t.TempDir())
 
 	w, err := c.Writer(cachePath)
 	require.NoError(t, err)

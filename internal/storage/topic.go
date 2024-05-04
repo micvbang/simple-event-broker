@@ -23,7 +23,7 @@ type File struct {
 type BackingStorage interface {
 	Writer(recordBatchPath string) (io.WriteCloser, error)
 	Reader(recordBatchPath string) (io.ReadCloser, error)
-	ListFiles(topicPath string, extension string) ([]File, error)
+	ListFiles(topicName string, extension string) ([]File, error)
 }
 
 type Compress interface {
@@ -33,7 +33,7 @@ type Compress interface {
 
 type Topic struct {
 	log        logger.Logger
-	topicPath  string
+	topicName  string
 	nextOffset atomic.Uint64
 
 	mu             sync.Mutex
@@ -44,14 +44,12 @@ type Topic struct {
 	compress       Compress
 }
 
-func NewTopic(log logger.Logger, backingStorage BackingStorage, rootDir string, topicName string, cache *Cache, compress Compress) (*Topic, error) {
+func NewTopic(log logger.Logger, backingStorage BackingStorage, topicName string, cache *Cache, compress Compress) (*Topic, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache required")
 	}
 
-	topicPath := filepath.Join(rootDir, topicName)
-
-	recordBatchIDs, err := listRecordBatchIDs(backingStorage, topicPath)
+	recordBatchIDs, err := listRecordBatchIDs(backingStorage, topicName)
 	if err != nil {
 		return nil, fmt.Errorf("listing record batches: %w", err)
 	}
@@ -59,7 +57,7 @@ func NewTopic(log logger.Logger, backingStorage BackingStorage, rootDir string, 
 	storage := &Topic{
 		log:            log.WithField("topic-name", topicName),
 		backingStorage: backingStorage,
-		topicPath:      topicPath,
+		topicName:      topicName,
 		recordBatchIDs: recordBatchIDs,
 		cache:          cache,
 		compress:       compress,
@@ -84,7 +82,7 @@ func NewTopic(log logger.Logger, backingStorage BackingStorage, rootDir string, 
 func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, error) {
 	recordBatchID := s.nextOffset.Load()
 
-	rbPath := RecordBatchPath(s.topicPath, recordBatchID)
+	rbPath := RecordBatchKey(s.topicName, recordBatchID)
 	backingWriter, err := s.backingStorage.Writer(rbPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening writer '%s': %w", rbPath, err)
@@ -238,13 +236,13 @@ func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, err
 }
 
 func (s *Topic) recordBatchPath(recordBatchID uint64) string {
-	return RecordBatchPath(s.topicPath, recordBatchID)
+	return RecordBatchKey(s.topicName, recordBatchID)
 }
 
 const recordBatchExtension = ".record_batch"
 
-func listRecordBatchIDs(backingStorage BackingStorage, topicPath string) ([]uint64, error) {
-	files, err := backingStorage.ListFiles(topicPath, recordBatchExtension)
+func listRecordBatchIDs(backingStorage BackingStorage, topicName string) ([]uint64, error) {
+	files, err := backingStorage.ListFiles(topicName, recordBatchExtension)
 	if err != nil {
 		return nil, fmt.Errorf("listing files: %w", err)
 	}
@@ -269,7 +267,7 @@ func listRecordBatchIDs(backingStorage BackingStorage, topicPath string) ([]uint
 	return offsets, nil
 }
 
-// RecordBatchPath returns the symbolic path of the topicName and the recordBatchID.
-func RecordBatchPath(topicPath string, recordBatchID uint64) string {
-	return filepath.Join(topicPath, fmt.Sprintf("%012d%s", recordBatchID, recordBatchExtension))
+// RecordBatchKey returns the symbolic path of the topicName and the recordBatchID.
+func RecordBatchKey(topicName string, recordBatchID uint64) string {
+	return filepath.Join(topicName, fmt.Sprintf("%012d%s", recordBatchID, recordBatchExtension))
 }

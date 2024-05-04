@@ -65,7 +65,7 @@ func httpServer(t *testing.T, apiKey string) *HTTPTestServer {
 
 	topic := func(log logger.Logger, topicName string) (*storage.Topic, error) {
 		memoryTopicStorage := storage.NewMemoryTopicStorage(log)
-		return storage.NewTopic(log, memoryTopicStorage, "", topicName, cache, nil)
+		return storage.NewTopic(log, memoryTopicStorage, topicName, cache, nil)
 	}
 
 	batcher := func(l logger.Logger, ts *storage.Topic) storage.RecordBatcher {

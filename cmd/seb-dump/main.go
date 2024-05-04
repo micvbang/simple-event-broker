@@ -33,9 +33,9 @@ func main() {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
-	diskTopicStorage := storage.NewDiskTopicStorage(log)
+	diskTopicStorage := storage.NewDiskTopicStorage(log, rootDir)
 
-	topic, err := storage.NewTopic(log, diskTopicStorage, rootDir, topicName, cache, storage.Gzip{})
+	topic, err := storage.NewTopic(log, diskTopicStorage, topicName, cache, storage.Gzip{})
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}

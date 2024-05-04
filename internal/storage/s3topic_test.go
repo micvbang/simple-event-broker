@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 	"testing"
 
@@ -35,7 +36,7 @@ func TestS3WriteToS3(t *testing.T) {
 		return nil, nil
 	}
 
-	s3Storage := storage.NewS3TopicStorage(log, s3Mock, bucketName)
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, bucketName, "")
 
 	// Act
 	rbWriter, err := s3Storage.Writer(recordBatchPath)
@@ -55,11 +56,39 @@ func TestS3WriteToS3(t *testing.T) {
 	require.True(t, s3Mock.PutObjectCalled)
 }
 
+// TestS3WriteWithPrefix verifies that the given prefix is used when calling
+// S3's PutObject.
+func TestS3WriteWithPrefix(t *testing.T) {
+	expectedBytes := tester.RandomBytes(t, 512)
+
+	const (
+		s3KeyPrefix     = "some-prefix"
+		recordBatchPath = "topicName/000123.record_batch"
+	)
+	expectedKey := path.Join(s3KeyPrefix, recordBatchPath)
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockPutObject = func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
+		// Verify the expected parameters are passed on to S3
+		require.Equal(t, expectedKey, *input.Key)
+
+		return nil, nil
+	}
+
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket", "some-prefix")
+
+	// Act
+	wtr, err := s3Storage.Writer(recordBatchPath)
+	require.NoError(t, err)
+	tester.WriteAndClose(t, wtr, expectedBytes)
+	require.True(t, s3Mock.PutObjectCalled)
+}
+
 // TestS3ReadFromS3 verifies that Reader returns an io.Reader that returns
 // calls S3's GetObject method, returning the bytes that were fetched from S3.
 func TestS3ReadFromS3(t *testing.T) {
 	recordBatchPath := "topicName/000123.record_batch"
-	expectedBytes := []byte(stringy.RandomN(500))
+	expectedBytes := tester.RandomBytes(t, 512)
 
 	s3Mock := &tester.S3Mock{}
 	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
@@ -68,7 +97,7 @@ func TestS3ReadFromS3(t *testing.T) {
 		}, nil
 	}
 
-	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket")
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket", "")
 
 	// Act
 	rdr, err := s3Storage.Reader(recordBatchPath)
@@ -80,6 +109,36 @@ func TestS3ReadFromS3(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, expectedBytes, gotBytes)
+}
+
+// TestS3ReadWithPrefix verifies that the given prefix is used when calling S3's
+// GetObject.
+func TestS3ReadWithPrefix(t *testing.T) {
+	expectedBytes := tester.RandomBytes(t, 512)
+
+	const (
+		s3KeyPrefix     = "some-prefix"
+		recordBatchPath = "topicName/000123.record_batch"
+	)
+	expectedPath := path.Join(s3KeyPrefix, recordBatchPath)
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+		// Verify the expected parameters are passed on to S3
+		require.Equal(t, expectedPath, *goi.Key)
+		return &s3.GetObjectOutput{
+			Body: io.NopCloser(bytes.NewBuffer(expectedBytes)),
+		}, nil
+	}
+
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket", "some-prefix")
+
+	// Act
+	rdr, err := s3Storage.Reader(recordBatchPath)
+	require.NoError(t, err)
+
+	tester.ReadAndClose(t, rdr)
+	require.True(t, s3Mock.GetObjectCalled)
 }
 
 // TestListFiles verifies that ListFiles returns a list of the files outputted
@@ -121,7 +180,7 @@ func TestListFiles(t *testing.T) {
 		return nil
 	}
 
-	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket")
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket", "")
 
 	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext")
 	require.NoError(t, err)
@@ -146,7 +205,7 @@ func TestListFilesOverlappingNames(t *testing.T) {
 		return nil
 	}
 
-	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket")
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket", "")
 
 	// Act
 	testPrefixes := []string{
@@ -191,7 +250,7 @@ func TestS3ReadFromS3NotFound(t *testing.T) {
 		return nil, awserr.New(s3.ErrCodeNoSuchKey, "", nil)
 	}
 
-	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket")
+	s3Storage := storage.NewS3TopicStorage(log, s3Mock, "mybucket", "")
 
 	// Act
 	_, err := s3Storage.Reader(recordBatchPath)
