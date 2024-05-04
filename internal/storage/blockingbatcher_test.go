@@ -1,4 +1,4 @@
-package recordbatch_test
+package storage_test
 
 import (
 	"context"
@@ -8,13 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
 )
-
-var log = logger.NewDefault(context.Background())
 
 // TestBlockingBatcherAddReturnValue verifies that the error returned by
 // persistRecordBatch() is returned all the way back up to callers of
@@ -47,7 +45,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		"no error": {expected: nil},
 	}
 
-	batcher := recordbatch.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
+	batcher := storage.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
 
 	for name, test := range tests {
 		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -82,7 +80,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 		return nil, returnedErr
 	}
 
-	batcher := recordbatch.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
+	batcher := storage.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
 
 	const numRecordBatches = 5
 
@@ -143,7 +141,7 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 
 	const bytesSoftMax = 10
 
-	batcher := recordbatch.NewBlockingBatcherWithConfig(log, bytesSoftMax, persistRecordBatch, contextFactory)
+	batcher := storage.NewBlockingBatcherWithConfig(log, bytesSoftMax, persistRecordBatch, contextFactory)
 	addReturned := atomic.Bool{}
 
 	wg := &sync.WaitGroup{}

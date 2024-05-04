@@ -1,16 +1,17 @@
-package recordbatch
+package storage
 
 import (
 	"context"
 	"time"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
-type Persist func(RecordBatch) ([]uint64, error)
+type Persist func(recordbatch.RecordBatch) ([]uint64, error)
 
 type blockedAdd struct {
-	record   Record
+	record   recordbatch.Record
 	response chan<- addResponse
 }
 
@@ -55,7 +56,7 @@ func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persist P
 // contextFactory() has expired, or bytesSoftMax has been reached. Beware of
 // long-lived contexts returned by contextFactory(); AddRecord() could block all
 // callers until the context expires.
-func (b *BlockingBatcher) AddRecord(r Record) (uint64, error) {
+func (b *BlockingBatcher) AddRecord(r recordbatch.Record) (uint64, error) {
 	responses := make(chan addResponse)
 
 	b.callers <- blockedAdd{
@@ -102,7 +103,7 @@ func (b *BlockingBatcher) collectBatches() {
 			case <-ctx.Done():
 				b.log.Debugf("batch collection time: %v", time.Since(t0))
 
-				recordBatch := make(RecordBatch, len(blockedCallers))
+				recordBatch := make(recordbatch.RecordBatch, len(blockedCallers))
 				for i, add := range blockedCallers {
 					recordBatch[i] = add.record
 				}

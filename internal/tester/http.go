@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/stretchr/testify/require"
@@ -70,7 +69,7 @@ func httpServer(t *testing.T, apiKey string) *HTTPTestServer {
 	}
 
 	batcher := func(l logger.Logger, ts *storage.Topic) storage.RecordBatcher {
-		return recordbatch.NewNullBatcher(ts.AddRecordBatch)
+		return storage.NewNullBatcher(ts.AddRecordBatch)
 	}
 
 	storage := storage.New(log, topic, batcher)

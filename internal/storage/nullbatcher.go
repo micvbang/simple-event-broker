@@ -1,6 +1,10 @@
-package recordbatch
+package storage
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+)
 
 // NullBatcher calls persist() for every record it receives, always creating a
 // record batch of size 1. This is useful for testing.
@@ -14,8 +18,8 @@ func NewNullBatcher(persist Persist) *NullBatcher {
 	}
 }
 
-func (b *NullBatcher) AddRecord(r Record) (uint64, error) {
-	offsets, err := b.persist(RecordBatch{r})
+func (b *NullBatcher) AddRecord(r recordbatch.Record) (uint64, error) {
+	offsets, err := b.persist(recordbatch.RecordBatch{r})
 	if err != nil {
 		return 0, err
 	}
