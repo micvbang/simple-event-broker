@@ -15,14 +15,14 @@ func NewNullBatcher(persist Persist) *NullBatcher {
 }
 
 func (b *NullBatcher) AddRecord(r Record) (uint64, error) {
-	recordIDs, err := b.persist(RecordBatch{r})
+	offsets, err := b.persist(RecordBatch{r})
 	if err != nil {
 		return 0, err
 	}
 
-	if len(recordIDs) != 1 {
-		return 0, fmt.Errorf("unexpected number of records %d", len(recordIDs))
+	if len(offsets) != 1 {
+		return 0, fmt.Errorf("unexpected number of records %d", len(offsets))
 	}
 
-	return recordIDs[0], nil
+	return offsets[0], nil
 }

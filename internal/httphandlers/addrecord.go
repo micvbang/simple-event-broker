@@ -15,7 +15,7 @@ type RecordAdder interface {
 }
 
 type AddRecordOutput struct {
-	RecordID uint64 `json:"record_id"`
+	Offset uint64 `json:"offset"`
 }
 
 func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
@@ -37,7 +37,7 @@ func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
 			return
 		}
 
-		recordID, err := s.AddRecord(params[topicNameKey], bs)
+		offset, err := s.AddRecord(params[topicNameKey], bs)
 		if err != nil {
 			log.Errorf("failed to add: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -46,7 +46,7 @@ func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
 		}
 
 		err = httphelpers.WriteJSONWithStatusCode(w, http.StatusCreated, AddRecordOutput{
-			RecordID: recordID,
+			Offset: offset,
 		})
 		if err != nil {
 			log.Errorf("failed to write json: %s", err)

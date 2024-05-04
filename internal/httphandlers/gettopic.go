@@ -11,11 +11,11 @@ import (
 )
 
 type TopicGetter interface {
-	EndRecordID(topicName string) (uint64, error)
+	EndOffset(topicName string) (uint64, error)
 }
 
 type GetTopicOutput struct {
-	RecordID uint64 `json:"next_record_id"`
+	Offset uint64 `json:"next_offset"`
 }
 
 // GetTopic returns metadata for a given topic.
@@ -31,7 +31,7 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 
 		// TODO: once we're not always autocreating topics, check if topic exists
 
-		recordID, err := s.EndRecordID(params[topicNameKey])
+		offset, err := s.EndOffset(params[topicNameKey])
 		if err != nil {
 			if errors.Is(err, storage.ErrOutOfBounds) {
 				log.Debugf("not found")
@@ -41,12 +41,12 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 
 			log.Errorf("reading record: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "failed to read record '%d': %s", recordID, err)
+			fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
 			return
 		}
 
 		httphelpers.WriteJSON(w, &GetTopicOutput{
-			RecordID: recordID,
+			Offset: offset,
 		})
 	}
 }

@@ -56,7 +56,7 @@ func (c *RecordClient) Add(topicName string, record []byte) error {
 	return nil
 }
 
-func (c *RecordClient) Get(topicName string, recordID uint64) (recordbatch.Record, error) {
+func (c *RecordClient) Get(topicName string, offset uint64) (recordbatch.Record, error) {
 	req, err := c.request("GET", "/record", nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -64,7 +64,7 @@ func (c *RecordClient) Get(topicName string, recordID uint64) (recordbatch.Recor
 
 	httphelpers.AddQueryParams(req, map[string]string{
 		"topic-name": topicName,
-		"record-id":  fmt.Sprintf("%d", recordID),
+		"offset":     fmt.Sprintf("%d", offset),
 	})
 
 	res, err := c.client.Do(req)

@@ -17,8 +17,8 @@ func MakeRandomRecordBatch(size int) recordbatch.RecordBatch {
 	return expectedRecordBatch
 }
 
-func RequireRecordIDs(t *testing.T, start uint64, stop uint64, recordIDs []uint64) {
-	for recordID := start; recordID < stop; recordID++ {
-		require.Equal(t, recordID, recordIDs[recordID-start])
+func RequireOffsets(t *testing.T, start uint64, stop uint64, offsets []uint64) {
+	for offset := start; offset < stop; offset++ {
+		require.Equal(t, offset, offsets[offset-start])
 	}
 }

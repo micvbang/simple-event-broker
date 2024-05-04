@@ -8,7 +8,7 @@ import (
 
 const (
 	topicNameKey = "topic-name"
-	recordIDKey  = "record-id"
+	offsetKey    = "offset"
 )
 
 func parseQueryParams(r *http.Request, requiredParams []string) (map[string]string, error) {

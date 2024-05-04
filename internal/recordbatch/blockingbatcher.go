@@ -15,8 +15,8 @@ type blockedAdd struct {
 }
 
 type addResponse struct {
-	recordID uint64
-	err      error
+	offset uint64
+	err    error
 }
 
 type BlockingBatcher struct {
@@ -65,7 +65,7 @@ func (b *BlockingBatcher) AddRecord(r Record) (uint64, error) {
 
 	// block caller until record has been peristed (or persisting failed)
 	response := <-responses
-	return response.recordID, response.err
+	return response.offset, response.err
 }
 
 func (b *BlockingBatcher) collectBatches() {
@@ -108,20 +108,20 @@ func (b *BlockingBatcher) collectBatches() {
 				}
 
 				// block until recordBatch is persisted or persisting failed
-				recordIDs, err := b.persist(recordBatch)
+				offsets, err := b.persist(recordBatch)
 				b.log.Debugf("%d records persisted (err: %v)", len(recordBatch), err)
 				if err != nil {
 					b.log.Debugf("reporting error to %d waiting callers", len(recordBatch))
 
-					// recordIDs should be 0 in all responses
-					recordIDs = make([]uint64, len(recordBatch))
+					// offsets should be 0 in all responses
+					offsets = make([]uint64, len(recordBatch))
 				}
 
 				// unblock callers
 				for i, blockedCaller := range blockedCallers {
 					blockedCaller.response <- addResponse{
-						recordID: recordIDs[i],
-						err:      err,
+						offset: offsets[i],
+						err:    err,
 					}
 					close(blockedCaller.response)
 				}

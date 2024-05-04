@@ -12,33 +12,33 @@ import (
 )
 
 // TestGetRecordHappyPath verifies that http.StatusNotFound is returned when
-// either the topic name or record id does not exist.
+// either the topic name or offset does not exist.
 func TestGetRecordExistence(t *testing.T) {
 	server := tester.HTTPServer(t)
 
 	expectedPayload := []byte("haps")
 	const topicName = "topicName"
 
-	recordID, err := server.Storage.AddRecord(topicName, expectedPayload)
+	offset, err := server.Storage.AddRecord(topicName, expectedPayload)
 	require.NoError(t, err)
 
 	tests := map[string]struct {
-		recordID   uint64
+		offset     uint64
 		topicName  string
 		statusCode int
 	}{
 		"record not found": {
-			recordID:   42,
+			offset:     42,
 			topicName:  topicName,
 			statusCode: http.StatusNotFound,
 		},
 		"topic not found": {
-			recordID:   recordID,
+			offset:     offset,
 			topicName:  "does-not-exist",
 			statusCode: http.StatusNotFound,
 		},
 		"found": {
-			recordID:   recordID,
+			offset:     offset,
 			topicName:  topicName,
 			statusCode: http.StatusOK,
 		},
@@ -49,7 +49,7 @@ func TestGetRecordExistence(t *testing.T) {
 			r := httptest.NewRequest("GET", "/record", nil)
 			httphelpers.AddQueryParams(r, map[string]string{
 				"topic-name": test.topicName,
-				"record-id":  fmt.Sprintf("%d", test.recordID),
+				"offset":     fmt.Sprintf("%d", test.offset),
 			})
 
 			// Act

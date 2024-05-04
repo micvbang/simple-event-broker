@@ -48,13 +48,13 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 		recordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
 
 		// Test
-		recordIDs, err := s.AddRecordBatch(recordBatch)
+		offsets, err := s.AddRecordBatch(recordBatch)
 		require.NoError(t, err)
-		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
+		tester.RequireOffsets(t, 0, recordBatchSize, offsets)
 
 		// Verify
-		for recordID, record := range recordBatch {
-			got, err := s.ReadRecord(uint64(recordID))
+		for offset, record := range recordBatch {
+			got, err := s.ReadRecord(uint64(offset))
 			require.NoError(t, err)
 			require.Equal(t, record, got)
 		}
@@ -83,17 +83,17 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 		recordBatch2 := tester.MakeRandomRecordBatch(3)
 
 		// Test
-		b1RecordIDs, err := s.AddRecordBatch(recordBatch1)
+		b1Offsets, err := s.AddRecordBatch(recordBatch1)
 		require.NoError(t, err)
-		tester.RequireRecordIDs(t, 0, 5, b1RecordIDs)
+		tester.RequireOffsets(t, 0, 5, b1Offsets)
 
-		b2RecordIDs, err := s.AddRecordBatch(recordBatch2)
+		b2Offsets, err := s.AddRecordBatch(recordBatch2)
 		require.NoError(t, err)
-		tester.RequireRecordIDs(t, 5, 8, b2RecordIDs)
+		tester.RequireOffsets(t, 5, 8, b2Offsets)
 
 		// Verify
-		for recordID, record := range append(recordBatch1, recordBatch2...) {
-			got, err := s.ReadRecord(uint64(recordID))
+		for offset, record := range append(recordBatch1, recordBatch2...) {
+			got, err := s.ReadRecord(uint64(offset))
 			require.NoError(t, err)
 			require.Equal(t, record, got)
 		}
@@ -130,9 +130,9 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 			for _, recordBatch := range recordBatches {
 				batchEndID := batchStartID + uint64(len(recordBatch))
 
-				recordIDs, err := s1.AddRecordBatch(recordBatch)
+				offsets, err := s1.AddRecordBatch(recordBatch)
 				require.NoError(t, err)
-				tester.RequireRecordIDs(t, batchStartID, batchEndID, recordIDs)
+				tester.RequireOffsets(t, batchStartID, batchEndID, offsets)
 
 				batchStartID += uint64(len(recordBatch))
 			}
@@ -143,14 +143,14 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify
-		recordID := 0
+		offset := 0
 		for _, recordBatch := range recordBatches {
 			for _, expected := range recordBatch {
-				got, err := s2.ReadRecord(uint64(recordID))
+				got, err := s2.ReadRecord(uint64(offset))
 				require.NoError(t, err)
 				require.Equal(t, expected, got)
 
-				recordID += 1
+				offset += 1
 			}
 		}
 
@@ -178,9 +178,9 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 			s1, err := storage.NewTopic(log, backingStorage, tempDir, topicName, cache, nil)
 			require.NoError(t, err)
 
-			recordIDs, err := s1.AddRecordBatch(recordBatch1)
+			offsets, err := s1.AddRecordBatch(recordBatch1)
 			require.NoError(t, err)
-			tester.RequireRecordIDs(t, 0, 1, recordIDs)
+			tester.RequireOffsets(t, 0, 1, offsets)
 		}
 
 		s2, err := storage.NewTopic(log, backingStorage, tempDir, topicName, cache, nil)
@@ -188,19 +188,19 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 
 		// Test
 		recordBatch2 := tester.MakeRandomRecordBatch(1)
-		recordIDs, err := s2.AddRecordBatch(recordBatch2)
+		offsets, err := s2.AddRecordBatch(recordBatch2)
 		require.NoError(t, err)
-		tester.RequireRecordIDs(t, 1, 2, recordIDs)
+		tester.RequireOffsets(t, 1, 2, offsets)
 
 		// Verify
-		recordID := 0
+		offset := 0
 		allRecords := append(recordBatch1, recordBatch2...)
 		for _, record := range allRecords {
-			got, err := s2.ReadRecord(uint64(recordID))
+			got, err := s2.ReadRecord(uint64(offset))
 			require.NoError(t, err)
 			require.Equal(t, record, got)
 
-			recordID += 1
+			offset += 1
 		}
 
 		// Out of bounds reads
@@ -229,9 +229,9 @@ func TestStorageCacheWrite(t *testing.T) {
 		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
 
 		// Act
-		recordIDs, err := s.AddRecordBatch(expectedRecordBatch)
+		offsets, err := s.AddRecordBatch(expectedRecordBatch)
 		require.NoError(t, err)
-		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
+		tester.RequireOffsets(t, 0, recordBatchSize, offsets)
 
 		// Assert
 
@@ -242,8 +242,8 @@ func TestStorageCacheWrite(t *testing.T) {
 		_, err = backingStorage.Reader(expectedStorageDir)
 		require.NoError(t, err)
 
-		for recordID, expected := range expectedRecordBatch {
-			got, err := s.ReadRecord(uint64(recordID))
+		for offset, expected := range expectedRecordBatch {
+			got, err := s.ReadRecord(uint64(offset))
 			require.NoError(t, err)
 			require.Equal(t, expected, got)
 		}
@@ -263,9 +263,9 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 
 		const recordBatchSize = 5
 		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
-		recordIDs, err := s.AddRecordBatch(expectedRecordBatch)
+		offsets, err := s.AddRecordBatch(expectedRecordBatch)
 		require.NoError(t, err)
-		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
+		tester.RequireOffsets(t, 0, recordBatchSize, offsets)
 
 		// NOTE: in order to prove that we're reading from the cache and not from the
 		// backing storage, we're making the file in the backing storage zero bytes long.
@@ -273,9 +273,9 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 		require.NoError(t, err)
 		tester.WriteAndClose(t, wtr, []byte{})
 
-		for recordID, expected := range expectedRecordBatch {
+		for offset, expected := range expectedRecordBatch {
 			// Act
-			got, err := s.ReadRecord(uint64(recordID))
+			got, err := s.ReadRecord(uint64(offset))
 
 			// Assert
 			require.NoError(t, err)
@@ -301,18 +301,18 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 
 		const recordBatchSize = 5
 		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
-		recordIDs, err := s.AddRecordBatch(expectedRecordBatch)
+		offsets, err := s.AddRecordBatch(expectedRecordBatch)
 		require.NoError(t, err)
-		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
+		tester.RequireOffsets(t, 0, recordBatchSize, offsets)
 
 		// NOTE: in order to prove that we're reading from the backing storage and
 		// not from the cache, we're removing the file from the cache.
 		err = cacheStorage.Remove(getStorageKey(storageDir, topicName, 0))
 		require.NoError(t, err)
 
-		for recordID, expected := range expectedRecordBatch {
+		for offset, expected := range expectedRecordBatch {
 			// Act
-			got, err := s.ReadRecord(uint64(recordID))
+			got, err := s.ReadRecord(uint64(offset))
 
 			// Assert
 			require.NoError(t, err)
@@ -335,9 +335,9 @@ func TestStorageCompressFiles(t *testing.T) {
 
 		const recordBatchSize = 5
 		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
-		recordIDs, err := s.AddRecordBatch(expectedRecordBatch)
+		offsets, err := s.AddRecordBatch(expectedRecordBatch)
 		require.NoError(t, err)
-		tester.RequireRecordIDs(t, 0, recordBatchSize, recordIDs)
+		tester.RequireOffsets(t, 0, recordBatchSize, offsets)
 
 		backingStorageReader, err := backingStorage.Reader(getStorageKey(storageDir, topicName, 0))
 		require.NoError(t, err)
@@ -353,9 +353,9 @@ func TestStorageCompressFiles(t *testing.T) {
 		require.Equal(t, uint32(len(expectedRecordBatch)), parser.Header.NumRecords)
 
 		// can read records from compressed data
-		for recordID, expected := range expectedRecordBatch {
+		for offset, expected := range expectedRecordBatch {
 			// Act
-			got, err := s.ReadRecord(uint64(recordID))
+			got, err := s.ReadRecord(uint64(offset))
 
 			// Assert
 			require.NoError(t, err)
@@ -364,9 +364,9 @@ func TestStorageCompressFiles(t *testing.T) {
 	})
 }
 
-// TestTopicEndRecordID verifies that EndRecordID returns the record id of the
+// TestTopicEndOffset verifies that EndOffset returns the offset of the
 // next record that is added, i.e. the id of most-recently-added+1.
-func TestTopicEndRecordID(t *testing.T) {
+func TestTopicEndOffset(t *testing.T) {
 	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage storage.BackingStorage, cache *storage.Cache) {
 		storageDir := tester.TempDir(t)
 		const topicName = "topicName"
@@ -375,25 +375,25 @@ func TestTopicEndRecordID(t *testing.T) {
 		require.NoError(t, err)
 
 		// no record added yet, next id should be 0
-		recordID := s.EndRecordID()
-		require.Equal(t, uint64(0), recordID)
+		offset := s.EndOffset()
+		require.Equal(t, uint64(0), offset)
 
-		nextRecordID := uint64(0)
+		nextOffset := uint64(0)
 		for range 10 {
 			recordBatch := tester.MakeRandomRecordBatch(1 + inty.RandomN(10))
-			recordIDs, err := s.AddRecordBatch(recordBatch)
+			offsets, err := s.AddRecordBatch(recordBatch)
 			require.NoError(t, err)
-			tester.RequireRecordIDs(t, nextRecordID, nextRecordID+uint64(len(recordBatch)), recordIDs)
+			tester.RequireOffsets(t, nextOffset, nextOffset+uint64(len(recordBatch)), offsets)
 
-			nextRecordID += uint64(len(recordBatch))
+			nextOffset += uint64(len(recordBatch))
 
 			// Act, Assert
-			recordID := s.EndRecordID()
-			require.Equal(t, nextRecordID, recordID)
+			offset := s.EndOffset()
+			require.Equal(t, nextOffset, offset)
 		}
 	})
 }
 
-func getStorageKey(storageDir string, topicName string, recordID uint64) string {
-	return path.Join(storageDir, storage.RecordBatchPath(topicName, recordID))
+func getStorageKey(storageDir string, topicName string, offset uint64) string {
+	return path.Join(storageDir, storage.RecordBatchPath(topicName, offset))
 }

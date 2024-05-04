@@ -18,7 +18,7 @@ import (
 func TestAddRecordHappyPath(t *testing.T) {
 	const topicName = "topic"
 
-	// add record s.t. returned record id in HTTP response is not 0 (default value)
+	// add record s.t. returned offset in HTTP response is not 0 (default value)
 	server := tester.HTTPServer(t)
 	_, err := server.Storage.AddRecord(topicName, recordbatch.Record("haps"))
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 	err = httphelpers.ParseJSONAndClose(response.Body, &output)
 	require.NoError(t, err)
 
-	require.Equal(t, uint64(1), output.RecordID)
+	require.Equal(t, uint64(1), output.Offset)
 }
 
 // Verifies that http.BadRequest is returned when leaving out the required

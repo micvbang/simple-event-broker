@@ -19,12 +19,12 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 
 	const (
 		topicName = "topicName"
-		recordID  = 0
+		offset    = 0
 	)
 	expectedRecord := recordbatch.Record("this is my record!")
 
 	// record does not already exist
-	_, err = srv.Storage.GetRecord(topicName, recordID)
+	_, err = srv.Storage.GetRecord(topicName, offset)
 	require.ErrorIs(t, err, storage.ErrOutOfBounds)
 
 	// Act
@@ -32,7 +32,7 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert
-	gotRecord, err := srv.Storage.GetRecord(topicName, recordID)
+	gotRecord, err := srv.Storage.GetRecord(topicName, offset)
 	require.NoError(t, err)
 	require.Equal(t, expectedRecord, gotRecord)
 }
@@ -58,7 +58,7 @@ func TestRecordClientGetHappyPath(t *testing.T) {
 
 	const (
 		topicName = "topicName"
-		recordID  = 0
+		offset    = 0
 	)
 	expectedRecord := recordbatch.Record("this is my record!")
 
@@ -66,7 +66,7 @@ func TestRecordClientGetHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	gotRecord, err := client.Get(topicName, recordID)
+	gotRecord, err := client.Get(topicName, offset)
 	require.NoError(t, err)
 
 	// Assert

@@ -12,29 +12,29 @@ import (
 )
 
 type RecordGetter interface {
-	GetRecord(topicName string, recordID uint64) (recordbatch.Record, error)
+	GetRecord(topicName string, offset uint64) (recordbatch.Record, error)
 }
 
 func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("hit %s", r.URL)
 
-		params, err := parseQueryParams(r, []string{recordIDKey, topicNameKey})
+		params, err := parseQueryParams(r, []string{offsetKey, topicNameKey})
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, err.Error())
 		}
 
-		recordID, err := uint64y.FromString(params[recordIDKey])
+		offset, err := uint64y.FromString(params[offsetKey])
 		if err != nil {
-			log.Errorf("parsing record id key: %s", err.Error())
+			log.Errorf("parsing offset key: %s", err.Error())
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "url parameter '%s', must be a number: %s", recordIDKey, err)
+			fmt.Fprintf(w, "url parameter '%s', must be a number: %s", offsetKey, err)
 			w.Write([]byte(err.Error()))
 			return
 		}
 
-		record, err := s.GetRecord(params[topicNameKey], recordID)
+		record, err := s.GetRecord(params[topicNameKey], offset)
 		if err != nil {
 			if errors.Is(err, storage.ErrOutOfBounds) {
 				log.Debugf("not found")
@@ -44,7 +44,7 @@ func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 
 			log.Errorf("reading record: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "failed to read record '%d': %s", recordID, err)
+			fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
 		}
 		w.Write(record)
 	}

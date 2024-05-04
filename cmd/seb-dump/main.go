@@ -25,7 +25,7 @@ func main() {
 
 	rootDir := filepath.Dir(absInputPath)
 	topicName := filepath.Base(absInputPath)
-	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromRecordID, flags.startFromRecordID+flags.numRecords-1, topicName)
+	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromOffset, flags.startFromOffset+flags.numRecords-1, topicName)
 
 	cacheStorage := storage.NewMemoryCache(log.Name("disk cache"))
 	cache, err := storage.NewCache(log, cacheStorage)
@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}
 
-	for i := flags.startFromRecordID; i < flags.startFromRecordID+flags.numRecords; i++ {
+	for i := flags.startFromOffset; i < flags.startFromOffset+flags.numRecords; i++ {
 		record, err := topic.ReadRecord(uint64(i))
 		if err != nil {
 			if errors.Is(err, storage.ErrOutOfBounds) {
@@ -56,9 +56,9 @@ func main() {
 }
 
 type flags struct {
-	inputPath         string
-	startFromRecordID int
-	numRecords        int
+	inputPath       string
+	startFromOffset int
+	numRecords      int
 }
 
 func parseFlags() flags {
@@ -67,7 +67,7 @@ func parseFlags() flags {
 	f := flags{}
 
 	fs.StringVar(&f.inputPath, "path", "", "Path of seb topic you wish to dump contents of")
-	fs.IntVar(&f.startFromRecordID, "start-from", 0, "Record ID to start dumping from")
+	fs.IntVar(&f.startFromOffset, "start-from", 0, "Offset to start dumping from")
 	fs.IntVar(&f.numRecords, "num", 10, "Number of records to dump")
 
 	err := fs.Parse(os.Args[1:])

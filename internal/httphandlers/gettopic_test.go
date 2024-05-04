@@ -27,10 +27,10 @@ func TestGetTopicHappyPath(t *testing.T) {
 
 	tests := map[string]struct {
 		topicName string
-		recordID  uint64
+		offset    uint64
 	}{
-		"empty":      {topicName: "has-no-records", recordID: 0},
-		"one record": {topicName: topicName, recordID: topicRecords},
+		"empty":      {topicName: "has-no-records", offset: 0},
+		"one record": {topicName: topicName, offset: topicRecords},
 	}
 
 	for name, test := range tests {
@@ -49,7 +49,7 @@ func TestGetTopicHappyPath(t *testing.T) {
 			output := httphandlers.GetTopicOutput{}
 			err := httphelpers.ParseJSONAndClose(response.Body, &output)
 			require.NoError(t, err)
-			require.Equal(t, test.recordID, output.RecordID)
+			require.Equal(t, test.offset, output.Offset)
 			require.Equal(t, "application/json", response.Header.Get("Content-Type"))
 		})
 	}

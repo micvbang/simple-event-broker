@@ -53,30 +53,30 @@ func (s *Storage) AddRecord(topicName string, record recordbatch.Record) (uint64
 		return 0, err
 	}
 
-	recordID, err := tb.batcher.AddRecord(record)
+	offset, err := tb.batcher.AddRecord(record)
 	if err != nil {
 		return 0, fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
 	}
-	return recordID, nil
+	return offset, nil
 }
 
-func (s *Storage) GetRecord(topicName string, recordID uint64) (recordbatch.Record, error) {
+func (s *Storage) GetRecord(topicName string, offset uint64) (recordbatch.Record, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
 	}
 
-	return tb.topic.ReadRecord(recordID)
+	return tb.topic.ReadRecord(offset)
 }
 
-// EndRecordID returns the most recent record id
-func (s *Storage) EndRecordID(topicName string) (uint64, error) {
+// EndOffset returns the most recent offset
+func (s *Storage) EndOffset(topicName string) (uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return 0, err
 	}
 
-	return tb.topic.EndRecordID(), nil
+	return tb.topic.EndOffset(), nil
 }
 
 func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
