@@ -2,7 +2,9 @@ package storage
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -43,17 +45,20 @@ func (ms *MemoryTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, err
 	return io.NopCloser(buf), nil
 }
 
-func (ms *MemoryTopicStorage) ListFiles(topicPath string, extension string) ([]File, error) {
+func (ms *MemoryTopicStorage) ListFiles(topicName string, extension string) ([]File, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	files := make([]File, 0, 128)
 
+	topicPrefix := fmt.Sprintf("%s/", topicName)
 	for key, buf := range ms.storage {
-		files = append(files, File{
-			Size: int64(buf.Len()),
-			Path: key,
-		})
+		if strings.HasPrefix(key, topicPrefix) {
+			files = append(files, File{
+				Size: int64(buf.Len()),
+				Path: key,
+			})
+		}
 	}
 
 	return files, nil

@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"io"
+	"path"
 	"testing"
 
 	"github.com/micvbang/go-helpy/slicey"
@@ -68,9 +69,7 @@ func TestMemoryTopicStorageMultiReadWrite(t *testing.T) {
 		expected := tester.RandomBytes(t, 32)
 
 		// Act
-		wtr, err := memoryStorage.Writer(key)
-		require.NoError(t, err)
-		tester.WriteAndClose(t, wtr, expected)
+		writeFile(t, memoryStorage, key, expected)
 
 		rdr, err := memoryStorage.Reader(key)
 		require.NoError(t, err)
@@ -79,4 +78,44 @@ func TestMemoryTopicStorageMultiReadWrite(t *testing.T) {
 		got := tester.ReadAndClose(t, rdr)
 		require.Equal(t, expected, got)
 	}
+}
+
+// TestMemoryTopicStorageListFiles verifies that ListFiles respects the
+// topic name prefix when listing files, i.e. only returns files from
+// the given topic.
+func TestMemoryTopicStorageListFiles(t *testing.T) {
+	memoryStorage := storage.NewMemoryTopicStorage(log)
+
+	bs := tester.RandomBytes(t, 32)
+
+	const (
+		topicName1 = "topic-name-1"
+		topicName2 = "topic-name-2"
+	)
+
+	writeFile(t, memoryStorage, path.Join(topicName1, "1.ext"), bs)
+	writeFile(t, memoryStorage, path.Join(topicName1, "2.ext"), bs)
+	writeFile(t, memoryStorage, path.Join(topicName2, "3.ext"), bs)
+
+	// topic1
+	topic1Files, err := memoryStorage.ListFiles(topicName1, ".ext")
+	require.NoError(t, err)
+	require.Equal(t, 2, len(topic1Files))
+
+	// topic2
+	topic2Files, err := memoryStorage.ListFiles(topicName2, ".ext")
+	require.NoError(t, err)
+	require.Equal(t, 1, len(topic2Files))
+
+	// non-existing topic
+	nonExistingTopicFiles, err := memoryStorage.ListFiles("does-not-exist", ".ext")
+	require.NoError(t, err)
+	require.Equal(t, 0, len(nonExistingTopicFiles))
+}
+
+func writeFile(t *testing.T, ms *storage.MemoryTopicStorage, key string, bs []byte) {
+	wtr, err := ms.Writer(key)
+	require.NoError(t, err)
+
+	tester.WriteAndClose(t, wtr, bs)
 }
