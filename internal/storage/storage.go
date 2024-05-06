@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -37,9 +39,27 @@ func New(
 	topicFactory func(log logger.Logger, topicName string) (*Topic, error),
 	batcherFactory func(logger.Logger, *Topic) RecordBatcher,
 ) *Storage {
+	return newStorage(log, topicFactory, batcherFactory, true)
+}
+
+func NewWithAutoCreate(
+	log logger.Logger,
+	topicFactory func(log logger.Logger, topicName string) (*Topic, error),
+	batcherFactory func(logger.Logger, *Topic) RecordBatcher,
+	autoCreateTopics bool,
+) *Storage {
+	return newStorage(log, topicFactory, batcherFactory, autoCreateTopics)
+}
+
+func newStorage(
+	log logger.Logger,
+	topicFactory func(log logger.Logger, topicName string) (*Topic, error),
+	batcherFactory func(logger.Logger, *Topic) RecordBatcher,
+	autoCreateTopics bool,
+) *Storage {
 	return &Storage{
 		log:              log,
-		autoCreateTopics: true,
+		autoCreateTopics: autoCreateTopics,
 		topicFactory:     topicFactory,
 		batcherFactory:   batcherFactory,
 		mu:               &sync.Mutex{},
@@ -67,6 +87,68 @@ func (s *Storage) GetRecord(topicName string, offset uint64) (recordbatch.Record
 	}
 
 	return tb.topic.ReadRecord(offset)
+}
+
+// GetRecords returns records starting from startOffset and until either:
+// 1) ctx is cancelled
+// 2) maxRecords has been reached
+// 3) softMaxBytes has been reached
+//
+// softMaxBytes is "soft" because it will not be honored if it means returning
+// zero records. In this case, at least one record will be returned.
+// NOTE: GetRecords will always return all of the records that it managed to
+// fetch until one of the above conditions were met. This means that the
+// returned value should be used even if err is non-nil!
+func (s *Storage) GetRecords(ctx context.Context, topicName string, startOffset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error) {
+	recordBatch := make([]recordbatch.Record, 0, maxRecords)
+
+	tb, err := s.getTopicBatcher(topicName)
+	if err != nil {
+		return recordBatch, err
+	}
+
+	recordBatchBytes := 0
+	maxOffset := startOffset + uint64(maxRecords)
+	for offset := startOffset; offset < maxOffset; offset++ {
+		// stop when ctx expires
+		select {
+		case <-ctx.Done():
+			return recordBatch, ctx.Err()
+		default:
+		}
+
+		record, err := tb.topic.ReadRecord(offset)
+		if err != nil {
+			// no more records available
+			if errors.Is(err, ErrOutOfBounds) {
+				break
+			}
+
+			return recordBatch, fmt.Errorf("reading record at offset %d: %w", offset, err)
+		}
+
+		trackBytes := softMaxBytes > 0
+		withinByteSize := recordBatchBytes+len(record) <= softMaxBytes
+		firstRecord := len(recordBatch) == 0
+
+		// Possibilities:
+		// 1) we don't care about the size
+		// 2) we care about the size but the first record is larger than the
+		// given soft max. In order not to potentially block the consumer
+		// indefinitely, we return at least one record.
+		// 3) we care about the size and it has to be within the soft max
+		if !trackBytes || firstRecord || trackBytes && withinByteSize {
+			recordBatchBytes += len(record)
+			recordBatch = append(recordBatch, record)
+		}
+
+		// exit loop if we reached capacity
+		if trackBytes && !withinByteSize {
+			break
+		}
+	}
+
+	return recordBatch, nil
 }
 
 // EndOffset returns the most recent offset
