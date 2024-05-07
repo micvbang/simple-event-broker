@@ -64,3 +64,31 @@ func TestBackingStorageAndCache(t *testing.T, f func(*testing.T, storage.Backing
 		}
 	}
 }
+
+// TestBackingStorageAndCache makes it easy to storage.Storage with all
+// configurations of storage.BackingStorage and storage.CacheStorage
+// implementations in the same test.
+func TestStorage(t *testing.T, autoCreateTopic bool, f func(*testing.T, *storage.Storage)) {
+	t.Helper()
+
+	for storageName, backingStorageFactory := range storageFactories {
+		for cacheName, cacheStorageFactory := range cacheStorageFactories {
+			t.Run(fmt.Sprintf("storage:%s/cache:%s", storageName, cacheName), func(t *testing.T) {
+				cache, err := storage.NewCache(log, cacheStorageFactory(t))
+				require.NoError(t, err)
+
+				s := storage.NewWithAutoCreate(log,
+					func(log logger.Logger, topicName string) (*storage.Topic, error) {
+						bs := backingStorageFactory(t)
+						return storage.NewTopic(log, bs, topicName, cache, &storage.Gzip{})
+					},
+					func(l logger.Logger, t *storage.Topic) storage.RecordBatcher {
+						return storage.NewNullBatcher(t.AddRecordBatch)
+					},
+					autoCreateTopic,
+				)
+				f(t, s)
+			})
+		}
+	}
+}

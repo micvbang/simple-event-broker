@@ -26,8 +26,8 @@ type Storage struct {
 	topicFactory     func(log logger.Logger, topicName string) (*Topic, error)
 	batcherFactory   func(logger.Logger, *Topic) RecordBatcher
 
-	mu           *sync.Mutex
-	topicBatcher map[string]topicBatcher
+	mu            *sync.Mutex
+	topicBatchers map[string]topicBatcher
 }
 
 // New returns a Storage that utilizes the given createTopic and createBatcher
@@ -63,7 +63,7 @@ func newStorage(
 		topicFactory:     topicFactory,
 		batcherFactory:   batcherFactory,
 		mu:               &sync.Mutex{},
-		topicBatcher:     make(map[string]topicBatcher),
+		topicBatchers:    make(map[string]topicBatcher),
 	}
 }
 
@@ -89,6 +89,38 @@ func (s *Storage) GetRecord(topicName string, offset uint64) (recordbatch.Record
 	return tb.topic.ReadRecord(offset)
 }
 
+// CreateTopic creates a topic with the given name and default configuration.
+func (s *Storage) CreateTopic(topicName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// TODO: make topic configurable, e.g.
+	// - compression
+	// - mime type?
+	// TODO: store information about topic configuration somewhere
+
+	_, exists := s.topicBatchers[topicName]
+	if exists {
+		return ErrTopicAlreadyExists
+	}
+
+	tb, err := s.makeTopicBatcher(topicName)
+	if err != nil {
+		return err
+	}
+
+	// since topicBatchers is just a local cache of the topics that were
+	// instantiated during the lifetime of Storage, we don't yet know whether
+	// the topic already exists or not. Checking the topic's nextOffset is a
+	// hacky way to attempt to do this.
+	if tb.topic.nextOffset.Load() != 0 {
+		return ErrTopicAlreadyExists
+	}
+
+	s.topicBatchers[topicName] = tb
+	return err
+}
+
 // GetRecords returns records starting from startOffset and until either:
 // 1) ctx is cancelled
 // 2) maxRecords has been reached
@@ -110,7 +142,6 @@ func (s *Storage) GetRecords(ctx context.Context, topicName string, startOffset 
 	recordBatchBytes := 0
 	maxOffset := startOffset + uint64(maxRecords)
 	for offset := startOffset; offset < maxOffset; offset++ {
-		// stop when ctx expires
 		select {
 		case <-ctx.Done():
 			return recordBatch, ctx.Err()
@@ -119,8 +150,15 @@ func (s *Storage) GetRecords(ctx context.Context, topicName string, startOffset 
 
 		record, err := tb.topic.ReadRecord(offset)
 		if err != nil {
+			isOutOfBounds := errors.Is(err, ErrOutOfBounds)
+
+			// startOffset does not yet exist, inform caller
+			if isOutOfBounds && offset == startOffset {
+				return recordBatch, ErrOutOfBounds
+			}
+
 			// no more records available
-			if errors.Is(err, ErrOutOfBounds) {
+			if isOutOfBounds {
 				break
 			}
 
@@ -161,35 +199,47 @@ func (s *Storage) EndOffset(topicName string) (uint64, error) {
 	return tb.topic.EndOffset(), nil
 }
 
+// makeTopicBatcher initializes a new topicBatcher, but does not put it into
+// s.topicBatchers.
+func (s *Storage) makeTopicBatcher(topicName string) (topicBatcher, error) {
+	// NOTE: this could block for a long time. We're holding the lock, so
+	// this is terrible.
+	topicLogger := s.log.Name(fmt.Sprintf("topic storage (%s)", topicName))
+	topic, err := s.topicFactory(topicLogger, topicName)
+	if err != nil {
+		return topicBatcher{}, fmt.Errorf("creating topic '%s': %w", topicName, err)
+	}
+
+	batchLogger := s.log.Name("batcher").WithField("topic-name", topicName)
+	batcher := s.batcherFactory(batchLogger, topic)
+
+	tb := topicBatcher{
+		batcher: batcher,
+		topic:   topic,
+	}
+
+	return tb, nil
+}
+
 func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
+	var err error
 	log := s.log.WithField("topicName", topicName)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tb, ok := s.topicBatcher[topicName]
+	tb, ok := s.topicBatchers[topicName]
 	if !ok {
 		log.Debugf("creating new topic batcher")
 		if !s.autoCreateTopics {
 			return topicBatcher{}, fmt.Errorf("%w: '%s'", ErrTopicNotFound, topicName)
 		}
 
-		// NOTE: this could block for a long time. We're holding the lock, so
-		// this is terrible.
-		topicLogger := s.log.Name(fmt.Sprintf("topic storage (%s)", topicName))
-		topic, err := s.topicFactory(topicLogger, topicName)
+		tb, err = s.makeTopicBatcher(topicName)
 		if err != nil {
-			return topicBatcher{}, fmt.Errorf("creating topic '%s': %w", topicName, err)
+			return topicBatcher{}, err
 		}
-
-		batchLogger := s.log.Name("batcher").WithField("topic-name", topicName)
-		batcher := s.batcherFactory(batchLogger, topic)
-
-		tb = topicBatcher{
-			batcher: batcher,
-			topic:   topic,
-		}
-		s.topicBatcher[topicName] = tb
+		s.topicBatchers[topicName] = tb
 	}
 
 	return tb, nil
