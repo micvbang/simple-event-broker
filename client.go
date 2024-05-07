@@ -5,14 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
-var ErrNotAuthorized = errors.New("not authorized")
+var (
+	ErrNotAuthorized = errors.New("not authorized")
+	ErrNotFound      = errors.New("not found")
+)
 
 type RecordClient struct {
 	client  *http.Client
@@ -86,9 +92,73 @@ func (c *RecordClient) Get(topicName string, offset uint64) (recordbatch.Record,
 	return recordbatch.Record(buf), nil
 }
 
+type GetBatchInput struct {
+	// MaxRecords is the maximum number of records to return. Defaults to 10
+	MaxRecords int
+
+	// SoftMaxBytes is the maximum number of bytes to return. If the first
+	// record is larger than SoftMaxBytes, that record is returned anyway.
+	// Defaults to infinity.
+	SoftMaxBytes int
+
+	// Timeout is the amount of time to allow the server (on the server side) to
+	// collect records for. If this timeout is exceeded, the number of records
+	// collected so far will be returned. Defaults to infinity.
+	Timeout time.Duration
+}
+
+func (c *RecordClient) GetBatch(topicName string, offset uint64, input GetBatchInput) (recordbatch.RecordBatch, error) {
+	if input.MaxRecords == 0 {
+		input.MaxRecords = 10
+	}
+
+	req, err := c.request("GET", "/records", nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Add("Accept", "multipart/form-data")
+
+	httphelpers.AddQueryParams(req, map[string]string{
+		"topic-name":  topicName,
+		"offset":      fmt.Sprintf("%d", offset),
+		"max-records": fmt.Sprintf("%d", input.MaxRecords),
+		"max-bytes":   fmt.Sprintf("%d", input.SoftMaxBytes),
+		"timeout":     input.Timeout.String(),
+	})
+
+	res, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("sending request: %w", err)
+	}
+	defer res.Body.Close()
+
+	err = c.statusCode(res)
+	if err != nil {
+		return nil, err
+	}
+
+	_, params, _ := mime.ParseMediaType(res.Header.Get("Content-Type"))
+	mr := multipart.NewReader(res.Body, params["boundary"])
+
+	recordBatch := make(recordbatch.RecordBatch, 0, input.MaxRecords)
+	for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
+		record, err := io.ReadAll(part)
+		if err != nil {
+			return recordBatch, err
+		}
+		recordBatch = append(recordBatch, record)
+	}
+
+	return recordBatch, nil
+}
+
 func (c *RecordClient) statusCode(res *http.Response) error {
 	if res.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrNotAuthorized)
+	}
+
+	if res.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrNotFound)
 	}
 
 	return nil
