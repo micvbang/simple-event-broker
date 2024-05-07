@@ -15,8 +15,8 @@ type CacheStorage interface {
 	Reader(key string) (io.ReadSeekCloser, error)
 	Writer(key string) (io.WriteCloser, error)
 	Remove(key string) error
-	List() (map[string]cacheItem, error)
-	SizeOf(key string) (cacheItem, error)
+	List() (map[string]CacheItem, error)
+	SizeOf(key string) (CacheItem, error)
 }
 
 type Cache struct {
@@ -25,7 +25,7 @@ type Cache struct {
 	now     func() time.Time
 
 	mu         sync.Mutex
-	cacheItems map[string]cacheItem
+	cacheItems map[string]CacheItem
 }
 
 func NewCache(log logger.Logger, cacheStorage CacheStorage) (*Cache, error) {
@@ -60,10 +60,10 @@ func (c *Cache) Writer(key string) (io.WriteCloser, error) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 
-		c.cacheItems[key] = cacheItem{
-			size:       size,
-			accessedAt: c.now(),
-			key:        key,
+		c.cacheItems[key] = CacheItem{
+			Size:       size,
+			AccessedAt: c.now(),
+			Key:        key,
 		}
 
 	}), nil
@@ -97,7 +97,7 @@ func (c *Cache) Reader(key string) (io.ReadSeekCloser, error) {
 			item = newItem
 		}
 	}
-	item.accessedAt = c.now()
+	item.AccessedAt = c.now()
 	c.cacheItems[key] = item
 
 	return r, nil
@@ -110,7 +110,7 @@ func (c *Cache) Size() int64 {
 	c.log.Debugf("computing size of %d items", len(c.cacheItems))
 	size := int64(0)
 	for _, item := range c.cacheItems {
-		size += item.size
+		size += item.Size
 	}
 	return size
 }
@@ -123,13 +123,13 @@ func (c *Cache) EvictLeastRecentlyUsed(maxSize int64) error {
 	cacheItems := mapy.Values(c.cacheItems)
 	sort.Slice(cacheItems, func(i, j int) bool {
 		// NOTE: sorts most recently used first
-		return cacheItems[j].accessedAt.Before(cacheItems[i].accessedAt)
+		return cacheItems[j].AccessedAt.Before(cacheItems[i].AccessedAt)
 	})
 
 	curSize := int64(0)
-	var cacheItemsToDelete []cacheItem
+	var cacheItemsToDelete []CacheItem
 	for i, item := range cacheItems {
-		curSize += item.size
+		curSize += item.Size
 		if curSize > maxSize {
 			cacheItemsToDelete = cacheItems[i:]
 			break
@@ -137,22 +137,22 @@ func (c *Cache) EvictLeastRecentlyUsed(maxSize int64) error {
 	}
 
 	if len(cacheItemsToDelete) > 0 {
-		log.Debugf("deleting all items last accessed at <= %s", cacheItemsToDelete[0].accessedAt)
+		log.Debugf("deleting all items last accessed at <= %s", cacheItemsToDelete[0].AccessedAt)
 	}
 
 	bytesDeleted := int64(0)
 	itemsDeleted := 0
 	for _, item := range cacheItemsToDelete {
-		log.Debugf("deleting %s (%d bytes)", item.key, item.size)
-		err := c.storage.Remove(item.key)
+		log.Debugf("deleting %s (%d bytes)", item.Key, item.Size)
+		err := c.storage.Remove(item.Key)
 		if err != nil {
-			log.Errorf("deleting '%s': %w", err)
-			return fmt.Errorf("deleting %s: %w", item.key, err)
+			log.Errorf("deleting '%s': %w", item.Key, err)
+			return fmt.Errorf("deleting %s: %w", item.Key, err)
 		}
 
 		itemsDeleted += 1
-		bytesDeleted += item.size
-		delete(c.cacheItems, item.key)
+		bytesDeleted += item.Size
+		delete(c.cacheItems, item.Key)
 	}
 	c.mu.Unlock()
 

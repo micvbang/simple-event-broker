@@ -4,8 +4,10 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"testing"
 
+	"github.com/micvbang/go-helpy/mapy"
 	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
@@ -17,15 +19,15 @@ import (
 func TestCacheWriterWritesToDisk(t *testing.T) {
 	tempDir := t.TempDir()
 
-	const cachePath = "/some/topic/name/123"
-	expectedCachedFile := path.Join(tempDir, cachePath)
+	const key = "some/topic/name/123"
+	expectedCachedFile := path.Join(tempDir, key)
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
 	c := storage.NewDiskCache(log, tempDir)
 
 	// Act
-	f, err := c.Writer(cachePath)
+	f, err := c.Writer(key)
 	require.NoError(t, err)
 
 	n, err := f.Write(expectedBytes)
@@ -53,23 +55,72 @@ func TestCacheWriterWritesToDisk(t *testing.T) {
 // TestCacheReaderReadsFromDisk verifies that the io.ReadSeekCloser returned by
 // Reader() reads the correct file and returns the expected bytes.
 func TestDiskCacheReaderReadsFromDisk(t *testing.T) {
-	const cachePath = "/some/topic/name/123"
+	const key = "some/topic/name/123"
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
 	c := storage.NewDiskCache(log, t.TempDir())
 
-	w, err := c.Writer(cachePath)
+	w, err := c.Writer(key)
 	require.NoError(t, err)
 
 	tester.WriteAndClose(t, w, expectedBytes)
 
 	// Act
-	reader, err := c.Reader(cachePath)
+	reader, err := c.Reader(key)
 	require.NoError(t, err)
 
 	// Assert
 	gotBytes, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	require.Equal(t, expectedBytes, gotBytes)
+}
+
+// TestDiskCacheListFromDisk verifies that List() returns the expected keys,
+// without any rootDir prefix.
+func TestDiskCacheListFromDisk(t *testing.T) {
+	c := storage.NewDiskCache(log, t.TempDir())
+
+	expectedKeys := []string{
+		"topic1/file1",
+		"topic1/file2",
+		"topic2/file1",
+		"topic2/file2",
+	}
+	for _, key := range expectedKeys {
+		w, err := c.Writer(key)
+		require.NoError(t, err)
+
+		tester.WriteAndClose(t, w, tester.RandomBytes(t, 16))
+	}
+
+	// Act
+	items, err := c.List()
+	require.NoError(t, err)
+
+	gotKeys := mapy.Map(items, func(_ string, item storage.CacheItem) string {
+		return item.Key
+	})
+
+	// Assert
+	sort.Strings(expectedKeys)
+	sort.Strings(gotKeys)
+	require.Equal(t, expectedKeys, gotKeys)
+}
+
+// TestDiskCacheListFromDiskEmpty verifies that List() returns an empty list of
+// keys when the cache is empty.
+func TestDiskCacheListFromDiskEmpty(t *testing.T) {
+	c := storage.NewDiskCache(log, t.TempDir())
+
+	// Act
+	items, err := c.List()
+	require.NoError(t, err)
+
+	gotKeys := mapy.Map(items, func(_ string, item storage.CacheItem) string {
+		return item.Key
+	})
+
+	// Assert
+	require.Equal(t, []string{}, gotKeys)
 }

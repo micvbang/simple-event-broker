@@ -64,27 +64,27 @@ func (mc *MemoryCache) Remove(key string) error {
 	return nil
 }
 
-func (mc *MemoryCache) List() (map[string]cacheItem, error) {
-	cacheItems := make(map[string]cacheItem, len(mc.items))
+func (mc *MemoryCache) List() (map[string]CacheItem, error) {
+	cacheItems := make(map[string]CacheItem, len(mc.items))
 	for key, item := range mc.items {
-		cacheItems[key] = cacheItem{
-			size:       int64(item.buf.Len()),
-			accessedAt: item.accessedAt,
-			key:        key,
+		cacheItems[key] = CacheItem{
+			Size:       int64(item.buf.Len()),
+			AccessedAt: item.accessedAt,
+			Key:        key,
 		}
 	}
 	return cacheItems, nil
 }
 
-func (mc *MemoryCache) SizeOf(key string) (cacheItem, error) {
+func (mc *MemoryCache) SizeOf(key string) (CacheItem, error) {
 	item, ok := mc.items[key]
 	if !ok {
-		return cacheItem{}, ErrNotInCache
+		return CacheItem{}, ErrNotInCache
 	}
 
-	return cacheItem{
-		size:       int64(item.buf.Len()),
-		accessedAt: item.accessedAt,
-		key:        key,
+	return CacheItem{
+		Size:       int64(item.buf.Len()),
+		AccessedAt: item.accessedAt,
+		Key:        key,
 	}, nil
 }

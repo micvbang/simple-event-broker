@@ -14,10 +14,10 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
-type cacheItem struct {
-	size       int64
-	accessedAt time.Time
-	key        string
+type CacheItem struct {
+	Size       int64
+	AccessedAt time.Time
+	Key        string
 }
 
 // DiskCache is a key-value store for caching data in files on the local disk.
@@ -27,24 +27,28 @@ type DiskCache struct {
 }
 
 func NewDiskCache(log logger.Logger, rootDir string) *DiskCache {
+	if !strings.HasSuffix(rootDir, "/") {
+		rootDir += "/"
+	}
+
 	return &DiskCache{
 		log:     log,
 		rootDir: rootDir,
 	}
 }
 
-func (c *DiskCache) List() (map[string]cacheItem, error) {
-	cacheItems := make(map[string]cacheItem, 64)
+func (c *DiskCache) List() (map[string]CacheItem, error) {
+	cacheItems := make(map[string]CacheItem, 64)
 
 	fileWalkConfig := filepathy.WalkConfig{
 		Files:     true,
 		Recursive: true,
 	}
 	err := filepathy.Walk(c.rootDir, fileWalkConfig, func(path string, info os.FileInfo, err error) error {
-		cacheItems[path] = cacheItem{
-			size:       info.Size(),
-			accessedAt: info.ModTime(),
-			key:        path,
+		cacheItems[path] = CacheItem{
+			Size:       info.Size(),
+			AccessedAt: info.ModTime(),
+			Key:        strings.TrimPrefix(path, c.rootDir),
 		}
 		return nil
 	})
@@ -93,18 +97,18 @@ func (c *DiskCache) Reader(key string) (io.ReadSeekCloser, error) {
 	return f, nil
 }
 
-func (c *DiskCache) SizeOf(key string) (cacheItem, error) {
+func (c *DiskCache) SizeOf(key string) (CacheItem, error) {
 	log := c.log.WithField("key", key)
 
 	fileInfo, err := os.Stat(key)
 	if err != nil {
-		return cacheItem{}, fmt.Errorf("calling os.Stat: %w", err)
+		return CacheItem{}, fmt.Errorf("calling os.Stat: %w", err)
 	}
 
 	log.Debugf("found")
-	return cacheItem{
-		size:       fileInfo.Size(),
-		accessedAt: fileInfo.ModTime(),
+	return CacheItem{
+		Size:       fileInfo.Size(),
+		AccessedAt: fileInfo.ModTime(),
 	}, nil
 }
 
