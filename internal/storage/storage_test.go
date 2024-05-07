@@ -20,7 +20,10 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 		const topicName = "topic-name"
 		ctx := context.Background()
 
-		const recordSize = 16
+		const (
+			recordSize        = 16
+			maxRecordsDefault = 10
+		)
 
 		allRecords := make(recordbatch.RecordBatch, 32)
 		for i := range len(allRecords) {
@@ -37,7 +40,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			expected     recordbatch.RecordBatch
 			err          error
 		}{
-			"max records zero":          {offset: 0, maxRecords: 0, expected: allRecords[:0]},
+			"max records zero":          {offset: 0, maxRecords: 0, expected: allRecords[:maxRecordsDefault]},
 			"0-1":                       {offset: 0, maxRecords: 1, expected: allRecords[:1]},
 			"0-4":                       {offset: 0, maxRecords: 5, expected: allRecords[0:5]},
 			"1-5":                       {offset: 1, maxRecords: 5, expected: allRecords[1:6]},

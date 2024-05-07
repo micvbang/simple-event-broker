@@ -126,12 +126,18 @@ func (s *Storage) CreateTopic(topicName string) error {
 // 2) maxRecords has been reached
 // 3) softMaxBytes has been reached
 //
+// maxRecords defaults to 10 if 0 is given.
 // softMaxBytes is "soft" because it will not be honored if it means returning
 // zero records. In this case, at least one record will be returned.
+//
 // NOTE: GetRecords will always return all of the records that it managed to
 // fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
 func (s *Storage) GetRecords(ctx context.Context, topicName string, startOffset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error) {
+	if maxRecords == 0 {
+		maxRecords = 10
+	}
+
 	recordBatch := make([]recordbatch.Record, 0, maxRecords)
 
 	tb, err := s.getTopicBatcher(topicName)
