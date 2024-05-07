@@ -42,19 +42,20 @@ func (s *HTTPTestServer) do(r *http.Request, addDefaultAuth bool) *http.Response
 	return w.Result()
 }
 
-// HTTPServer calls HTTPServerWithAPIKey, using DefaultAPIKey.
-func HTTPServer(t *testing.T) *HTTPTestServer {
-	return httpServer(t, DefaultAPIKey)
+// HTTPServer starts an HTTP test server using the given config.
+func HTTPServer(t *testing.T, confs ...func(httpServerConfig)) *HTTPTestServer {
+	config := httpServerConfig{
+		apiKey:                 DefaultAPIKey,
+		storageTopicAutoCreate: true,
+	}
+	for _, configure := range confs {
+		configure(config)
+	}
+
+	return httpServer(t, config)
 }
 
-// HTTPServer initializes and returns an HTTPTestServer with all routes
-// registered and HTTP endpoint dependencies created. The created dependencies
-// can be useful during testing and are accessible on the HTTPTestServer struct.
-func HTTPServerWithAPIKey(t *testing.T, apiKey string) *HTTPTestServer {
-	return httpServer(t, apiKey)
-}
-
-func httpServer(t *testing.T, apiKey string) *HTTPTestServer {
+func httpServer(t *testing.T, config httpServerConfig) *HTTPTestServer {
 	t.Helper()
 
 	log := logger.NewDefault(context.Background())
@@ -72,8 +73,8 @@ func httpServer(t *testing.T, apiKey string) *HTTPTestServer {
 		return storage.NewNullBatcher(ts.AddRecordBatch)
 	}
 
-	storage := storage.New(log, topic, batcher)
-	sebhttp.RegisterRoutes(log, mux, storage, apiKey)
+	storage := storage.NewWithAutoCreate(log, topic, batcher, config.storageTopicAutoCreate)
+	sebhttp.RegisterRoutes(log, mux, storage, config.apiKey)
 
 	return &HTTPTestServer{
 		t:       t,
@@ -81,5 +82,24 @@ func httpServer(t *testing.T, apiKey string) *HTTPTestServer {
 		Mux:     mux,
 		Cache:   cache,
 		Storage: storage,
+	}
+}
+
+type httpServerConfig struct {
+	apiKey                 string
+	storageTopicAutoCreate bool
+}
+
+// HTTPAPIKey sets the apiKey for HTTPServer
+func HTTPAPIKey(apiKey string) func(httpServerConfig) {
+	return func(c httpServerConfig) {
+		c.apiKey = apiKey
+	}
+}
+
+// HTTPStorageAutoCreateTopic sets automatic topic creation for HTTPServer
+func HTTPStorageAutoCreateTopic(autoCreate bool) func(httpServerConfig) {
+	return func(c httpServerConfig) {
+		c.storageTopicAutoCreate = autoCreate
 	}
 }

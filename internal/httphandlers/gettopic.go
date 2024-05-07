@@ -23,15 +23,16 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("hit %s", r.URL)
 
-		params, err := parseQueryParams(r, []string{topicNameKey})
+		params, err := parseQueryParams(r, QParam{topicNameKey, QueryString})
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, err.Error())
 		}
+		topicName := params[topicNameKey].(string)
 
 		// TODO: once we're not always autocreating topics, check if topic exists
 
-		offset, err := s.EndOffset(params[topicNameKey])
+		offset, err := s.EndOffset(topicName)
 		if err != nil {
 			if errors.Is(err, storage.ErrOutOfBounds) {
 				log.Debugf("not found")

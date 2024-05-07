@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestGetRecordHappyPath verifies that http.StatusNotFound is returned when
+// TestGetRecordExistence verifies that http.StatusNotFound is returned when
 // either the topic name or offset does not exist.
 func TestGetRecordExistence(t *testing.T) {
 	server := tester.HTTPServer(t)

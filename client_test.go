@@ -40,7 +40,7 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 // TestRecordClientAddNotAuthorized verifies that ErrNotAuthorized is returned
 // when using an invalid API key.
 func TestRecordClientAddNotAuthorized(t *testing.T) {
-	srv := tester.HTTPServerWithAPIKey(t, "working-api-key")
+	srv := tester.HTTPServer(t, tester.HTTPAPIKey("working-api-key"))
 	client, err := seb.NewRecordClient(srv.Server.URL, "invalid-api-key")
 	require.NoError(t, err)
 
@@ -76,7 +76,7 @@ func TestRecordClientGetHappyPath(t *testing.T) {
 // TestRecordClientGetNotAuthorized verifies that Get returns ErrNotAuthorized when
 // using an invalid API key.
 func TestRecordClientGetNotAuthorized(t *testing.T) {
-	srv := tester.HTTPServerWithAPIKey(t, "working-api-key")
+	srv := tester.HTTPServer(t, tester.HTTPAPIKey("working-api-key"))
 	client, err := seb.NewRecordClient(srv.Server.URL, "invalid-api-key")
 	require.NoError(t, err)
 

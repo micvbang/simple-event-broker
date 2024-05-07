@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/storage"
@@ -19,22 +18,19 @@ func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("hit %s", r.URL)
 
-		params, err := parseQueryParams(r, []string{offsetKey, topicNameKey})
+		qparams := []QParam{
+			{Key: offsetKey, Parser: QueryUint64},
+			{Key: topicNameKey, Parser: QueryString},
+		}
+		params, err := parseQueryParams(r, qparams...)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, err.Error())
 		}
+		offset := params[offsetKey].(uint64)
+		topicName := params[topicNameKey].(string)
 
-		offset, err := uint64y.FromString(params[offsetKey])
-		if err != nil {
-			log.Errorf("parsing offset key: %s", err.Error())
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "url parameter '%s', must be a number: %s", offsetKey, err)
-			w.Write([]byte(err.Error()))
-			return
-		}
-
-		record, err := s.GetRecord(params[topicNameKey], offset)
+		record, err := s.GetRecord(topicName, offset)
 		if err != nil {
 			if errors.Is(err, storage.ErrOutOfBounds) {
 				log.Debugf("not found")
