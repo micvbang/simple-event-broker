@@ -181,8 +181,8 @@ func (s *Topic) ReadRecord(offset uint64) (recordbatch.Record, error) {
 	return record, nil
 }
 
-// EndOffset returns the topic's largest offset (most recent record added).
-func (s *Topic) EndOffset() uint64 {
+// NextOffset returns the topic's next offset (offset of the next record added).
+func (s *Topic) NextOffset() uint64 {
 	return s.nextOffset.Load()
 }
 

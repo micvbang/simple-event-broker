@@ -360,7 +360,7 @@ func TestTopicEndOffset(t *testing.T) {
 		require.NoError(t, err)
 
 		// no record added yet, next id should be 0
-		offset := s.EndOffset()
+		offset := s.NextOffset()
 		require.Equal(t, uint64(0), offset)
 
 		nextOffset := uint64(0)
@@ -373,7 +373,7 @@ func TestTopicEndOffset(t *testing.T) {
 			nextOffset += uint64(len(recordBatch))
 
 			// Act, Assert
-			offset := s.EndOffset()
+			offset := s.NextOffset()
 			require.Equal(t, nextOffset, offset)
 		}
 	})

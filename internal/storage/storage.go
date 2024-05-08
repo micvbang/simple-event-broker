@@ -115,7 +115,7 @@ func (s *Storage) CreateTopic(topicName string) error {
 	// instantiated during the lifetime of Storage, we don't yet know whether
 	// the topic already exists or not. Checking the topic's nextOffset is a
 	// hacky way to attempt to do this.
-	if tb.topic.EndOffset() != 0 {
+	if tb.topic.NextOffset() != 0 {
 		return seb.ErrTopicAlreadyExists
 	}
 
@@ -204,7 +204,7 @@ func (s *Storage) EndOffset(topicName string) (uint64, error) {
 		return 0, err
 	}
 
-	return tb.topic.EndOffset(), nil
+	return tb.topic.NextOffset(), nil
 }
 
 // makeTopicBatcher initializes a new topicBatcher, but does not put it into
