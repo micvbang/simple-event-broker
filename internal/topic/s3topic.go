@@ -139,7 +139,7 @@ func (wc *s3WriteCloser) Close() error {
 		return fmt.Errorf("seeking to beginning: %w", err)
 	}
 
-	wc.log.Debugf("uploading to %s%s", wc.bucketName, wc.objectKey)
+	wc.log.Debugf("uploading to s3://%s/%s", wc.bucketName, wc.objectKey)
 	t0 := time.Now()
 	_, err = wc.s3.PutObject(&s3.PutObjectInput{
 		Bucket: &wc.bucketName,
