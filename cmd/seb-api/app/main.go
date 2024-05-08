@@ -42,10 +42,23 @@ func Run() {
 	mux := http.NewServeMux()
 	sebhttp.RegisterRoutes(log, mux, blockingS3Storage, flags.httpAPIKey)
 
-	addr := fmt.Sprintf("%s:%d", flags.httpListenAddress, flags.httpListenPort)
-	log.Infof("Listening on %s", addr)
-	err = http.ListenAndServe(addr, mux)
-	log.Fatalf("ListenAndServe returned: %s", err)
+	errs := make(chan error, 8)
+
+	go func() {
+		addr := fmt.Sprintf("%s:%d", flags.httpListenAddress, flags.httpListenPort)
+		log.Infof("Listening on %s", addr)
+		errs <- http.ListenAndServe(addr, mux)
+	}()
+
+	if flags.httpEnableDebug {
+		go func() {
+			logPprof := log.Name("pprof")
+			errs <- sebhttp.ListenAndServePprof(logPprof, flags.httpDebugListenAddress, flags.httpDebugListenPort)
+		}()
+	}
+
+	err = <-errs
+	log.Errorf("main returned: %s", err)
 }
 
 func cacheEviction(log logger.Logger, cache *cache.Cache, cacheMaxBytes int64, interval time.Duration) {
@@ -95,6 +108,10 @@ type flags struct {
 	httpListenPort    int
 	httpAPIKey        string
 
+	httpEnableDebug        bool
+	httpDebugListenAddress string
+	httpDebugListenPort    int
+
 	cacheDir              string
 	cacheMaxBytes         int64
 	cacheEvictionInterval time.Duration
@@ -108,16 +125,23 @@ func parseFlags() flags {
 	fs.StringVar(&f.bucketName, "b", "simple-commit-log-delete-me", "Bucket name")
 	fs.IntVar(&f.logLevel, "log-level", int(logger.LevelInfo), "Log level, info=4, debug=5")
 
-	fs.DurationVar(&f.recordBatchBlockTime, "batch-wait-time", time.Second, "Amount of time to wait between receiving first record in batch and committing it")
-	fs.IntVar(&f.recordBatchSoftMaxBytes, "batch-bytes-max", 10*sizey.MB, "Soft maximum for the number of bytes to include in each record batch")
+	// http
+	fs.StringVar(&f.httpListenAddress, "http-address", "127.0.0.1", "Address to listen for HTTP traffic")
+	fs.IntVar(&f.httpListenPort, "http-port", 8080, "Port to listen for HTTP traffic")
+	fs.StringVar(&f.httpAPIKey, "http-api-key", "api-key", "API key for authorizing HTTP requests (this is not safe and needs to be changed)")
 
-	fs.StringVar(&f.httpListenAddress, "l", "127.0.0.1", "Address to listen for HTTP traffic")
-	fs.IntVar(&f.httpListenPort, "p", 8080, "Port to listen for HTTP traffic")
-	fs.StringVar(&f.httpAPIKey, "api-key", "api-key", "API key for authorizing HTTP requests (this is not safe and needs to be changed)")
+	// http debug
+	fs.BoolVar(&f.httpEnableDebug, "http-debug-enable", false, "Whether to enable DEBUG endpoints")
+	fs.StringVar(&f.httpDebugListenAddress, "http-debug-address", "127.0.0.1", "Address to expose DEBUG endpoints. You very likely want this to remain localhost!")
+	fs.IntVar(&f.httpDebugListenPort, "http-debug-port", 5000, "Port to serve DEBUG endpoints on")
 
 	fs.StringVar(&f.cacheDir, "c", path.Join(os.TempDir(), "seb-cache"), "Local dir to use when caching record batches")
 	fs.Int64Var(&f.cacheMaxBytes, "cache-size", 1*sizey.GB, "Maximum number of bytes to keep in the cache (soft limit)")
 	fs.DurationVar(&f.cacheEvictionInterval, "cache-eviction-interval", 5*time.Minute, "Amount of time between enforcing maximum cache size")
+
+	// batching
+	fs.DurationVar(&f.recordBatchBlockTime, "batch-wait-time", time.Second, "Amount of time to wait between receiving first record in batch and committing it")
+	fs.IntVar(&f.recordBatchSoftMaxBytes, "batch-bytes-max", 10*sizey.MB, "Soft maximum for the number of bytes to include in each record batch")
 
 	err := fs.Parse(os.Args[1:])
 	if err != nil {
