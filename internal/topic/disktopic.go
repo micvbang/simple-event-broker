@@ -1,4 +1,4 @@
-package storage
+package topic
 
 import (
 	"errors"
@@ -9,27 +9,28 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/filepathy"
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
-type DiskTopicStorage struct {
+type DiskStorage struct {
 	log     logger.Logger
 	rootDir string
 }
 
-// NewDiskTopicStorage returns a *TopicStorage that stores its data in rootDir
-// on local disk.
-func NewDiskTopicStorage(log logger.Logger, rootDir string) *DiskTopicStorage {
-	return &DiskTopicStorage{
+// NewDiskStorage returns a *DiskStorage that stores its data in rootDir on
+// local disk.
+func NewDiskStorage(log logger.Logger, rootDir string) *DiskStorage {
+	return &DiskStorage{
 		log:     log,
 		rootDir: rootDir,
 	}
 }
 
-func (ds *DiskTopicStorage) Writer(recordBatchKey string) (io.WriteCloser, error) {
-	log := ds.log.WithField("recordBatchKey", recordBatchKey)
+func (ds *DiskStorage) Writer(key string) (io.WriteCloser, error) {
+	log := ds.log.WithField("recordBatchKey", key)
 
-	recordBatchPath := ds.rootDirPath(recordBatchKey)
+	recordBatchPath := ds.rootDirPath(key)
 	log.Debugf("creating dirs")
 	err := os.MkdirAll(filepath.Dir(recordBatchPath), os.ModePerm)
 	if err != nil {
@@ -45,16 +46,16 @@ func (ds *DiskTopicStorage) Writer(recordBatchKey string) (io.WriteCloser, error
 	return f, nil
 }
 
-func (ds *DiskTopicStorage) Reader(recordBatchKey string) (io.ReadCloser, error) {
-	log := ds.log.WithField("recordBatchName", recordBatchKey)
+func (ds *DiskStorage) Reader(key string) (io.ReadCloser, error) {
+	log := ds.log.WithField("recordBatchName", key)
 
-	recordBatchPath := ds.rootDirPath(recordBatchKey)
+	recordBatchPath := ds.rootDirPath(key)
 
 	log.Debugf("opening file")
 	f, err := os.Open(recordBatchPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = errors.Join(err, ErrNotInStorage)
+			err = errors.Join(err, seb.ErrNotInStorage)
 		}
 
 		return nil, fmt.Errorf("opening record batch '%s': %w", recordBatchPath, err)
@@ -63,7 +64,7 @@ func (ds *DiskTopicStorage) Reader(recordBatchKey string) (io.ReadCloser, error)
 	return f, nil
 }
 
-func (ds *DiskTopicStorage) ListFiles(topicName string, extension string) ([]File, error) {
+func (ds *DiskStorage) ListFiles(topicName string, extension string) ([]File, error) {
 	log := ds.log.
 		WithField("topicName", topicName).
 		WithField("extension", extension)
@@ -88,6 +89,6 @@ func (ds *DiskTopicStorage) ListFiles(topicName string, extension string) ([]Fil
 	return files, err
 }
 
-func (ds *DiskTopicStorage) rootDirPath(key string) string {
+func (ds *DiskStorage) rootDirPath(key string) string {
 	return filepath.Join(ds.rootDir, key)
 }

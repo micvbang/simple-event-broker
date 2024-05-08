@@ -7,7 +7,7 @@ import (
 
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
-	"github.com/micvbang/simple-event-broker/internal/tester"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/stretchr/testify/require"
 )
 

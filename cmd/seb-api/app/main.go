@@ -12,10 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/micvbang/simple-event-broker/internal/storage"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 )
 
 func Run() {
@@ -26,8 +28,8 @@ func Run() {
 	log := logger.NewWithLevel(ctx, logger.LogLevel(flags.logLevel))
 	log.Debugf("flags: %v", flags)
 
-	cacheStorage := storage.NewDiskCache(log.Name("disk cache"), flags.cacheDir)
-	cache, err := storage.NewCache(log, cacheStorage)
+	cacheStorage := cache.NewDiskStorage(log.Name("disk cache"), flags.cacheDir)
+	cache, err := cache.New(log, cacheStorage)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}
@@ -48,7 +50,7 @@ func Run() {
 	log.Fatalf("ListenAndServe returned: %s", err)
 }
 
-func cacheEviction(log logger.Logger, cache *storage.Cache, cacheMaxBytes int64, interval time.Duration) {
+func cacheEviction(log logger.Logger, cache *cache.Cache, cacheMaxBytes int64, interval time.Duration) {
 	log = log.
 		WithField("max bytes", cacheMaxBytes).
 		WithField("interval", interval)
@@ -71,20 +73,20 @@ func cacheEviction(log logger.Logger, cache *storage.Cache, cacheMaxBytes int64,
 	}
 }
 
-func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
+func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
 	session, err := session.NewSession()
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
-	s3Topic := func(log logger.Logger, topicName string) (*storage.Topic, error) {
+	s3TopicFactory := func(log logger.Logger, topicName string) (*topic.Topic, error) {
 		storageLogger := log.Name("s3 storage").WithField("topic-name", topicName)
-		s3Storage := storage.NewS3TopicStorage(storageLogger, s3.New(session), s3BucketName, "")
+		s3Storage := topic.NewS3Storage(storageLogger, s3.New(session), s3BucketName, "")
 
-		return storage.NewTopic(log, s3Storage, topicName, cache, storage.Gzip{})
+		return topic.New(log, s3Storage, topicName, cache, topic.Gzip{})
 	}
 
-	blockingBatcher := func(log logger.Logger, ts *storage.Topic) storage.RecordBatcher {
+	blockingBatcherFactory := func(log logger.Logger, ts *topic.Topic) storage.RecordBatcher {
 		batchLogger := log.Name("blocking batcher")
 		return storage.NewBlockingBatcher(batchLogger, blockTime, bytesSoftMax, func(b recordbatch.RecordBatch) ([]uint64, error) {
 			t0 := time.Now()
@@ -94,7 +96,7 @@ func makeBlockingS3Storage(log logger.Logger, cache *storage.Cache, bytesSoftMax
 		})
 	}
 
-	return storage.New(log.Name("storage"), s3Topic, blockingBatcher), nil
+	return storage.New(log.Name("storage"), s3TopicFactory, blockingBatcherFactory), nil
 }
 
 type flags struct {

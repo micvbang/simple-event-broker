@@ -1,4 +1,4 @@
-package storage
+package cache
 
 import (
 	"fmt"
@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/bytey"
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/nops"
 )
 
 type memoryCacheItem struct {
@@ -23,7 +25,7 @@ type MemoryCache struct {
 	items map[string]memoryCacheItem
 }
 
-func NewMemoryCache(log logger.Logger) *MemoryCache {
+func NewMemoryStorage(log logger.Logger) *MemoryCache {
 	return &MemoryCache{
 		log:   log,
 		now:   time.Now,
@@ -34,7 +36,7 @@ func NewMemoryCache(log logger.Logger) *MemoryCache {
 func (mc *MemoryCache) Reader(key string) (io.ReadSeekCloser, error) {
 	item, ok := mc.items[key]
 	if !ok {
-		return nil, ErrNotInCache
+		return nil, seb.ErrNotInCache
 	}
 	item.accessedAt = mc.now()
 	mc.items[key] = item
@@ -45,7 +47,7 @@ func (mc *MemoryCache) Reader(key string) (io.ReadSeekCloser, error) {
 		return nil, fmt.Errorf("seeking to start of buffer: %w", err)
 	}
 
-	return NopReadSeekCloser(item.buf), nil
+	return nops.NopReadSeekCloser(item.buf), nil
 }
 
 func (mc *MemoryCache) Writer(key string) (io.WriteCloser, error) {
@@ -56,7 +58,7 @@ func (mc *MemoryCache) Writer(key string) (io.WriteCloser, error) {
 		accessedAt: mc.now(),
 	}
 
-	return NopWriteCloser(buf), nil
+	return nops.NopWriteCloser(buf), nil
 }
 
 func (mc *MemoryCache) Remove(key string) error {
@@ -79,7 +81,7 @@ func (mc *MemoryCache) List() (map[string]CacheItem, error) {
 func (mc *MemoryCache) SizeOf(key string) (CacheItem, error) {
 	item, ok := mc.items[key]
 	if !ok {
-		return CacheItem{}, ErrNotInCache
+		return CacheItem{}, seb.ErrNotInCache
 	}
 
 	return CacheItem{

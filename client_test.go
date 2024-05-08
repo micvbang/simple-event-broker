@@ -5,9 +5,8 @@ import (
 	"time"
 
 	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
-	"github.com/micvbang/simple-event-broker/internal/storage"
-	"github.com/micvbang/simple-event-broker/internal/tester"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,7 +25,7 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 
 	// record does not already exist
 	_, err = srv.Storage.GetRecord(topicName, offset)
-	require.ErrorIs(t, err, storage.ErrOutOfBounds)
+	require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
 	// Act
 	err = client.Add(topicName, expectedRecord)

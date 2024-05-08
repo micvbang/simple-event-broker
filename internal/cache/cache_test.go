@@ -1,4 +1,4 @@
-package storage_test
+package cache_test
 
 import (
 	"fmt"
@@ -7,8 +7,9 @@ import (
 
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/go-helpy/timey"
-	"github.com/micvbang/simple-event-broker/internal/storage"
-	"github.com/micvbang/simple-event-broker/internal/tester"
+	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/internal/cache"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +17,7 @@ import (
 // removes items from the cache until there's at most the given number of bytes
 // in the cache.
 func TestCacheEvictLeastRecentlyUsed(t *testing.T) {
-	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage cache.Storage) {
 		// mockTime is used to advance time to avoid clashes in cache item's
 		// "accessedAt" value, which would effectively randomize the order in which
 		// items should be evicted
@@ -35,7 +36,7 @@ func TestCacheEvictLeastRecentlyUsed(t *testing.T) {
 			{"4", bs},
 		}
 
-		c, err := storage.NewCacheWithNow(log, cacheStorage, mockTime.Now)
+		c, err := cache.NewCacheWithNow(log, cacheStorage, mockTime.Now)
 		require.NoError(t, err)
 
 		bytesCached := 0
@@ -65,7 +66,7 @@ func TestCacheEvictLeastRecentlyUsed(t *testing.T) {
 			// most recently accessed items must be evicted
 			for _, item := range cacheItems[:i] {
 				_, err := c.Reader(item.key)
-				require.ErrorIs(t, err, storage.ErrNotInCache)
+				require.ErrorIs(t, err, seb.ErrNotInCache)
 			}
 
 			// least recently accessed items must stay
@@ -88,8 +89,8 @@ func TestCacheEvictLeastRecentlyUsed(t *testing.T) {
 // EvictLeastRecentlyUsed ensures that the cache contains at most the given
 // number of bytes, potentially evicting more than one item per call.
 func TestCacheEvictLeastRecentlyUsedMaxBytes(t *testing.T) {
-	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
-		c, err := storage.NewCache(log, cacheStorage)
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage cache.Storage) {
+		c, err := cache.New(log, cacheStorage)
 		require.NoError(t, err)
 
 		bs := tester.RandomBytes(t, 10)
@@ -126,10 +127,10 @@ func TestCacheEvictLeastRecentlyUsedMaxBytes(t *testing.T) {
 // TestCacheEvictLeastRecentlyEmptyCache verifies that calls to EvictLeastRecentlyUsed
 // does not fail if the cache directory does not exist.
 func TestCacheEvictLeastRecentlyEmptyCache(t *testing.T) {
-	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage cache.Storage) {
 		mockTime := timey.NewMockTime(nil)
 
-		c, err := storage.NewCacheWithNow(log, cacheStorage, mockTime.Now)
+		c, err := cache.NewCacheWithNow(log, cacheStorage, mockTime.Now)
 		require.NoError(t, err)
 
 		err = c.EvictLeastRecentlyUsed(100)
@@ -140,20 +141,20 @@ func TestCacheEvictLeastRecentlyEmptyCache(t *testing.T) {
 // TestCacheReaderFileNotCached verifies that Reader() returns ErrNotInCache
 // when attempting to read a file from cache that does not exist.
 func TestCacheReaderFileNotCached(t *testing.T) {
-	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
-		c, err := storage.NewCache(log, cacheStorage)
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage cache.Storage) {
+		c, err := cache.New(log, cacheStorage)
 		require.NoError(t, err)
 
 		// Act, assert
 		_, err = c.Reader("non/existing/path")
-		require.ErrorIs(t, err, storage.ErrNotInCache)
+		require.ErrorIs(t, err, seb.ErrNotInCache)
 	})
 }
 
 // TestCacheSize verifies that Size() returns the expected number of bytes.
 func TestCacheSize(t *testing.T) {
-	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
-		c, err := storage.NewCache(log, cacheStorage)
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage cache.Storage) {
+		c, err := cache.New(log, cacheStorage)
 		require.NoError(t, err)
 
 		expectedSize := 0
@@ -177,10 +178,10 @@ func TestCacheSize(t *testing.T) {
 // verified that Size() still reports the correct number of bytes after adding
 // _more_ items to a pre-initialized cache.
 func TestCacheSizeWithExistingFiles(t *testing.T) {
-	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage cache.Storage) {
 		expectedSize := 0
 		{
-			c1, err := storage.NewCache(log, cacheStorage)
+			c1, err := cache.New(log, cacheStorage)
 			require.NoError(t, err)
 
 			for i := 0; i < 10; i++ {
@@ -197,7 +198,7 @@ func TestCacheSizeWithExistingFiles(t *testing.T) {
 		}
 
 		// Act
-		c2, err := storage.NewCache(log, cacheStorage)
+		c2, err := cache.New(log, cacheStorage)
 		require.NoError(t, err)
 
 		// Assert
@@ -223,8 +224,8 @@ func TestCacheSizeWithExistingFiles(t *testing.T) {
 // TestCacheSizeOverwriteItem verifies that Size() returns the correct number of
 // bytes when items in the cache are overwritten.
 func TestCacheSizeOverwriteItem(t *testing.T) {
-	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage storage.CacheStorage) {
-		c, err := storage.NewCache(log, cacheStorage)
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage cache.Storage) {
+		c, err := cache.New(log, cacheStorage)
 		require.NoError(t, err)
 
 		itemsToCache := [][]byte{

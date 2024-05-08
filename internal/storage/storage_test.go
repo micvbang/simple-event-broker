@@ -4,11 +4,18 @@ import (
 	"context"
 	"testing"
 
+	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/storage"
-	"github.com/micvbang/simple-event-broker/internal/tester"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	log = logger.NewDefault(context.Background())
 )
 
 // TestGetRecordsOffsetAndMaxCount verifies that the expected records are
@@ -46,7 +53,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			"1-5":                       {offset: 1, maxRecords: 5, expected: allRecords[1:6]},
 			"6-6":                       {offset: 6, maxRecords: 1, expected: allRecords[6:7]},
 			"0-100":                     {offset: 0, maxRecords: 100, expected: allRecords[:]},
-			"32-100 (out of bounds)":    {offset: 32, maxRecords: 100, expected: allRecords[:0], err: storage.ErrOutOfBounds},
+			"32-100 (out of bounds)":    {offset: 32, maxRecords: 100, expected: allRecords[:0], err: seb.ErrOutOfBounds},
 			"soft max bytes 5 records":  {offset: 3, maxRecords: 10, softMaxBytes: recordSize * 5, expected: allRecords[3:8]},
 			"soft max bytes 10 records": {offset: 7, maxRecords: 10, softMaxBytes: recordSize * 10, expected: allRecords[7:17]},
 			"max records 10":            {offset: 5, maxRecords: 10, softMaxBytes: recordSize * 15, expected: allRecords[5:15]},
@@ -71,10 +78,10 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 }
 
 // TestStorageAutoCreateTopic verifies that AddRecords returns
-// storage.ErrTopicNotFound when autoCreateTopic is false, and automatically
+// seb.ErrTopicNotFound when autoCreateTopic is false, and automatically
 // creates the topic if it is true.
 func TestAddRecordAutoCreateTopic(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, bs storage.BackingStorage, cache *storage.Cache) {
+	tester.TestBackingStorageAndCache(t, func(t *testing.T, ts topic.Storage, cache *cache.Cache) {
 		const topicName = "topic-name"
 		expectedRecord := recordbatch.Record("this is a record")
 
@@ -82,17 +89,17 @@ func TestAddRecordAutoCreateTopic(t *testing.T) {
 			autoCreateTopic bool
 			err             error
 		}{
-			"false": {autoCreateTopic: false, err: storage.ErrTopicNotFound},
+			"false": {autoCreateTopic: false, err: seb.ErrTopicNotFound},
 			"true":  {autoCreateTopic: true, err: nil},
 		}
 
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
 				s := storage.NewWithAutoCreate(log,
-					func(log logger.Logger, topicName string) (*storage.Topic, error) {
-						return storage.NewTopic(log, bs, topicName, cache, &storage.Gzip{})
+					func(log logger.Logger, topicName string) (*topic.Topic, error) {
+						return topic.New(log, ts, topicName, cache, &topic.Gzip{})
 					},
-					func(l logger.Logger, t *storage.Topic) storage.RecordBatcher {
+					func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
 						return storage.NewNullBatcher(t.AddRecordBatch)
 					},
 					test.autoCreateTopic,
@@ -111,7 +118,7 @@ func TestAddRecordAutoCreateTopic(t *testing.T) {
 // TestGetRecordsTopicDoesNotExist verifies that GetRecords returns an empty
 // record batch when attempting to read from a topic that does not exist.
 func TestGetRecordsTopicDoesNotExist(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, bs storage.BackingStorage, cache *storage.Cache) {
+	tester.TestBackingStorageAndCache(t, func(t *testing.T, bs topic.Storage, cache *cache.Cache) {
 		const topicName = "topic-name"
 		ctx := context.Background()
 		record := tester.RandomBytes(t, 8)
@@ -121,17 +128,17 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 			addErr          error
 			getErr          error
 		}{
-			"false": {autoCreateTopic: false, addErr: storage.ErrTopicNotFound, getErr: storage.ErrTopicNotFound},
-			"true":  {autoCreateTopic: true, addErr: nil, getErr: storage.ErrOutOfBounds},
+			"false": {autoCreateTopic: false, addErr: seb.ErrTopicNotFound, getErr: seb.ErrTopicNotFound},
+			"true":  {autoCreateTopic: true, addErr: nil, getErr: seb.ErrOutOfBounds},
 		}
 
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
 				s := storage.NewWithAutoCreate(log,
-					func(log logger.Logger, topicName string) (*storage.Topic, error) {
-						return storage.NewTopic(log, bs, topicName, cache, &storage.Gzip{})
+					func(log logger.Logger, topicName string) (*topic.Topic, error) {
+						return topic.New(log, bs, topicName, cache, &topic.Gzip{})
 					},
-					func(l logger.Logger, t *storage.Topic) storage.RecordBatcher {
+					func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
 						return storage.NewNullBatcher(t.AddRecordBatch)
 					},
 					test.autoCreateTopic,
@@ -156,15 +163,15 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 // ErrOutOfBounds when attempting to start from an offset that is too high (does
 // not yet exist).
 func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, bs storage.BackingStorage, cache *storage.Cache) {
+	tester.TestBackingStorageAndCache(t, func(t *testing.T, bs topic.Storage, cache *cache.Cache) {
 		const topicName = "topic-name"
 		ctx := context.Background()
 
 		s := storage.New(log,
-			func(log logger.Logger, topicName string) (*storage.Topic, error) {
-				return storage.NewTopic(log, bs, topicName, cache, &storage.Gzip{})
+			func(log logger.Logger, topicName string) (*topic.Topic, error) {
+				return topic.New(log, bs, topicName, cache, &topic.Gzip{})
 			},
-			func(l logger.Logger, t *storage.Topic) storage.RecordBatcher {
+			func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
 				return storage.NewNullBatcher(t.AddRecordBatch)
 			},
 		)
@@ -179,7 +186,7 @@ func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 		_, err = s.GetRecords(ctx, "does-not-exist", nonExistingOffset, 10, 1024)
 
 		// Assert
-		require.ErrorIs(t, err, storage.ErrOutOfBounds)
+		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 	})
 }
 
@@ -217,10 +224,10 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		const topicName = "topic-name"
 
 		_, err := s.GetRecord(topicName, 0)
-		require.ErrorIs(t, err, storage.ErrTopicNotFound)
+		require.ErrorIs(t, err, seb.ErrTopicNotFound)
 
 		_, err = s.AddRecord(topicName, recordbatch.Record("this is a record"))
-		require.ErrorIs(t, err, storage.ErrTopicNotFound)
+		require.ErrorIs(t, err, seb.ErrTopicNotFound)
 
 		// Act
 		err = s.CreateTopic(topicName)
@@ -228,7 +235,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 
 		// Assert
 		_, err = s.GetRecord(topicName, 0)
-		require.ErrorIs(t, err, storage.ErrOutOfBounds)
+		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
 		_, err = s.AddRecord(topicName, recordbatch.Record("this is a record"))
 		require.NoError(t, err)
@@ -240,15 +247,15 @@ func TestCreateTopicHappyPath(t *testing.T) {
 // attempting to create a topic that already exists in the backing storage (at
 // least one record was added to the topic in its lifetime)
 func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, bs storage.BackingStorage, cache *storage.Cache) {
+	tester.TestBackingStorageAndCache(t, func(t *testing.T, bs topic.Storage, cache *cache.Cache) {
 		const topicName = "topic-name"
 
 		{
 			s1 := storage.NewWithAutoCreate(log,
-				func(log logger.Logger, topicName string) (*storage.Topic, error) {
-					return storage.NewTopic(log, bs, topicName, cache, &storage.Gzip{})
+				func(log logger.Logger, topicName string) (*topic.Topic, error) {
+					return topic.New(log, bs, topicName, cache, &topic.Gzip{})
 				},
-				func(l logger.Logger, t *storage.Topic) storage.RecordBatcher {
+				func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
 					return storage.NewNullBatcher(t.AddRecordBatch)
 				},
 				false,
@@ -266,10 +273,10 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 
 		{
 			s2 := storage.NewWithAutoCreate(log,
-				func(log logger.Logger, topicName string) (*storage.Topic, error) {
-					return storage.NewTopic(log, bs, topicName, cache, &storage.Gzip{})
+				func(log logger.Logger, topicName string) (*topic.Topic, error) {
+					return topic.New(log, bs, topicName, cache, &topic.Gzip{})
 				},
-				func(l logger.Logger, t *storage.Topic) storage.RecordBatcher {
+				func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
 					return storage.NewNullBatcher(t.AddRecordBatch)
 				},
 				false,
@@ -282,7 +289,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 
 			// we expect Storage to complain that topic alreay exists, because
 			// it exists in the backing storage.
-			require.ErrorIs(t, err, storage.ErrTopicAlreadyExists)
+			require.ErrorIs(t, err, seb.ErrTopicAlreadyExists)
 		}
 	})
 }
@@ -301,6 +308,6 @@ func TestCreateTopicAlreadyExists(t *testing.T) {
 
 		// Assert
 		err = s.CreateTopic(topicName)
-		require.ErrorIs(t, err, storage.ErrTopicAlreadyExists)
+		require.ErrorIs(t, err, seb.ErrTopicAlreadyExists)
 	})
 }

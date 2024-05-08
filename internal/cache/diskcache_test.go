@@ -1,6 +1,7 @@
-package storage_test
+package cache_test
 
 import (
+	"context"
 	"io"
 	"os"
 	"path"
@@ -8,9 +9,14 @@ import (
 	"testing"
 
 	"github.com/micvbang/go-helpy/mapy"
-	"github.com/micvbang/simple-event-broker/internal/storage"
-	"github.com/micvbang/simple-event-broker/internal/tester"
+	"github.com/micvbang/simple-event-broker/internal/cache"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	log = logger.NewDefault(context.Background())
 )
 
 // TestCacheWriterWritesToDisk verifies that the io.WriteCloser returned by
@@ -24,7 +30,7 @@ func TestCacheWriterWritesToDisk(t *testing.T) {
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
-	c := storage.NewDiskCache(log, tempDir)
+	c := cache.NewDiskStorage(log, tempDir)
 
 	// Act
 	f, err := c.Writer(key)
@@ -59,7 +65,7 @@ func TestDiskCacheReaderReadsFromDisk(t *testing.T) {
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
-	c := storage.NewDiskCache(log, t.TempDir())
+	c := cache.NewDiskStorage(log, t.TempDir())
 
 	w, err := c.Writer(key)
 	require.NoError(t, err)
@@ -79,7 +85,7 @@ func TestDiskCacheReaderReadsFromDisk(t *testing.T) {
 // TestDiskCacheListFromDisk verifies that List() returns the expected keys,
 // without any rootDir prefix.
 func TestDiskCacheListFromDisk(t *testing.T) {
-	c := storage.NewDiskCache(log, t.TempDir())
+	c := cache.NewDiskStorage(log, t.TempDir())
 
 	expectedKeys := []string{
 		"topic1/file1",
@@ -98,7 +104,7 @@ func TestDiskCacheListFromDisk(t *testing.T) {
 	items, err := c.List()
 	require.NoError(t, err)
 
-	gotKeys := mapy.Map(items, func(_ string, item storage.CacheItem) string {
+	gotKeys := mapy.Map(items, func(_ string, item cache.CacheItem) string {
 		return item.Key
 	})
 
@@ -111,13 +117,13 @@ func TestDiskCacheListFromDisk(t *testing.T) {
 // TestDiskCacheListFromDiskEmpty verifies that List() returns an empty list of
 // keys when the cache is empty.
 func TestDiskCacheListFromDiskEmpty(t *testing.T) {
-	c := storage.NewDiskCache(log, t.TempDir())
+	c := cache.NewDiskStorage(log, t.TempDir())
 
 	// Act
 	items, err := c.List()
 	require.NoError(t, err)
 
-	gotKeys := mapy.Map(items, func(_ string, item storage.CacheItem) string {
+	gotKeys := mapy.Map(items, func(_ string, item cache.CacheItem) string {
 		return item.Key
 	})
 

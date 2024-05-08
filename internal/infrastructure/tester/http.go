@@ -6,9 +6,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/micvbang/simple-event-broker/internal/storage"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +21,7 @@ type HTTPTestServer struct {
 	Server *httptest.Server
 
 	Mux     *http.ServeMux
-	Cache   *storage.Cache
+	Cache   *cache.Cache
 	Storage *storage.Storage
 }
 
@@ -61,19 +63,19 @@ func httpServer(t *testing.T, config httpServerConfig) *HTTPTestServer {
 	log := logger.NewDefault(context.Background())
 	mux := http.NewServeMux()
 
-	cache, err := storage.NewCache(log, storage.NewMemoryCache(log))
+	cache, err := cache.New(log, cache.NewMemoryStorage(log))
 	require.NoError(t, err)
 
-	topic := func(log logger.Logger, topicName string) (*storage.Topic, error) {
-		memoryTopicStorage := storage.NewMemoryTopicStorage(log)
-		return storage.NewTopic(log, memoryTopicStorage, topicName, cache, nil)
+	topicFactory := func(log logger.Logger, topicName string) (*topic.Topic, error) {
+		memoryTopicStorage := topic.NewMemoryStorage(log)
+		return topic.New(log, memoryTopicStorage, topicName, cache, nil)
 	}
 
-	batcher := func(l logger.Logger, ts *storage.Topic) storage.RecordBatcher {
-		return storage.NewNullBatcher(ts.AddRecordBatch)
+	batcherFactory := func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
+		return storage.NewNullBatcher(t.AddRecordBatch)
 	}
 
-	storage := storage.NewWithAutoCreate(log, topic, batcher, config.storageTopicAutoCreate)
+	storage := storage.NewWithAutoCreate(log, topicFactory, batcherFactory, config.storageTopicAutoCreate)
 	sebhttp.RegisterRoutes(log, mux, storage, config.apiKey)
 
 	return &HTTPTestServer{

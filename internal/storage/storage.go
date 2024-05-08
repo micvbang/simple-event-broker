@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"sync"
 
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 )
 
 type RecordBatcher interface {
@@ -16,15 +18,15 @@ type RecordBatcher interface {
 
 type topicBatcher struct {
 	batcher RecordBatcher
-	topic   *Topic
+	topic   *topic.Topic
 }
 
 type Storage struct {
 	log logger.Logger
 
 	autoCreateTopics bool
-	topicFactory     func(log logger.Logger, topicName string) (*Topic, error)
-	batcherFactory   func(logger.Logger, *Topic) RecordBatcher
+	topicFactory     func(log logger.Logger, topicName string) (*topic.Topic, error)
+	batcherFactory   func(logger.Logger, *topic.Topic) RecordBatcher
 
 	mu            *sync.Mutex
 	topicBatchers map[string]topicBatcher
@@ -36,16 +38,16 @@ type Storage struct {
 // used to initialize the batching strategy used for the created Topic.
 func New(
 	log logger.Logger,
-	topicFactory func(log logger.Logger, topicName string) (*Topic, error),
-	batcherFactory func(logger.Logger, *Topic) RecordBatcher,
+	topicFactory func(log logger.Logger, topicName string) (*topic.Topic, error),
+	batcherFactory func(logger.Logger, *topic.Topic) RecordBatcher,
 ) *Storage {
 	return newStorage(log, topicFactory, batcherFactory, true)
 }
 
 func NewWithAutoCreate(
 	log logger.Logger,
-	topicFactory func(log logger.Logger, topicName string) (*Topic, error),
-	batcherFactory func(logger.Logger, *Topic) RecordBatcher,
+	topicFactory func(log logger.Logger, topicName string) (*topic.Topic, error),
+	batcherFactory func(logger.Logger, *topic.Topic) RecordBatcher,
 	autoCreateTopics bool,
 ) *Storage {
 	return newStorage(log, topicFactory, batcherFactory, autoCreateTopics)
@@ -53,8 +55,8 @@ func NewWithAutoCreate(
 
 func newStorage(
 	log logger.Logger,
-	topicFactory func(log logger.Logger, topicName string) (*Topic, error),
-	batcherFactory func(logger.Logger, *Topic) RecordBatcher,
+	topicFactory func(log logger.Logger, topicName string) (*topic.Topic, error),
+	batcherFactory func(logger.Logger, *topic.Topic) RecordBatcher,
 	autoCreateTopics bool,
 ) *Storage {
 	return &Storage{
@@ -101,7 +103,7 @@ func (s *Storage) CreateTopic(topicName string) error {
 
 	_, exists := s.topicBatchers[topicName]
 	if exists {
-		return ErrTopicAlreadyExists
+		return seb.ErrTopicAlreadyExists
 	}
 
 	tb, err := s.makeTopicBatcher(topicName)
@@ -113,8 +115,8 @@ func (s *Storage) CreateTopic(topicName string) error {
 	// instantiated during the lifetime of Storage, we don't yet know whether
 	// the topic already exists or not. Checking the topic's nextOffset is a
 	// hacky way to attempt to do this.
-	if tb.topic.nextOffset.Load() != 0 {
-		return ErrTopicAlreadyExists
+	if tb.topic.EndOffset() != 0 {
+		return seb.ErrTopicAlreadyExists
 	}
 
 	s.topicBatchers[topicName] = tb
@@ -156,11 +158,11 @@ func (s *Storage) GetRecords(ctx context.Context, topicName string, startOffset 
 
 		record, err := tb.topic.ReadRecord(offset)
 		if err != nil {
-			isOutOfBounds := errors.Is(err, ErrOutOfBounds)
+			isOutOfBounds := errors.Is(err, seb.ErrOutOfBounds)
 
 			// startOffset does not yet exist, inform caller
 			if isOutOfBounds && offset == startOffset {
-				return recordBatch, ErrOutOfBounds
+				return recordBatch, seb.ErrOutOfBounds
 			}
 
 			// no more records available
@@ -238,7 +240,7 @@ func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 	if !ok {
 		log.Debugf("creating new topic batcher")
 		if !s.autoCreateTopics {
-			return topicBatcher{}, fmt.Errorf("%w: '%s'", ErrTopicNotFound, topicName)
+			return topicBatcher{}, fmt.Errorf("%w: '%s'", seb.ErrTopicNotFound, topicName)
 		}
 
 		tb, err = s.makeTopicBatcher(topicName)

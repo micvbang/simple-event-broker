@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
-	"github.com/micvbang/simple-event-broker/internal/storage"
 )
 
 type RecordGetter interface {
@@ -32,7 +32,7 @@ func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 
 		record, err := s.GetRecord(topicName, offset)
 		if err != nil {
-			if errors.Is(err, storage.ErrOutOfBounds) {
+			if errors.Is(err, seb.ErrOutOfBounds) {
 				log.Debugf("not found")
 				w.WriteHeader(http.StatusNotFound)
 				return

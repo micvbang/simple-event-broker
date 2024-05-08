@@ -1,4 +1,4 @@
-package storage
+package topic
 
 import (
 	"errors"
@@ -13,28 +13,29 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
-// S3TopicStorage is an Amazon S3 backing storage that can be used in Topic.
-type S3TopicStorage struct {
-	log        logger.Logger
-	s3         s3iface.S3API
-	bucketName string
-	keyPrefix  string
+// S3Storage is an Amazon S3 backing storage that can be used in Topic.
+type S3Storage struct {
+	log         logger.Logger
+	s3          s3iface.S3API
+	bucketName  string
+	s3KeyPrefix string
 }
 
-func NewS3TopicStorage(log logger.Logger, s3 s3iface.S3API, bucketName string, keyPrefix string) *S3TopicStorage {
-	return &S3TopicStorage{
-		log:        log,
-		s3:         s3,
-		bucketName: bucketName,
-		keyPrefix:  keyPrefix,
+func NewS3Storage(log logger.Logger, s3 s3iface.S3API, bucketName string, s3KeyPrefix string) *S3Storage {
+	return &S3Storage{
+		log:         log,
+		s3:          s3,
+		bucketName:  bucketName,
+		s3KeyPrefix: s3KeyPrefix,
 	}
 }
 
-func (ss *S3TopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
-	log := ss.log.WithField("recordBatchPath", recordBatchPath)
+func (ss *S3Storage) Writer(key string) (io.WriteCloser, error) {
+	log := ss.log.WithField("recordBatchPath", key)
 
 	log.Debugf("creating temp file")
 	tmpFile, err := os.CreateTemp("", "seb_*")
@@ -49,25 +50,25 @@ func (ss *S3TopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error)
 		f:          tmpFile,
 		s3:         ss.s3,
 		bucketName: ss.bucketName,
-		objectKey:  path.Join(ss.keyPrefix, recordBatchPath),
+		objectKey:  path.Join(ss.s3KeyPrefix, key),
 	}
 
 	return writeCloser, nil
 }
 
-func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
-	log := ss.log.WithField("recordBatchPath", recordBatchPath)
+func (ss *S3Storage) Reader(key string) (io.ReadCloser, error) {
+	log := ss.log.WithField("recordBatchPath", key)
 
 	log.Debugf("fetching record batch from s3")
 	obj, err := ss.s3.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(ss.bucketName),
-		Key:    aws.String(path.Join(ss.keyPrefix, recordBatchPath)),
+		Key:    aws.String(path.Join(ss.s3KeyPrefix, key)),
 	})
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case s3.ErrCodeNoSuchKey:
-				err = errors.Join(err, ErrNotInStorage)
+				err = errors.Join(err, seb.ErrNotInStorage)
 			}
 		}
 
@@ -78,12 +79,12 @@ func (ss *S3TopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) 
 	return obj.Body, nil
 }
 
-func (ss *S3TopicStorage) ListFiles(topicName string, extension string) ([]File, error) {
+func (ss *S3Storage) ListFiles(topicName string, extension string) ([]File, error) {
 	log := ss.log.
 		WithField("topicPath", topicName).
 		WithField("extension", extension)
 
-	topicName = path.Join(ss.keyPrefix, topicName)
+	topicName = path.Join(ss.s3KeyPrefix, topicName)
 	topicName, _ = strings.CutPrefix(topicName, "/")
 	if !strings.HasSuffix(topicName, "/") {
 		topicName += "/"

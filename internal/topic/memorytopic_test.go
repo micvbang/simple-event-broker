@@ -1,4 +1,4 @@
-package storage_test
+package topic_test
 
 import (
 	"io"
@@ -6,8 +6,9 @@ import (
 	"testing"
 
 	"github.com/micvbang/go-helpy/slicey"
-	"github.com/micvbang/simple-event-broker/internal/storage"
-	"github.com/micvbang/simple-event-broker/internal/tester"
+	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +18,7 @@ func TestMemoryTopicStorageSimpleReadWrite(t *testing.T) {
 	const recordBatchPath = "topicName/000123.record_batch"
 	expectedBytes := tester.RandomBytes(t, 64)
 
-	memoryStorage := storage.NewMemoryTopicStorage(log)
+	memoryStorage := topic.NewMemoryStorage(log)
 
 	// Write
 	{
@@ -49,18 +50,18 @@ func TestMemoryTopicStorageSimpleReadWrite(t *testing.T) {
 }
 
 // TestMemoryTopicStorageReadNotFound verifies that Reader returns
-// storage.ErrNotInStorage when attempting to read a file that does not exist.
+// seb.ErrNotInStorage when attempting to read a file that does not exist.
 func TestMemoryTopicStorageReadNotFound(t *testing.T) {
-	memoryStorage := storage.NewMemoryTopicStorage(log)
+	memoryStorage := topic.NewMemoryStorage(log)
 
 	_, err := memoryStorage.Reader("does-not-exist")
-	require.ErrorIs(t, err, storage.ErrNotInStorage)
+	require.ErrorIs(t, err, seb.ErrNotInStorage)
 }
 
 // TestMemoryTopicStorageMultiReadWrite verifies that multiple files can be
 // written and read multiple times.
 func TestMemoryTopicStorageMultiReadWrite(t *testing.T) {
-	memoryStorage := storage.NewMemoryTopicStorage(log)
+	memoryStorage := topic.NewMemoryStorage(log)
 
 	keys := []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 
@@ -84,7 +85,7 @@ func TestMemoryTopicStorageMultiReadWrite(t *testing.T) {
 // topic name prefix when listing files, i.e. only returns files from
 // the given topic.
 func TestMemoryTopicStorageListFiles(t *testing.T) {
-	memoryStorage := storage.NewMemoryTopicStorage(log)
+	memoryStorage := topic.NewMemoryStorage(log)
 
 	bs := tester.RandomBytes(t, 32)
 
@@ -113,7 +114,7 @@ func TestMemoryTopicStorageListFiles(t *testing.T) {
 	require.Equal(t, 0, len(nonExistingTopicFiles))
 }
 
-func writeFile(t *testing.T, ms *storage.MemoryTopicStorage, key string, bs []byte) {
+func writeFile(t *testing.T, ms *topic.MemoryTopicStorage, key string, bs []byte) {
 	wtr, err := ms.Writer(key)
 	require.NoError(t, err)
 

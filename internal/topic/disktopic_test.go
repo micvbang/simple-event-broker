@@ -1,10 +1,10 @@
-package storage_test
+package topic_test
 
 import (
 	"testing"
 
-	"github.com/micvbang/simple-event-broker/internal/storage"
-	"github.com/micvbang/simple-event-broker/internal/tester"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +16,7 @@ func TestDiskTopicWriterReaderHappyPath(t *testing.T) {
 	expectedBytes := tester.RandomBytes(t, 512)
 	const recordBatchKey = "some-key"
 
-	d := storage.NewDiskTopicStorage(log, t.TempDir())
+	d := topic.NewDiskStorage(log, t.TempDir())
 
 	// Act, write
 	wtr, err := d.Writer(recordBatchKey)

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/storage"
 )
 
 type TopicGetter interface {
@@ -34,7 +34,7 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 
 		offset, err := s.EndOffset(topicName)
 		if err != nil {
-			if errors.Is(err, storage.ErrOutOfBounds) {
+			if errors.Is(err, seb.ErrOutOfBounds) {
 				log.Debugf("not found")
 				w.WriteHeader(http.StatusNotFound)
 				return

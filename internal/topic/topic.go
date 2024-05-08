@@ -1,4 +1,4 @@
-package storage
+package topic
 
 import (
 	"fmt"
@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/uint64y"
+	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
@@ -20,7 +22,7 @@ type File struct {
 	Path string
 }
 
-type BackingStorage interface {
+type Storage interface {
 	Writer(recordBatchPath string) (io.WriteCloser, error)
 	Reader(recordBatchPath string) (io.ReadCloser, error)
 	ListFiles(topicName string, extension string) ([]File, error)
@@ -36,40 +38,40 @@ type Topic struct {
 	topicName  string
 	nextOffset atomic.Uint64
 
-	mu             sync.Mutex
-	recordBatchIDs []uint64
+	mu                 sync.Mutex
+	recordBatchOffsets []uint64
 
-	backingStorage BackingStorage
-	cache          *Cache
+	backingStorage Storage
+	cache          *cache.Cache
 	compress       Compress
 }
 
-func NewTopic(log logger.Logger, backingStorage BackingStorage, topicName string, cache *Cache, compress Compress) (*Topic, error) {
+func New(log logger.Logger, backingStorage Storage, topicName string, cache *cache.Cache, compress Compress) (*Topic, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("cache required")
 	}
 
-	recordBatchIDs, err := listRecordBatchIDs(backingStorage, topicName)
+	recordBatchOffsets, err := listRecordBatchOffsets(backingStorage, topicName)
 	if err != nil {
 		return nil, fmt.Errorf("listing record batches: %w", err)
 	}
 
 	storage := &Topic{
-		log:            log.WithField("topic-name", topicName),
-		backingStorage: backingStorage,
-		topicName:      topicName,
-		recordBatchIDs: recordBatchIDs,
-		cache:          cache,
-		compress:       compress,
+		log:                log.WithField("topic-name", topicName),
+		backingStorage:     backingStorage,
+		topicName:          topicName,
+		recordBatchOffsets: recordBatchOffsets,
+		cache:              cache,
+		compress:           compress,
 	}
 
-	if len(recordBatchIDs) > 0 {
-		newestRecordBatchID := recordBatchIDs[len(recordBatchIDs)-1]
-		parser, err := storage.parseRecordBatch(newestRecordBatchID)
+	if len(recordBatchOffsets) > 0 {
+		newestRecordBatchOffset := recordBatchOffsets[len(recordBatchOffsets)-1]
+		parser, err := storage.parseRecordBatch(newestRecordBatchOffset)
 		if err != nil {
 			return nil, fmt.Errorf("reading record batch header: %w", err)
 		}
-		storage.nextOffset.Store(newestRecordBatchID + uint64(parser.Header.NumRecords))
+		storage.nextOffset.Store(newestRecordBatchOffset + uint64(parser.Header.NumRecords))
 	}
 
 	return storage, nil
@@ -122,7 +124,7 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 	// ReadRecord(). NOTE: recordBatchIDs must also have been updated before
 	// this is true.
 	s.mu.Lock()
-	s.recordBatchIDs = append(s.recordBatchIDs, recordBatchID)
+	s.recordBatchOffsets = append(s.recordBatchOffsets, recordBatchID)
 	s.mu.Unlock()
 	s.nextOffset.Store(nextOffset)
 
@@ -153,13 +155,13 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 
 func (s *Topic) ReadRecord(offset uint64) (recordbatch.Record, error) {
 	if offset >= s.nextOffset.Load() {
-		return nil, fmt.Errorf("offset does not exist: %w", ErrOutOfBounds)
+		return nil, fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
 	}
 
 	s.mu.Lock()
 	var recordBatchID uint64
-	for i := len(s.recordBatchIDs) - 1; i >= 0; i-- {
-		curBatchID := s.recordBatchIDs[i]
+	for i := len(s.recordBatchOffsets) - 1; i >= 0; i-- {
+		curBatchID := s.recordBatchOffsets[i]
 		if curBatchID <= offset {
 			recordBatchID = curBatchID
 			break
@@ -241,7 +243,7 @@ func (s *Topic) recordBatchPath(recordBatchID uint64) string {
 
 const recordBatchExtension = ".record_batch"
 
-func listRecordBatchIDs(backingStorage BackingStorage, topicName string) ([]uint64, error) {
+func listRecordBatchOffsets(backingStorage Storage, topicName string) ([]uint64, error) {
 	files, err := backingStorage.ListFiles(topicName, recordBatchExtension)
 	if err != nil {
 		return nil, fmt.Errorf("listing files: %w", err)

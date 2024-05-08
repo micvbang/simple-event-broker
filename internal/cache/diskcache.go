@@ -1,4 +1,4 @@
-package storage
+package cache
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/filepathy"
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
@@ -26,7 +27,7 @@ type DiskCache struct {
 	rootDir string
 }
 
-func NewDiskCache(log logger.Logger, rootDir string) *DiskCache {
+func NewDiskStorage(log logger.Logger, rootDir string) *DiskCache {
 	if !strings.HasSuffix(rootDir, "/") {
 		rootDir += "/"
 	}
@@ -90,7 +91,7 @@ func (c *DiskCache) Reader(key string) (io.ReadSeekCloser, error) {
 	f, err := os.Open(cachePath)
 	if err != nil {
 		log.Debugf("miss")
-		return nil, errors.Join(ErrNotInCache, fmt.Errorf("opening record batch '%s': %w", key, err))
+		return nil, errors.Join(seb.ErrNotInCache, fmt.Errorf("opening record batch '%s': %w", key, err))
 	}
 	log.Debugf("hit")
 
@@ -120,7 +121,7 @@ func (c *DiskCache) cachePath(key string) (string, error) {
 	}
 
 	if !strings.HasPrefix(abs, c.rootDir) {
-		return "", fmt.Errorf("attempting to delete key outside of root dir '%s': %w", c.rootDir, ErrUnauthorized)
+		return "", fmt.Errorf("attempting to delete key outside of root dir '%s': %w", c.rootDir, seb.ErrUnauthorized)
 	}
 
 	return path.Join(c.rootDir, key), nil

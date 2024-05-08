@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
-	"github.com/micvbang/simple-event-broker/internal/storage"
 )
 
 type RecordsGetter interface {
@@ -70,14 +70,14 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 
 		records, err := s.GetRecords(ctx, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
-			if errors.Is(err, storage.ErrTopicNotFound) {
+			if errors.Is(err, seb.ErrTopicNotFound) {
 				log.Debugf("not found: %s", err)
 				w.WriteHeader(http.StatusNotFound)
 				fmt.Fprintf(w, "topic not found")
 				return
 			}
 
-			if errors.Is(err, storage.ErrOutOfBounds) {
+			if errors.Is(err, seb.ErrOutOfBounds) {
 				log.Debugf("offset out of bounds: %s", err)
 				w.WriteHeader(http.StatusNotFound)
 				fmt.Fprintf(w, "offset out of bounds")

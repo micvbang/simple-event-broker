@@ -1,4 +1,4 @@
-package storage
+package topic
 
 import (
 	"bytes"
@@ -7,7 +7,9 @@ import (
 	"strings"
 	"sync"
 
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/nops"
 )
 
 // MemoryTopicStorage is an in-memory backing storage that can be used in Topic.
@@ -17,29 +19,29 @@ type MemoryTopicStorage struct {
 	storage map[string]*bytes.Buffer
 }
 
-func NewMemoryTopicStorage(log logger.Logger) *MemoryTopicStorage {
+func NewMemoryStorage(log logger.Logger) *MemoryTopicStorage {
 	return &MemoryTopicStorage{
 		storage: make(map[string]*bytes.Buffer, 64),
 	}
 }
 
-func (ms *MemoryTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
+func (ms *MemoryTopicStorage) Writer(key string) (io.WriteCloser, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	buf := bytes.NewBuffer(nil)
-	ms.storage[recordBatchPath] = buf
+	ms.storage[key] = buf
 
-	return NopWriteCloser(buf), nil
+	return nops.NopWriteCloser(buf), nil
 }
 
-func (ms *MemoryTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
+func (ms *MemoryTopicStorage) Reader(key string) (io.ReadCloser, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	buf, ok := ms.storage[recordBatchPath]
+	buf, ok := ms.storage[key]
 	if !ok {
-		return nil, ErrNotInStorage
+		return nil, seb.ErrNotInStorage
 	}
 
 	return io.NopCloser(buf), nil

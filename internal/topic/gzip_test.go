@@ -1,16 +1,16 @@
-package storage_test
+package topic_test
 
 import (
 	"io"
 	"testing"
 
-	"github.com/micvbang/simple-event-broker/internal/storage"
-	"github.com/micvbang/simple-event-broker/internal/tester"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
 
-var compressors = []storage.Compress{
-	storage.Gzip{},
+var compressors = []topic.Compress{
+	topic.Gzip{},
 }
 
 // TestCompressors verifies that all compressors can write random bytes and read

@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
+	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/storage"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 )
 
 func main() {
@@ -27,15 +29,15 @@ func main() {
 	topicName := filepath.Base(absInputPath)
 	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromOffset, flags.startFromOffset+flags.numRecords-1, topicName)
 
-	cacheStorage := storage.NewMemoryCache(log.Name("disk cache"))
-	cache, err := storage.NewCache(log, cacheStorage)
+	cacheStorage := cache.NewMemoryStorage(log.Name("disk cache"))
+	cache, err := cache.New(log, cacheStorage)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
-	diskTopicStorage := storage.NewDiskTopicStorage(log, rootDir)
+	diskTopicStorage := topic.NewDiskStorage(log, rootDir)
 
-	topic, err := storage.NewTopic(log, diskTopicStorage, topicName, cache, storage.Gzip{})
+	topic, err := topic.New(log, diskTopicStorage, topicName, cache, topic.Gzip{})
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}
@@ -43,7 +45,7 @@ func main() {
 	for i := flags.startFromOffset; i < flags.startFromOffset+flags.numRecords; i++ {
 		record, err := topic.ReadRecord(uint64(i))
 		if err != nil {
-			if errors.Is(err, storage.ErrOutOfBounds) {
+			if errors.Is(err, seb.ErrOutOfBounds) {
 				fmt.Printf("out of bounds\n")
 				return
 			}

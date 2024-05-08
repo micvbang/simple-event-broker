@@ -1,4 +1,4 @@
-package storage
+package cache
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
-type CacheStorage interface {
+type Storage interface {
 	Reader(key string) (io.ReadSeekCloser, error)
 	Writer(key string) (io.WriteCloser, error)
 	Remove(key string) error
@@ -21,18 +21,18 @@ type CacheStorage interface {
 
 type Cache struct {
 	log     logger.Logger
-	storage CacheStorage
+	storage Storage
 	now     func() time.Time
 
 	mu         sync.Mutex
 	cacheItems map[string]CacheItem
 }
 
-func NewCache(log logger.Logger, cacheStorage CacheStorage) (*Cache, error) {
+func New(log logger.Logger, cacheStorage Storage) (*Cache, error) {
 	return NewCacheWithNow(log, cacheStorage, time.Now)
 }
 
-func NewCacheWithNow(log logger.Logger, cacheStorage CacheStorage, now func() time.Time) (*Cache, error) {
+func NewCacheWithNow(log logger.Logger, cacheStorage Storage, now func() time.Time) (*Cache, error) {
 	cacheItems, err := cacheStorage.List()
 	if err != nil {
 		return nil, fmt.Errorf("listing existing files: %w", err)
@@ -190,4 +190,14 @@ func (w *writeCloseWrapper) Close() error {
 	w.afterClose(w.size)
 
 	return nil
+}
+
+func NewCacheDisk(log logger.Logger, rootDir string) (*Cache, error) {
+	diskCache := NewDiskStorage(log.Name("disk-cache"), rootDir)
+	return New(log, diskCache)
+}
+
+func NewCacheMemory(log logger.Logger) (*Cache, error) {
+	memoryCache := NewMemoryStorage(log.Name("memory-cache"))
+	return New(log, memoryCache)
 }
