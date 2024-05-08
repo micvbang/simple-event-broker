@@ -34,7 +34,7 @@ func Run() {
 
 	go cacheEviction(log.Name("cache eviction"), cache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-	blockingS3Storage, err := makeBlockingS3Storage(log, cache, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.bucketName)
+	blockingS3Storage, err := makeBlockingS3Storage(log, cache, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
 	if err != nil {
 		log.Fatalf("making blocking s3 storage: %s", err)
 	}
@@ -98,11 +98,9 @@ func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax i
 }
 
 type flags struct {
-	bucketName string
-	logLevel   int
+	logLevel int
 
-	recordBatchBlockTime    time.Duration
-	recordBatchSoftMaxBytes int
+	s3BucketName string
 
 	httpListenAddress string
 	httpListenPort    int
@@ -115,6 +113,9 @@ type flags struct {
 	cacheDir              string
 	cacheMaxBytes         int64
 	cacheEvictionInterval time.Duration
+
+	recordBatchBlockTime    time.Duration
+	recordBatchSoftMaxBytes int
 }
 
 func parseFlags() flags {
@@ -122,7 +123,6 @@ func parseFlags() flags {
 
 	f := flags{}
 
-	fs.StringVar(&f.bucketName, "b", "simple-commit-log-delete-me", "Bucket name")
 	fs.IntVar(&f.logLevel, "log-level", int(logger.LevelInfo), "Log level, info=4, debug=5")
 
 	// http
@@ -135,7 +135,11 @@ func parseFlags() flags {
 	fs.StringVar(&f.httpDebugListenAddress, "http-debug-address", "127.0.0.1", "Address to expose DEBUG endpoints. You very likely want this to remain localhost!")
 	fs.IntVar(&f.httpDebugListenPort, "http-debug-port", 5000, "Port to serve DEBUG endpoints on")
 
-	fs.StringVar(&f.cacheDir, "c", path.Join(os.TempDir(), "seb-cache"), "Local dir to use when caching record batches")
+	// s3
+	fs.StringVar(&f.s3BucketName, "s3-bucket", "", "Bucket name")
+
+	// caching
+	fs.StringVar(&f.cacheDir, "cache-dir", path.Join(os.TempDir(), "seb-cache"), "Local dir to use when caching record batches")
 	fs.Int64Var(&f.cacheMaxBytes, "cache-size", 1*sizey.GB, "Maximum number of bytes to keep in the cache (soft limit)")
 	fs.DurationVar(&f.cacheEvictionInterval, "cache-eviction-interval", 5*time.Minute, "Amount of time between enforcing maximum cache size")
 
@@ -154,7 +158,7 @@ func parseFlags() flags {
 		value string
 		name  string
 	}{
-		{name: "bucket name", value: f.bucketName},
+		{name: "bucket name", value: f.s3BucketName},
 	}
 
 	for _, r := range required {
