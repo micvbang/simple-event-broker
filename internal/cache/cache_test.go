@@ -245,3 +245,60 @@ func TestCacheSizeOverwriteItem(t *testing.T) {
 		}
 	})
 }
+
+// TestCacheEvictAfterFailure verifies that EvictLeastRecentlyUsed releases
+// its lock after an error has occurred in a previous call to it.
+// This is a regression test for a bug that was spotted on 2024-05-08.
+func TestCacheEvictAfterFailure(t *testing.T) {
+	cacheStorage := &cacheStorageMock{}
+	cacheStorage.MockRemove = func(key string) error {
+		return fmt.Errorf("everything is on fire!")
+	}
+	cacheStorage.MockList = func() (map[string]cache.CacheItem, error) {
+		cacheItems := map[string]cache.CacheItem{
+			"key1": {
+				Size: 42,
+				Key:  "key1",
+			},
+		}
+
+		return cacheItems, nil
+	}
+
+	c, err := cache.New(log, cacheStorage)
+	require.NoError(t, err)
+
+	// Act
+	err = c.EvictLeastRecentlyUsed(1)
+	require.Error(t, err)
+
+	hasReturned := false
+
+	// Assert
+	go func() {
+		c.EvictLeastRecentlyUsed(1)
+		hasReturned = true
+	}()
+
+	require.Eventually(t, func() bool { return hasReturned }, 1*time.Second, 10*time.Millisecond)
+}
+
+type cacheStorageMock struct {
+	cache.Storage
+
+	MockRemove   func(key string) error
+	RemoveCalled bool
+
+	MockList   func() (map[string]cache.CacheItem, error)
+	ListCalled bool
+}
+
+func (c *cacheStorageMock) Remove(key string) error {
+	c.RemoveCalled = true
+	return c.MockRemove(key)
+}
+
+func (c *cacheStorageMock) List() (map[string]cache.CacheItem, error) {
+	c.ListCalled = true
+	return c.MockList()
+}

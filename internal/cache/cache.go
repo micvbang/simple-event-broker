@@ -107,6 +107,12 @@ func (c *Cache) Size() int64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	return c.size()
+}
+
+// size computes the number of bytes in c.cacheItems.
+// NOTE: you must hold c.mu lock when calling this method!
+func (c *Cache) size() int64 {
 	c.log.Debugf("computing size of %d items", len(c.cacheItems))
 	size := int64(0)
 	for _, item := range c.cacheItems {
@@ -119,6 +125,7 @@ func (c *Cache) EvictLeastRecentlyUsed(maxSize int64) error {
 	log := c.log.WithField("maxSize", maxSize)
 
 	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	cacheItems := mapy.Values(c.cacheItems)
 	sort.Slice(cacheItems, func(i, j int) bool {
@@ -154,9 +161,9 @@ func (c *Cache) EvictLeastRecentlyUsed(maxSize int64) error {
 		bytesDeleted += item.Size
 		delete(c.cacheItems, item.Key)
 	}
-	c.mu.Unlock()
 
-	log.Infof("deleted %d items (%d bytes) -> cache is now %d bytes", itemsDeleted, bytesDeleted, c.Size())
+	cacheSize := c.size()
+	log.Infof("deleted %d items (%d bytes) -> cache is now %d bytes", itemsDeleted, bytesDeleted, cacheSize)
 
 	return nil
 
@@ -190,14 +197,4 @@ func (w *writeCloseWrapper) Close() error {
 	w.afterClose(w.size)
 
 	return nil
-}
-
-func NewCacheDisk(log logger.Logger, rootDir string) (*Cache, error) {
-	diskCache := NewDiskStorage(log.Name("disk-cache"), rootDir)
-	return New(log, diskCache)
-}
-
-func NewCacheMemory(log logger.Logger) (*Cache, error) {
-	memoryCache := NewMemoryStorage(log.Name("memory-cache"))
-	return New(log, memoryCache)
 }
