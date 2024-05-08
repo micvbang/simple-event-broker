@@ -36,11 +36,7 @@ type Storage struct {
 // to store data in the configured backing storage of the Topic. createTopic is
 // used to initialize the Topic for each individual topic, and createBatcher is
 // used to initialize the batching strategy used for the created Topic.
-func New(
-	log logger.Logger,
-	topicFactory func(log logger.Logger, topicName string) (*topic.Topic, error),
-	batcherFactory func(logger.Logger, *topic.Topic) RecordBatcher,
-) *Storage {
+func New(log logger.Logger, topicFactory TopicFactory, batcherFactory BatcherFactory) *Storage {
 	return newStorage(log, topicFactory, batcherFactory, true)
 }
 
@@ -55,8 +51,8 @@ func NewWithAutoCreate(
 
 func newStorage(
 	log logger.Logger,
-	topicFactory func(log logger.Logger, topicName string) (*topic.Topic, error),
-	batcherFactory func(logger.Logger, *topic.Topic) RecordBatcher,
+	topicFactory TopicFactory,
+	batcherFactory BatcherFactory,
 	autoCreateTopics bool,
 ) *Storage {
 	return &Storage{
