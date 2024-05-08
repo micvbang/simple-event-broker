@@ -50,9 +50,9 @@ func TestBackingStorage(t *testing.T, f func(*testing.T, topic.Storage)) {
 	}
 }
 
-// TestBackingStorageAndCache makes it easy to test all topic.BackingStorage
+// TestTopicStorageAndCache makes it easy to test all topic.BackingStorage
 // and cache.CacheStorage implementations in the same test.
-func TestBackingStorageAndCache(t *testing.T, f func(*testing.T, topic.Storage, *cache.Cache)) {
+func TestTopicStorageAndCache(t *testing.T, f func(*testing.T, topic.Storage, *cache.Cache)) {
 	t.Helper()
 
 	for topicStorageName, topicStorageFactory := range storageFactories {

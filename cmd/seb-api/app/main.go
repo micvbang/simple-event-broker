@@ -10,11 +10,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/micvbang/simple-event-broker/internal/topic"
@@ -79,24 +77,11 @@ func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax i
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
-	s3TopicFactory := func(log logger.Logger, topicName string) (*topic.Topic, error) {
-		storageLogger := log.Name("s3 storage").WithField("topic-name", topicName)
-		s3Storage := topic.NewS3Storage(storageLogger, s3.New(session), s3BucketName, "")
+	storageLogger := log.Name("storage")
+	s3TopicFactory := storage.NewS3TopicFactory(session, s3BucketName, cache, &topic.Gzip{})
+	blockingBatcherFactory := storage.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
 
-		return topic.New(log, s3Storage, topicName, cache, topic.Gzip{})
-	}
-
-	blockingBatcherFactory := func(log logger.Logger, ts *topic.Topic) storage.RecordBatcher {
-		batchLogger := log.Name("blocking batcher")
-		return storage.NewBlockingBatcher(batchLogger, blockTime, bytesSoftMax, func(b recordbatch.RecordBatch) ([]uint64, error) {
-			t0 := time.Now()
-			offsets, err := ts.AddRecordBatch(b)
-			batchLogger.Debugf("persisting to s3: %v", time.Since(t0))
-			return offsets, err
-		})
-	}
-
-	return storage.New(log.Name("storage"), s3TopicFactory, blockingBatcherFactory), nil
+	return storage.New(storageLogger, s3TopicFactory, blockingBatcherFactory), nil
 }
 
 type flags struct {

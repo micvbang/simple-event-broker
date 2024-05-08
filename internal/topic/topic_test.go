@@ -21,7 +21,7 @@ var (
 // TestStorageEmpty verifies that reading from an empty topic returns
 // ErrOutOfBounds.
 func TestStorageEmpty(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		s, err := topic.New(log, backingStorage, "mytopic", cache, nil)
 		require.NoError(t, err)
 
@@ -37,7 +37,7 @@ func TestStorageEmpty(t *testing.T) {
 // single Record batch can be read back, and that reading out of bounds returns
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		s, err := topic.New(log, backingStorage, "mytopic", cache, nil)
 		require.NoError(t, err)
 
@@ -70,7 +70,7 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 // again, and that reading beyond the number of existing records yields
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		s, err := topic.New(log, backingStorage, "mytopic", cache, nil)
 		require.NoError(t, err)
 
@@ -209,7 +209,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 // TestStorageCacheWrite verifies that AddRecordBatch uses the cache to cache
 // the record batch.
 func TestStorageCacheWrite(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		const topicName = "my_topic"
 
 		s, err := topic.New(log, backingStorage, topicName, cache, nil)
@@ -244,7 +244,7 @@ func TestStorageCacheWrite(t *testing.T) {
 // TestStorageCacheWrite verifies that ReadRecord uses the cache to read
 // results.
 func TestStorageCacheReadFromCache(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		const topicName = "my_topic"
 
 		s, err := topic.New(log, backingStorage, topicName, cache, nil)
@@ -313,7 +313,7 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 // to seemlessly compresses and decompresses files when they're written to the
 // backing storage.
 func TestStorageCompressFiles(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		const topicName = "topicName"
 		compressor := topic.Gzip{}
 		s, err := topic.New(log, backingStorage, topicName, cache, compressor)
@@ -353,7 +353,7 @@ func TestStorageCompressFiles(t *testing.T) {
 // TestTopicEndOffset verifies that EndOffset returns the offset of the
 // next record that is added, i.e. the id of most-recently-added+1.
 func TestTopicEndOffset(t *testing.T) {
-	tester.TestBackingStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		const topicName = "topicName"
 		compressor := topic.Gzip{}
 		s, err := topic.New(log, backingStorage, topicName, cache, compressor)

@@ -46,8 +46,8 @@ func New(
 
 func NewWithAutoCreate(
 	log logger.Logger,
-	topicFactory func(log logger.Logger, topicName string) (*topic.Topic, error),
-	batcherFactory func(logger.Logger, *topic.Topic) RecordBatcher,
+	topicFactory TopicFactory,
+	batcherFactory BatcherFactory,
 	autoCreateTopics bool,
 ) *Storage {
 	return newStorage(log, topicFactory, batcherFactory, autoCreateTopics)
