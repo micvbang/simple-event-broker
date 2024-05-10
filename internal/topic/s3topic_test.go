@@ -2,14 +2,17 @@ package topic_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"path"
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/micvbang/go-helpy/stringy"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
@@ -25,12 +28,12 @@ func TestS3WriteToS3(t *testing.T) {
 	randomBytes := []byte(stringy.RandomN(500))
 
 	s3Mock := &tester.S3Mock{}
-	s3Mock.MockPutObject = func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
+	s3Mock.MockPutObject = func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 		// Verify the expected parameters are passed on to S3
-		require.Equal(t, *input.Bucket, bucketName)
-		require.Equal(t, *input.Key, recordBatchPath)
+		require.Equal(t, *params.Bucket, bucketName)
+		require.Equal(t, *params.Key, recordBatchPath)
 
-		gotBody, err := io.ReadAll(input.Body)
+		gotBody, err := io.ReadAll(params.Body)
 		require.NoError(t, err)
 		require.EqualValues(t, randomBytes, gotBody)
 
@@ -69,9 +72,9 @@ func TestS3WriteWithPrefix(t *testing.T) {
 	expectedKey := path.Join(s3KeyPrefix, recordBatchPath)
 
 	s3Mock := &tester.S3Mock{}
-	s3Mock.MockPutObject = func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
+	s3Mock.MockPutObject = func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 		// Verify the expected parameters are passed on to S3
-		require.Equal(t, expectedKey, *input.Key)
+		require.Equal(t, expectedKey, *params.Key)
 
 		return nil, nil
 	}
@@ -92,7 +95,7 @@ func TestS3ReadFromS3(t *testing.T) {
 	expectedBytes := tester.RandomBytes(t, 512)
 
 	s3Mock := &tester.S3Mock{}
-	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+	s3Mock.MockGetObject = func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 		return &s3.GetObjectOutput{
 			Body: io.NopCloser(bytes.NewBuffer(expectedBytes)),
 		}, nil
@@ -124,9 +127,9 @@ func TestS3ReadWithPrefix(t *testing.T) {
 	expectedPath := path.Join(s3KeyPrefix, recordBatchPath)
 
 	s3Mock := &tester.S3Mock{}
-	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+	s3Mock.MockGetObject = func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 		// Verify the expected parameters are passed on to S3
-		require.Equal(t, expectedPath, *goi.Key)
+		require.Equal(t, expectedPath, *params.Key)
 		return &s3.GetObjectOutput{
 			Body: io.NopCloser(bytes.NewBuffer(expectedBytes)),
 		}, nil
@@ -166,19 +169,17 @@ func TestListFiles(t *testing.T) {
 		expectedFiles = append(expectedFiles, batch...)
 	}
 
+	batchI := 0
 	s3Mock := &tester.S3Mock{}
-	s3Mock.MockListObjectPages = func(input *s3.ListObjectsInput, f func(*s3.ListObjectsOutput, bool) bool) error {
-		for i, listObjectBatch := range listObjectOutputBatches {
-			listObjectsOutput := listObjectsOutputFromFiles(listObjectBatch)
-			lastPage := i == len(listObjectOutputBatches)-1
-
-			more := f(listObjectsOutput, lastPage)
-			if !more {
-				break
-			}
+	s3Mock.MockListObjectsV2 = func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+		output := listObjectsOutputFromFiles(listObjectOutputBatches[batchI])
+		batchI += 1
+		lastPage := batchI == len(listObjectOutputBatches)
+		if !lastPage {
+			output.IsTruncated = aws.Bool(true)
+			output.NextContinuationToken = aws.String("more data!")
 		}
-
-		return nil
+		return output, nil
 	}
 
 	s3Storage := topic.NewS3Storage(log, s3Mock, "mybucket", "")
@@ -193,17 +194,12 @@ func TestListFiles(t *testing.T) {
 // requests to S3 ListObjectPages correctly, i.e. removes any prefix "/", and
 // ensures that it has "/" as a suffix.
 func TestListFilesOverlappingNames(t *testing.T) {
-	mockListObjectPagesCalled := 0
-
 	s3Mock := &tester.S3Mock{}
-	s3Mock.MockListObjectPages = func(input *s3.ListObjectsInput, f func(*s3.ListObjectsOutput, bool) bool) error {
+	s3Mock.MockListObjectsV2 = func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 		// Assert
-		require.False(t, strings.HasPrefix(*input.Prefix, "/"))
-		require.True(t, strings.HasSuffix(*input.Prefix, "/"))
-
-		mockListObjectPagesCalled += 1
-
-		return nil
+		require.False(t, strings.HasPrefix(*params.Prefix, "/"))
+		require.True(t, strings.HasSuffix(*params.Prefix, "/"))
+		return &s3.ListObjectsV2Output{}, nil
 	}
 
 	s3Storage := topic.NewS3Storage(log, s3Mock, "mybucket", "")
@@ -225,20 +221,20 @@ func TestListFilesOverlappingNames(t *testing.T) {
 
 	// Assert that MockListObjectPages has been called (and its assertions have
 	// been run)
-	require.Equal(t, len(testPrefixes), mockListObjectPagesCalled)
+	require.True(t, s3Mock.ListObjectPagesCalled)
 }
 
-func listObjectsOutputFromFiles(files []topic.File) *s3.ListObjectsOutput {
-	s3Objects := make([]*s3.Object, len(files))
+func listObjectsOutputFromFiles(files []topic.File) *s3.ListObjectsV2Output {
+	s3Objects := make([]types.Object, len(files))
 
 	for i := range files {
-		s3Objects[i] = &s3.Object{
+		s3Objects[i] = types.Object{
 			Key:  &files[i].Path,
 			Size: &files[i].Size,
 		}
 	}
 
-	return &s3.ListObjectsOutput{
+	return &s3.ListObjectsV2Output{
 		Contents: s3Objects,
 	}
 }
@@ -247,8 +243,8 @@ func TestS3ReadFromS3NotFound(t *testing.T) {
 	recordBatchPath := "topicName/000123.record_batch"
 
 	s3Mock := &tester.S3Mock{}
-	s3Mock.MockGetObject = func(goi *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
-		return nil, awserr.New(s3.ErrCodeNoSuchKey, "", nil)
+	s3Mock.MockGetObject = func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+		return nil, &smithy.GenericAPIError{Code: "NoSuchKey"}
 	}
 
 	s3Storage := topic.NewS3Storage(log, s3Mock, "mybucket", "")

@@ -1,34 +1,35 @@
 package tester
 
 import (
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type S3Mock struct {
-	s3iface.S3API
+	MockPutObject func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 
-	MockPutObject   func(*s3.PutObjectInput) (*s3.PutObjectOutput, error)
 	PutObjectCalled bool
 
-	MockGetObject   func(*s3.GetObjectInput) (*s3.GetObjectOutput, error)
+	MockGetObject   func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	GetObjectCalled bool
 
-	MockListObjectPages   func(*s3.ListObjectsInput, func(*s3.ListObjectsOutput, bool) bool) error
+	MockListObjectsV2 func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+
 	ListObjectPagesCalled bool
 }
 
-func (sm *S3Mock) PutObject(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
+func (sm *S3Mock) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	sm.PutObjectCalled = true
-	return sm.MockPutObject(input)
+	return sm.MockPutObject(ctx, params, optFns...)
 }
 
-func (sm *S3Mock) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+func (sm *S3Mock) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	sm.GetObjectCalled = true
-	return sm.MockGetObject(input)
+	return sm.MockGetObject(ctx, params, optFns...)
 }
 
-func (sm *S3Mock) ListObjectsPages(input *s3.ListObjectsInput, f func(*s3.ListObjectsOutput, bool) bool) error {
+func (sm *S3Mock) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	sm.ListObjectPagesCalled = true
-	return sm.MockListObjectPages(input, f)
+	return sm.MockListObjectsV2(ctx, params, optFns...)
 }

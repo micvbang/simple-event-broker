@@ -9,7 +9,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -85,13 +85,13 @@ func cacheEviction(log logger.Logger, cache *cache.Cache, cacheMaxBytes int64, i
 }
 
 func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
-	session, err := session.NewSession()
+	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
 	storageLogger := log.Name("storage")
-	s3TopicFactory := storage.NewS3TopicFactory(session, s3BucketName, cache, &topic.Gzip{})
+	s3TopicFactory := storage.NewS3TopicFactory(cfg, s3BucketName, cache, &topic.Gzip{})
 	blockingBatcherFactory := storage.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
 
 	return storage.New(storageLogger, s3TopicFactory, blockingBatcherFactory), nil
