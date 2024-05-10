@@ -221,8 +221,15 @@ func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, err
 			r.Close()
 		}
 
-		cacheFile.Close()
-		backingReader.Close()
+		err = cacheFile.Close()
+		if err != nil {
+			return nil, fmt.Errorf("closing cacheFile: %w", err)
+		}
+
+		err = backingReader.Close()
+		if err != nil {
+			return nil, fmt.Errorf("closing backing reader: %w", err)
+		}
 
 		f, err = s.cache.Reader(recordBatchPath)
 		if err != nil {

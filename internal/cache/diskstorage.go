@@ -25,17 +25,32 @@ type CacheItem struct {
 type DiskCache struct {
 	log     logger.Logger
 	rootDir string
+
+	// tempDir must point to a directory within rootDir that is part of the same
+	// file system as we're writing our cache files to.  The reason is that
+	// we're using os.Rename() to move temporary files atomically (for file
+	// systems that support this) into the cache. A requirement of this being
+	// possible to do atomically, is that the file being moved (renamed) is
+	// within the same file system both before and after the move.
+	tempDir string
 }
 
-func NewDiskStorage(log logger.Logger, rootDir string) *DiskCache {
+func NewDiskStorage(log logger.Logger, rootDir string) (*DiskCache, error) {
 	if !strings.HasSuffix(rootDir, "/") {
 		rootDir += "/"
+	}
+
+	tempDir := filepath.Join(rootDir, "_tmpdir")
+	err := os.MkdirAll(tempDir, os.ModePerm)
+	if err != nil {
+		return nil, fmt.Errorf("creating temp dir '%s': %w", tempDir, err)
 	}
 
 	return &DiskCache{
 		log:     log,
 		rootDir: rootDir,
-	}
+		tempDir: tempDir,
+	}, nil
 }
 
 func (c *DiskCache) List() (map[string]CacheItem, error) {
@@ -69,7 +84,7 @@ func (c *DiskCache) Writer(key string) (io.WriteCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("getting cache path of %s: %w", key, err)
 	}
-	return newCacheWriter(cachePath)
+	return newCacheWriter(c.tempDir, cachePath)
 }
 
 func (c *DiskCache) Remove(key string) error {
@@ -127,8 +142,8 @@ func (c *DiskCache) cachePath(key string) (string, error) {
 	return path.Join(c.rootDir, key), nil
 }
 
-func newCacheWriter(destPath string) (*cacheWriter, error) {
-	tmpFile, err := os.CreateTemp("", "seb_*")
+func newCacheWriter(tempDir string, destPath string) (*cacheWriter, error) {
+	tmpFile, err := os.CreateTemp(tempDir, "seb_*")
 	if err != nil {
 		return nil, fmt.Errorf("creating temp file: %w", err)
 	}
@@ -145,8 +160,7 @@ type cacheWriter struct {
 }
 
 func (cw *cacheWriter) Write(bs []byte) (int, error) {
-	n, err := cw.tmpFile.Write(bs)
-	return n, err
+	return cw.tmpFile.Write(bs)
 }
 
 func (cw cacheWriter) Close() error {
@@ -161,6 +175,9 @@ func (cw cacheWriter) Close() error {
 		return fmt.Errorf("creating cache dirs '%s': %w", cacheDir, err)
 	}
 
+	// NOTE: os.Rename can only provide atomicity when renaming files within the
+	// same file system, so we require that tmpFile is written to the same file
+	// system as destPath.
 	err = os.Rename(cw.tmpFile.Name(), cw.destPath)
 	if err != nil {
 		return fmt.Errorf("moving %s to %s: %w", cw.tmpFile.Name(), cw.destPath, err)

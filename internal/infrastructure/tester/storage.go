@@ -15,9 +15,9 @@ import (
 var (
 	log logger.Logger = logger.NewDefault(context.Background())
 
-	cacheStorageFactories = map[string]func(t *testing.T) cache.Storage{
-		"memory": func(t *testing.T) cache.Storage { return cache.NewMemoryStorage(log) },
-		"disk":   func(t *testing.T) cache.Storage { return cache.NewDiskStorage(log, t.TempDir()) },
+	cacheStorageFactories = map[string]func(t *testing.T) (cache.Storage, error){
+		"memory": func(t *testing.T) (cache.Storage, error) { return cache.NewMemoryStorage(log), nil },
+		"disk":   func(t *testing.T) (cache.Storage, error) { return cache.NewDiskStorage(log, t.TempDir()) },
 	}
 
 	storageFactories = map[string]func(t *testing.T) topic.Storage{
@@ -33,7 +33,10 @@ func TestCacheStorage(t *testing.T, f func(*testing.T, cache.Storage)) {
 
 	for testName, cacheStorageFactory := range cacheStorageFactories {
 		t.Run(testName, func(t *testing.T) {
-			f(t, cacheStorageFactory(t))
+			cacheStorage, err := cacheStorageFactory(t)
+			require.NoError(t, err)
+
+			f(t, cacheStorage)
 		})
 	}
 }
@@ -58,7 +61,10 @@ func TestTopicStorageAndCache(t *testing.T, f func(*testing.T, topic.Storage, *c
 	for topicStorageName, topicStorageFactory := range storageFactories {
 		for cacheName, cacheStorageFactory := range cacheStorageFactories {
 			t.Run(fmt.Sprintf("storage:%s/cache:%s", topicStorageName, cacheName), func(t *testing.T) {
-				cache, err := cache.New(log, cacheStorageFactory(t))
+				cacheStorage, err := cacheStorageFactory(t)
+				require.NoError(t, err)
+
+				cache, err := cache.New(log, cacheStorage)
 				require.NoError(t, err)
 
 				f(t, topicStorageFactory(t), cache)
@@ -76,7 +82,10 @@ func TestStorage(t *testing.T, autoCreateTopic bool, f func(*testing.T, *storage
 	for storageName, backingStorageFactory := range storageFactories {
 		for cacheName, cacheStorageFactory := range cacheStorageFactories {
 			t.Run(fmt.Sprintf("storage:%s/cache:%s", storageName, cacheName), func(t *testing.T) {
-				cache, err := cache.New(log, cacheStorageFactory(t))
+				cacheStorage, err := cacheStorageFactory(t)
+				require.NoError(t, err)
+
+				cache, err := cache.New(log, cacheStorage)
 				require.NoError(t, err)
 
 				s := storage.NewWithAutoCreate(log,

@@ -30,7 +30,8 @@ func TestCacheWriterWritesToDisk(t *testing.T) {
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
-	c := cache.NewDiskStorage(log, tempDir)
+	c, err := cache.NewDiskStorage(log, tempDir)
+	require.NoError(t, err)
 
 	// Act
 	f, err := c.Writer(key)
@@ -65,7 +66,8 @@ func TestDiskCacheReaderReadsFromDisk(t *testing.T) {
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
-	c := cache.NewDiskStorage(log, t.TempDir())
+	c, err := cache.NewDiskStorage(log, t.TempDir())
+	require.NoError(t, err)
 
 	w, err := c.Writer(key)
 	require.NoError(t, err)
@@ -85,7 +87,8 @@ func TestDiskCacheReaderReadsFromDisk(t *testing.T) {
 // TestDiskCacheListFromDisk verifies that List() returns the expected keys,
 // without any rootDir prefix.
 func TestDiskCacheListFromDisk(t *testing.T) {
-	c := cache.NewDiskStorage(log, t.TempDir())
+	c, err := cache.NewDiskStorage(log, t.TempDir())
+	require.NoError(t, err)
 
 	expectedKeys := []string{
 		"topic1/file1",
@@ -117,7 +120,8 @@ func TestDiskCacheListFromDisk(t *testing.T) {
 // TestDiskCacheListFromDiskEmpty verifies that List() returns an empty list of
 // keys when the cache is empty.
 func TestDiskCacheListFromDiskEmpty(t *testing.T) {
-	c := cache.NewDiskStorage(log, t.TempDir())
+	c, err := cache.NewDiskStorage(log, t.TempDir())
+	require.NoError(t, err)
 
 	// Act
 	items, err := c.List()
