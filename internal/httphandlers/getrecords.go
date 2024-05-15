@@ -15,7 +15,7 @@ import (
 )
 
 type RecordsGetter interface {
-	GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error)
+	GetRecordBatch(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error)
 }
 
 const multipartFormData = "multipart/form-data"
@@ -68,7 +68,7 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			WithField("max-records", maxRecords).
 			WithField("timeout", timeout)
 
-		records, err := s.GetRecords(ctx, topicName, offset, maxRecords, softMaxBytes)
+		recordBatch, err := s.GetRecordBatch(ctx, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
 			if errors.Is(err, seb.ErrTopicNotFound) {
 				log.Debugf("not found: %s", err)
@@ -91,7 +91,7 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 
 		mw := multipart.NewWriter(w)
 		w.Header().Set("Content-Type", mw.FormDataContentType())
-		for localOffset, record := range records {
+		for localOffset, record := range recordBatch {
 			fw, err := mw.CreateFormField(fmt.Sprintf("%d", offset+uint64(localOffset)))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)

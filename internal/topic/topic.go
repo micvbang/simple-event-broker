@@ -108,7 +108,7 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 		w.Close()
 	}
 	// once Close() returns, the data has been committed (stored in backing storage)
-	// and can be found
+	// and can be retrieved by ReadRecord.
 	backingWriter.Close()
 
 	nextOffset := recordBatchID + uint64(len(recordBatch))

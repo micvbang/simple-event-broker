@@ -38,7 +38,7 @@ func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) Batch
 		return NewBlockingBatcher(batchLogger, blockTime, batchBytesMax, func(b recordbatch.RecordBatch) ([]uint64, error) {
 			t0 := time.Now()
 			offsets, err := ts.AddRecordBatch(b)
-			batchLogger.Infof("persisting to s3: %v", time.Since(t0))
+			batchLogger.Infof("persisting to storage: %v", time.Since(t0))
 			return offsets, err
 		})
 	}
