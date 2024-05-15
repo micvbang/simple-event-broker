@@ -34,7 +34,11 @@ func NewRecordClient(baseURL string, apiKey string) (*RecordClient, error) {
 	}
 
 	return &RecordClient{
-		client:  &http.Client{},
+		client: &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: 10,
+			},
+		},
 		baseURL: bURL,
 		apiKey:  apiKey,
 	}, nil
@@ -53,6 +57,7 @@ func (c *RecordClient) Add(topicName string, record []byte) error {
 		return fmt.Errorf("sending request: %w", err)
 	}
 	defer res.Body.Close()
+	io.Copy(io.Discard, res.Body)
 
 	err = c.statusCode(res)
 	if err != nil {
