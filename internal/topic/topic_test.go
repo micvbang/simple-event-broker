@@ -3,6 +3,7 @@ package topic_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/micvbang/go-helpy/inty"
 	seb "github.com/micvbang/simple-event-broker"
@@ -355,8 +356,7 @@ func TestStorageCompressFiles(t *testing.T) {
 func TestTopicEndOffset(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		const topicName = "topicName"
-		compressor := topic.Gzip{}
-		s, err := topic.New(log, backingStorage, topicName, cache, compressor)
+		s, err := topic.New(log, backingStorage, topicName, cache, topic.Gzip{})
 		require.NoError(t, err)
 
 		// no record added yet, next id should be 0
@@ -376,5 +376,72 @@ func TestTopicEndOffset(t *testing.T) {
 			offset := s.NextOffset()
 			require.Equal(t, nextOffset, offset)
 		}
+	})
+}
+
+// TestTopicOffsetCond verifies that Topic.OffsetCond.Wait() blocks until the
+// expected offset has been reached.
+func TestTopicOffsetCond(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+		const topicName = "topicName"
+		s, err := topic.New(log, backingStorage, topicName, cache, topic.Gzip{})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		returned := make(chan struct{})
+		go func() {
+			s.OffsetCond.Wait(ctx, 100)
+			close(returned)
+		}()
+
+		// Wait() is waiting for offset 100, this will add offset 0
+		_, err = s.AddRecordBatch(tester.MakeRandomRecordBatch(1))
+		require.NoError(t, err)
+
+		time.Sleep(25 * time.Millisecond)
+		select {
+		case <-returned:
+			t.Fatalf("did not expect wait to have returned")
+		default:
+		}
+
+		// Act
+		_, err = s.AddRecordBatch(tester.MakeRandomRecordBatch(100))
+		require.NoError(t, err)
+
+		// Assert
+		// (test will time out if returned isn't closed)
+		<-returned
+	})
+}
+
+// TestTopicOffsetCondContextExpired verifies that Topic.OffsetCond.Wait()
+// returns when the given context expires.
+func TestTopicOffsetCondContextExpired(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
+		const topicName = "topicName"
+		s, err := topic.New(log, backingStorage, topicName, cache, topic.Gzip{})
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		returned := make(chan struct{})
+		go func() {
+			s.OffsetCond.Wait(ctx, 1)
+			close(returned)
+		}()
+
+		time.Sleep(25 * time.Millisecond)
+		select {
+		case <-returned:
+			t.Fatalf("did not expect wait to have returned")
+		default:
+		}
+
+		// Act
+		cancel()
+
+		// Assert
+		// (test will time out if returned isn't closed)
+		<-returned
 	})
 }

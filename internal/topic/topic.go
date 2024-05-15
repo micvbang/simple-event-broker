@@ -44,6 +44,7 @@ type Topic struct {
 	backingStorage Storage
 	cache          *cache.Cache
 	compress       Compress
+	OffsetCond     *OffsetCond
 }
 
 func New(log logger.Logger, backingStorage Storage, topicName string, cache *cache.Cache, compress Compress) (*Topic, error) {
@@ -63,6 +64,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 		recordBatchOffsets: recordBatchOffsets,
 		cache:              cache,
 		compress:           compress,
+		OffsetCond:         NewOffsetCond(0),
 	}
 
 	if len(recordBatchOffsets) > 0 {
@@ -72,6 +74,8 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 			return nil, fmt.Errorf("reading record batch header: %w", err)
 		}
 		storage.nextOffset.Store(newestRecordBatchOffset + uint64(parser.Header.NumRecords))
+
+		storage.OffsetCond = NewOffsetCond(newestRecordBatchOffset)
 	}
 
 	return storage, nil
@@ -148,6 +152,11 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 		if err != nil {
 			s.log.Errorf("closing cached file (%s): %w", rbPath, err)
 		}
+	}
+
+	// inform potentially waiting consumers that new offsets have been added
+	if len(offsets) > 0 {
+		s.OffsetCond.Broadcast(offsets[len(offsets)-1])
 	}
 
 	return offsets, nil
