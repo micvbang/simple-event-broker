@@ -14,13 +14,13 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
-type RecordsGetter interface {
+type RecordBatchGetter interface {
 	GetRecordBatch(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error)
 }
 
 const multipartFormData = "multipart/form-data"
 
-func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
+func GetRecordBatch(log logger.Logger, s RecordBatchGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("hit %s", r.URL)
 

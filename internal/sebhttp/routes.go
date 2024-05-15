@@ -22,6 +22,6 @@ func RegisterRoutes(log logger.Logger, mux *http.ServeMux, storage *storage.Stor
 
 	mux.HandleFunc("POST /record", requireAPIKey(httphandlers.AddRecord(log, storage)))
 	mux.HandleFunc("GET /record", requireAPIKey(httphandlers.GetRecord(log, storage)))
-	mux.HandleFunc("GET /records", requireAPIKey(httphandlers.GetRecords(log, storage)))
+	mux.HandleFunc("GET /records", requireAPIKey(httphandlers.GetRecordBatch(log, storage)))
 	mux.HandleFunc("GET /topic", requireAPIKey(httphandlers.GetTopic(log, storage)))
 }
