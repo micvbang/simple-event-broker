@@ -45,13 +45,13 @@ func (s *HTTPTestServer) do(r *http.Request, addDefaultAuth bool) *http.Response
 }
 
 // HTTPServer starts an HTTP test server using the given config.
-func HTTPServer(t *testing.T, confs ...func(httpServerConfig)) *HTTPTestServer {
+func HTTPServer(t *testing.T, confs ...func(*httpServerConfig)) *HTTPTestServer {
 	config := httpServerConfig{
 		apiKey:                 DefaultAPIKey,
 		storageTopicAutoCreate: true,
 	}
 	for _, configure := range confs {
-		configure(config)
+		configure(&config)
 	}
 
 	return httpServer(t, config)
@@ -93,15 +93,15 @@ type httpServerConfig struct {
 }
 
 // HTTPAPIKey sets the apiKey for HTTPServer
-func HTTPAPIKey(apiKey string) func(httpServerConfig) {
-	return func(c httpServerConfig) {
+func HTTPAPIKey(apiKey string) func(*httpServerConfig) {
+	return func(c *httpServerConfig) {
 		c.apiKey = apiKey
 	}
 }
 
 // HTTPStorageAutoCreateTopic sets automatic topic creation for HTTPServer
-func HTTPStorageAutoCreateTopic(autoCreate bool) func(httpServerConfig) {
-	return func(c httpServerConfig) {
+func HTTPStorageAutoCreateTopic(autoCreate bool) func(*httpServerConfig) {
+	return func(c *httpServerConfig) {
 		c.storageTopicAutoCreate = autoCreate
 	}
 }
