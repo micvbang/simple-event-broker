@@ -131,7 +131,7 @@ func (s *Storage) CreateTopic(topicName string) error {
 // NOTE: GetRecordBatch will always return all of the records that it managed to
 // fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
-func (s *Storage) GetRecordBatch(ctx context.Context, topicName string, startOffset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error) {
+func (s *Storage) GetRecordBatch(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error) {
 	if maxRecords == 0 {
 		maxRecords = 10
 	}
@@ -143,30 +143,36 @@ func (s *Storage) GetRecordBatch(ctx context.Context, topicName string, startOff
 		return recordBatch, err
 	}
 
+	// wait for startOffset to become available. Can only return errors from
+	// the context
+	err = tb.topic.OffsetCond.Wait(ctx, offset)
+	if err != nil {
+		ctxExpiredErr := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+		if ctxExpiredErr {
+			return recordBatch, fmt.Errorf("waiting for offset %d to be reached: %w", offset, err)
+		}
+
+		s.log.Errorf("unexpected error when waiting for offset %d to be reached: %s", offset, err)
+		return recordBatch, fmt.Errorf("unexpected when waiting for offset %d to be reached: %w", offset, err)
+	}
+
 	recordBatchBytes := 0
-	maxOffset := startOffset + uint64(maxRecords)
-	for offset := startOffset; offset < maxOffset; offset++ {
+	maxOffset := offset + uint64(maxRecords)
+	for curOffset := offset; curOffset < maxOffset; curOffset++ {
 		select {
 		case <-ctx.Done():
 			return recordBatch, ctx.Err()
 		default:
 		}
 
-		record, err := tb.topic.ReadRecord(offset)
+		record, err := tb.topic.ReadRecord(curOffset)
 		if err != nil {
-			isOutOfBounds := errors.Is(err, seb.ErrOutOfBounds)
-
-			// startOffset does not yet exist, inform caller
-			if isOutOfBounds && offset == startOffset {
-				return recordBatch, seb.ErrOutOfBounds
-			}
-
 			// no more records available
-			if isOutOfBounds {
+			if errors.Is(err, seb.ErrOutOfBounds) {
 				break
 			}
 
-			return recordBatch, fmt.Errorf("reading record at offset %d: %w", offset, err)
+			return recordBatch, fmt.Errorf("reading record at offset %d: %w", curOffset, err)
 		}
 
 		trackBytes := softMaxBytes > 0

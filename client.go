@@ -108,7 +108,7 @@ type GetBatchInput struct {
 
 	// Timeout is the amount of time to allow the server (on the server side) to
 	// collect records for. If this timeout is exceeded, the number of records
-	// collected so far will be returned. Defaults to infinity.
+	// collected so far will be returned. Defaults to 10s.
 	Timeout time.Duration
 }
 
@@ -128,8 +128,13 @@ func (c *RecordClient) GetBatch(topicName string, offset uint64, input GetBatchI
 		"offset":      fmt.Sprintf("%d", offset),
 		"max-records": fmt.Sprintf("%d", input.MaxRecords),
 		"max-bytes":   fmt.Sprintf("%d", input.SoftMaxBytes),
-		"timeout":     input.Timeout.String(),
 	})
+
+	if input.Timeout != 0 {
+		httphelpers.AddQueryParams(req, map[string]string{
+			"timeout": input.Timeout.String(),
+		})
+	}
 
 	res, err := c.client.Do(req)
 	if err != nil {

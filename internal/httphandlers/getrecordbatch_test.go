@@ -40,7 +40,7 @@ func TestGetRecordsExistence(t *testing.T) {
 		"record not found": {
 			offset:     42,
 			topicName:  topicName,
-			statusCode: http.StatusNotFound,
+			statusCode: http.StatusPartialContent,
 		},
 		"topic not found": {
 			offset:     0,
@@ -61,6 +61,7 @@ func TestGetRecordsExistence(t *testing.T) {
 			httphelpers.AddQueryParams(r, map[string]string{
 				"topic-name": test.topicName,
 				"offset":     fmt.Sprintf("%d", test.offset),
+				"timeout":    "10ms",
 			})
 
 			// Act
@@ -77,9 +78,12 @@ func TestGetRecordsExistence(t *testing.T) {
 // that must exist (topic name, offset).
 func TestGetRecordsURLParameters(t *testing.T) {
 	const topicName = "topic-name"
-	server := tester.HTTPServer(t)
+	server := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
 
-	_, err := server.Storage.AddRecord(topicName, recordbatch.Record("record"))
+	err := server.Storage.CreateTopic(topicName)
+	require.NoError(t, err)
+
+	_, err = server.Storage.AddRecord(topicName, recordbatch.Record("record"))
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -96,7 +100,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "5s",
+				"timeout":     "10ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -106,7 +110,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "5s",
+				"timeout":     "10ms",
 			},
 			statusCode: http.StatusBadRequest,
 		},
@@ -116,7 +120,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				// "offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "5s",
+				"timeout":     "10ms",
 			},
 			statusCode: http.StatusBadRequest,
 		},
@@ -126,7 +130,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":     0,
 				// "max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "5s",
+				"timeout":     "10ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -136,7 +140,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":     0,
 				"max-bytes":  1,
 				// "max-records": 2,
-				"timeout": "5s",
+				"timeout": "10ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -146,7 +150,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				// "timeout": "5s",
+				// "timeout": "10ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -156,9 +160,9 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      10, // NOTE: offset does not exist
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "5s",
+				"timeout":     "10ms",
 			},
-			statusCode: http.StatusNotFound,
+			statusCode: http.StatusPartialContent,
 		},
 		"topic-name not found": {
 			params: map[string]any{
@@ -166,7 +170,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "5s",
+				"timeout":     "10ms",
 			},
 			statusCode: http.StatusNotFound,
 		},

@@ -42,7 +42,7 @@ func GetRecordBatch(log logger.Logger, s RecordBatchGetter) http.HandlerFunc {
 			{Key: offsetKey, Parser: QueryUint64},
 			{Key: softMaxBytesKey, Parser: QueryIntDefault(0)},
 			{Key: maxRecordsKey, Parser: QueryIntDefault(10)},
-			{Key: timeoutKey, Parser: QueryDurationDefault(0)},
+			{Key: timeoutKey, Parser: QueryDurationDefault(10 * time.Second)},
 		}
 		params, err := parseQueryParams(r, qparams...)
 		if err != nil {
@@ -57,10 +57,10 @@ func GetRecordBatch(log logger.Logger, s RecordBatchGetter) http.HandlerFunc {
 		softMaxBytes := params[softMaxBytesKey].(int)
 		maxRecords := params[maxRecordsKey].(int)
 		timeout := params[timeoutKey].(time.Duration)
-		if timeout != 0 {
-			ctx, cancel = context.WithTimeout(ctx, timeout)
-			defer cancel()
-		}
+
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+
 		log = log.
 			WithField("topic-name", topicName).
 			WithField("offset", offset).
@@ -81,6 +81,13 @@ func GetRecordBatch(log logger.Logger, s RecordBatchGetter) http.HandlerFunc {
 				log.Debugf("offset out of bounds: %s", err)
 				w.WriteHeader(http.StatusNotFound)
 				fmt.Fprintf(w, "offset out of bounds")
+				return
+			}
+
+			if errors.Is(err, context.DeadlineExceeded) {
+				log.Debugf("deadline exceeded: %s", err)
+				w.WriteHeader(http.StatusPartialContent)
+				fmt.Fprintf(w, "deadline exceeded")
 				return
 			}
 

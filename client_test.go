@@ -132,7 +132,7 @@ func TestRecordClientGetBatchHappyPath(t *testing.T) {
 // TestRecordClientGetBatchTopicDoesNotExist verifies that ErrNotFound is
 // returned when attempting to read from a topic that does not exist.
 func TestRecordClientGetBatchTopicDoesNotExist(t *testing.T) {
-	srv := tester.HTTPServer(t)
+	srv := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
 
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
 	require.NoError(t, err)
@@ -147,8 +147,8 @@ func TestRecordClientGetBatchTopicDoesNotExist(t *testing.T) {
 	require.ErrorIs(t, err, seb.ErrNotFound)
 }
 
-// TestRecordClientGetBatchTopicDoesNotExist verifies that ErrNotFound is
-// returned when attempting to read from an offset that does not exist.
+// TestRecordClientGetBatchOffsetDoesNotExist verifies that no error is returned
+// when attempting to read from an offset that does not exist yet.
 func TestRecordClientGetBatchOffsetOutOfBounds(t *testing.T) {
 	const topicName = "topic-name"
 	srv := tester.HTTPServer(t)
@@ -162,9 +162,11 @@ func TestRecordClientGetBatchOffsetOutOfBounds(t *testing.T) {
 	offsetTooHigh := offset + 1
 
 	// Act
-	_, err = client.GetBatch(topicName, offsetTooHigh, seb.GetBatchInput{})
+	recordBatch, err := client.GetBatch(topicName, offsetTooHigh, seb.GetBatchInput{
+		Timeout: time.Millisecond, // NOTE: amount of time to wait for offset to exist
+	})
 
 	// Assert
-	// TODO: we would like to distinguish between "record not found" and "topic not found".
-	require.ErrorIs(t, err, seb.ErrNotFound)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(recordBatch))
 }

@@ -3,6 +3,7 @@ package storage_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
@@ -53,7 +54,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			"1-5":                       {offset: 1, maxRecords: 5, expected: allRecords[1:6]},
 			"6-6":                       {offset: 6, maxRecords: 1, expected: allRecords[6:7]},
 			"0-100":                     {offset: 0, maxRecords: 100, expected: allRecords[:]},
-			"32-100 (out of bounds)":    {offset: 32, maxRecords: 100, expected: allRecords[:0], err: seb.ErrOutOfBounds},
+			"32-100 (out of bounds)":    {offset: 32, maxRecords: 100, expected: allRecords[:0], err: context.DeadlineExceeded},
 			"soft max bytes 5 records":  {offset: 3, maxRecords: 10, softMaxBytes: recordSize * 5, expected: allRecords[3:8]},
 			"soft max bytes 10 records": {offset: 7, maxRecords: 10, softMaxBytes: recordSize * 10, expected: allRecords[7:17]},
 			"max records 10":            {offset: 5, maxRecords: 10, softMaxBytes: recordSize * 15, expected: allRecords[5:15]},
@@ -65,6 +66,9 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+				defer cancel()
+
 				// Act
 				got, err := s.GetRecordBatch(ctx, topicName, test.offset, test.maxRecords, test.softMaxBytes)
 				require.ErrorIs(t, err, test.err)
@@ -125,7 +129,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 			getErr          error
 		}{
 			"false": {autoCreateTopic: false, addErr: seb.ErrTopicNotFound, getErr: seb.ErrTopicNotFound},
-			"true":  {autoCreateTopic: true, addErr: nil, getErr: seb.ErrOutOfBounds},
+			"true":  {autoCreateTopic: true, addErr: nil, getErr: nil},
 		}
 
 		for name, test := range tests {
@@ -152,13 +156,12 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 }
 
 // TestGetRecordsOffsetOutOfBounds verifies that GetRecords returns
-// ErrOutOfBounds when attempting to start from an offset that is too high (does
-// not yet exist).
+// context.DeadlineExceeded when attempting to read an offset that is too high
+// (does not yet exist).
 func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 	const autoCreateTopic = true
 	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Storage) {
 		const topicName = "topic-name"
-		ctx := context.Background()
 
 		// add record so that we know there's _something_ in the topic
 		offset, err := s.AddRecord(topicName, tester.RandomBytes(t, 8))
@@ -166,11 +169,14 @@ func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 
 		nonExistingOffset := offset + 5
 
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
 		// Act
 		_, err = s.GetRecordBatch(ctx, "does-not-exist", nonExistingOffset, 10, 1024)
 
 		// Assert
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 }
 
