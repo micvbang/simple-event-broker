@@ -136,7 +136,14 @@ func (c *DiskCache) cachePath(key string) (string, error) {
 	}
 
 	if !strings.HasPrefix(abs, c.rootDir) {
-		return "", fmt.Errorf("attempting to delete key outside of root dir '%s': %w", c.rootDir, seb.ErrUnauthorized)
+		err := fmt.Errorf("attempting to delete key outside of root dir '%s': %w", c.rootDir, seb.ErrUnauthorized)
+		c.log.
+			WithField("key", key).
+			WithField("abs", abs).
+			WithField("root-dir", c.rootDir).
+			Errorf(err.Error())
+
+		return "", err
 	}
 
 	return path.Join(c.rootDir, key), nil
