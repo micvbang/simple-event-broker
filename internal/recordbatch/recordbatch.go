@@ -27,7 +27,7 @@ type Header struct {
 }
 
 var UnixEpochUs = func() int64 {
-	return time.Now().UTC().UnixMicro()
+	return time.Now().UnixMicro()
 }
 
 type Record []byte

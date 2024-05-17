@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/micvbang/go-helpy/timey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -301,4 +302,48 @@ func TestCreateTopicAlreadyExists(t *testing.T) {
 		err = s.CreateTopic(topicName)
 		require.ErrorIs(t, err, seb.ErrTopicAlreadyExists)
 	})
+}
+
+// TestStorageMetadataHappyPath verifies that Metadata() returns the expected
+// data for a topic that exists.
+func TestStorageMetadataHappyPath(t *testing.T) {
+	const autoCreate = true
+	tester.TestStorage(t, autoCreate, func(t *testing.T, s *storage.Storage) {
+		const topicName = "topic-name"
+
+		for numRecords := uint64(1); numRecords <= 10; numRecords++ {
+			_, err := s.AddRecord(topicName, []byte("this be record"))
+			require.NoError(t, err)
+
+			gotMetadata, err := s.Metadata(topicName)
+			require.NoError(t, err)
+			t0 := time.Now()
+
+			require.Equal(t, numRecords, gotMetadata.NextOffset)
+			require.True(t, timey.DiffEqual(5*time.Millisecond, t0, gotMetadata.LatestCommitAt))
+		}
+
+	})
+}
+
+// TestStorageMetadataTopicNotFound verifies that ErrTopicNotFound is returned
+// when attempting to read metadata from a topic that does not exist, when topic
+// auto creation is turned off.
+func TestStorageMetadataTopicNotFound(t *testing.T) {
+	tests := map[string]struct {
+		autoCreate  bool
+		expectedErr error
+	}{
+		"no auto create": {autoCreate: false, expectedErr: seb.ErrTopicNotFound},
+		"auto create":    {autoCreate: true, expectedErr: nil},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tester.TestStorage(t, test.autoCreate, func(t *testing.T, s *storage.Storage) {
+				_, err := s.Metadata("does-not-exist")
+				require.ErrorIs(t, err, test.expectedErr)
+			})
+		})
+	}
 }

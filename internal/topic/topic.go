@@ -113,8 +113,8 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 	if s.compress != nil {
 		w.Close()
 	}
-	// once Close() returns, the data has been committed (stored in backing storage)
-	// and can be retrieved by ReadRecord.
+	// once Close() returns, the data has been committed and can be retrieved by
+	// ReadRecord.
 	backingWriter.Close()
 
 	nextOffset := recordBatchID + uint64(len(recordBatch))
@@ -305,6 +305,32 @@ func (s *Topic) NextOffset() uint64 {
 	return s.nextOffset.Load()
 }
 
+type Metadata struct {
+	NextOffset     uint64
+	LatestCommitAt time.Time
+}
+
+// Metadata returns metadata about the topic
+func (s *Topic) Metadata() (Metadata, error) {
+	var latestCommitAt time.Time
+
+	nextOffset := s.nextOffset.Load()
+	if nextOffset > 0 {
+		recordBatchID := s.offsetGetRecordBatchID(nextOffset - 1)
+		p, err := s.parseRecordBatch(recordBatchID)
+		if err != nil {
+			return Metadata{}, fmt.Errorf("parsing record batch: %w", err)
+		}
+
+		latestCommitAt = time.UnixMicro(p.Header.UnixEpochUs)
+	}
+
+	return Metadata{
+		NextOffset:     nextOffset,
+		LatestCommitAt: latestCommitAt,
+	}, nil
+}
+
 func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, error) {
 	recordBatchPath := s.recordBatchPath(recordBatchID)
 
@@ -364,6 +390,20 @@ func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, err
 		return nil, fmt.Errorf("parsing record batch '%s': %w", recordBatchPath, err)
 	}
 	return rb, nil
+}
+
+func (s *Topic) offsetGetRecordBatchID(offset uint64) uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := len(s.recordBatchOffsets) - 1; i >= 0; i-- {
+		curBatchID := s.recordBatchOffsets[i]
+		if curBatchID <= offset {
+			return curBatchID
+		}
+	}
+
+	return 0
 }
 
 func (s *Topic) recordBatchPath(recordBatchID uint64) string {

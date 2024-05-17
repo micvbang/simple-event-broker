@@ -25,6 +25,11 @@ type HTTPTestServer struct {
 	Storage *storage.Storage
 }
 
+// Close closes all of the underlying resources
+func (s *HTTPTestServer) Close() {
+	s.Server.Close()
+}
+
 func (s *HTTPTestServer) Do(r *http.Request) *http.Response {
 	return s.do(r, false)
 }

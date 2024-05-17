@@ -157,14 +157,14 @@ func (s *Storage) GetRecords(ctx context.Context, topicName string, offset uint6
 	return tb.topic.ReadRecords(ctx, offset, maxRecords, softMaxBytes)
 }
 
-// EndOffset returns the most recent offset
-func (s *Storage) EndOffset(topicName string) (uint64, error) {
+// Metadata returns metadata about the topic.
+func (s *Storage) Metadata(topicName string) (topic.Metadata, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
-		return 0, err
+		return topic.Metadata{}, err
 	}
 
-	return tb.topic.NextOffset(), nil
+	return tb.topic.Metadata()
 }
 
 // makeTopicBatcher initializes a new topicBatcher, but does not put it into

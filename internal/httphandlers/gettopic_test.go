@@ -8,6 +8,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,17 +21,21 @@ func TestGetTopicHappyPath(t *testing.T) {
 	)
 
 	server := tester.HTTPServer(t)
+	defer server.Server.Close()
+
 	for range topicRecords {
 		_, err := server.Storage.AddRecord(topicName, tester.RandomBytes(t, 32))
 		require.NoError(t, err)
 	}
+	expectedMetadata, err := server.Storage.Metadata(topicName)
+	require.NoError(t, err)
 
 	tests := map[string]struct {
 		topicName string
-		offset    uint64
+		metadata  topic.Metadata
 	}{
-		"empty":      {topicName: "has-no-records", offset: 0},
-		"one record": {topicName: topicName, offset: topicRecords},
+		"empty":      {topicName: "has-no-records", metadata: topic.Metadata{}},
+		"one record": {topicName: topicName, metadata: expectedMetadata},
 	}
 
 	for name, test := range tests {
@@ -49,8 +54,39 @@ func TestGetTopicHappyPath(t *testing.T) {
 			output := httphandlers.GetTopicOutput{}
 			err := httphelpers.ParseJSONAndClose(response.Body, &output)
 			require.NoError(t, err)
-			require.Equal(t, test.offset, output.Offset)
+			require.Equal(t, test.metadata.NextOffset, output.NextOffset)
+			require.Equal(t, test.metadata.LatestCommitAt, output.LatestCommitAt)
 			require.Equal(t, "application/json", response.Header.Get("Content-Type"))
+		})
+	}
+}
+
+// TestGetTopicNotFound verifies that GET /topic returns the expected status
+// code when fetching topic metadata, both with topic auto creation on and off.
+func TestGetTopicNotFound(t *testing.T) {
+	r := httptest.NewRequest("GET", "/topic", nil)
+	httphelpers.AddQueryParams(r, map[string]string{
+		"topic-name": "does-not-exist",
+	})
+
+	tests := map[string]struct {
+		autoCreateTopic bool
+		statusCode      int
+	}{
+		"auto create":    {autoCreateTopic: true, statusCode: http.StatusOK},
+		"no auto create": {autoCreateTopic: false, statusCode: http.StatusNotFound},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			server := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(test.autoCreateTopic))
+			defer server.Close()
+
+			// Act
+			response := server.DoWithAuth(r)
+
+			// Assert
+			require.Equal(t, test.statusCode, response.StatusCode)
+
 		})
 	}
 }

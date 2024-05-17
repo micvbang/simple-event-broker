@@ -4,18 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/topic"
 )
 
 type TopicGetter interface {
-	EndOffset(topicName string) (uint64, error)
+	Metadata(topicName string) (topic.Metadata, error)
 }
 
 type GetTopicOutput struct {
-	Offset uint64 `json:"next_offset"`
+	NextOffset     uint64    `json:"next_offset"`
+	LatestCommitAt time.Time `json:"latest_commit_at"`
 }
 
 // GetTopic returns metadata for a given topic.
@@ -30,11 +33,9 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 		}
 		topicName := params[topicNameKey].(string)
 
-		// TODO: once we're not always autocreating topics, check if topic exists
-
-		offset, err := s.EndOffset(topicName)
+		metadata, err := s.Metadata(topicName)
 		if err != nil {
-			if errors.Is(err, seb.ErrOutOfBounds) {
+			if errors.Is(err, seb.ErrTopicNotFound) {
 				log.Debugf("not found")
 				w.WriteHeader(http.StatusNotFound)
 				return
@@ -42,12 +43,13 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 
 			log.Errorf("reading record: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
+			fmt.Fprintf(w, "failed to read metadata for topic '%s': %s", topicName, err)
 			return
 		}
 
 		httphelpers.WriteJSON(w, &GetTopicOutput{
-			Offset: offset,
+			NextOffset:     metadata.NextOffset,
+			LatestCommitAt: metadata.LatestCommitAt,
 		})
 	}
 }

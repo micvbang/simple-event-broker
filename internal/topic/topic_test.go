@@ -7,6 +7,7 @@ import (
 
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/go-helpy/slicey"
+	"github.com/micvbang/go-helpy/timey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -540,6 +541,47 @@ func TestTopicReadRecordsContextExpired(t *testing.T) {
 
 		// Assert
 		require.ErrorIs(t, err, context.Canceled)
+	})
+}
+
+// TestTopicMetadata verifies that Metadata() returns the most recent metadata.
+func TestTopicMetadata(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
+		top, err := topic.New(log, storage, "topicName", cache, nil)
+		require.NoError(t, err)
+
+		for i := 1; i <= 5; i++ {
+			recordBatch := tester.MakeRandomRecordBatch(32)
+			_, err = top.AddRecordBatch(recordBatch)
+			require.NoError(t, err)
+
+			// Act
+			gotMetadata, err := top.Metadata()
+			require.NoError(t, err)
+			t0 := time.Now()
+
+			// Assert
+			expectedNextOffset := uint64(i * len(recordBatch))
+			require.Equal(t, expectedNextOffset, gotMetadata.NextOffset)
+			require.True(t, timey.DiffEqual(5*time.Millisecond, t0, gotMetadata.LatestCommitAt))
+		}
+	})
+}
+
+// TestTopicMetadataEmptyTopic verifies that Metadata() returns the expected
+// data when the topic is empty.
+func TestTopicMetadataEmptyTopic(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
+		top, err := topic.New(log, storage, "topicName", cache, nil)
+		require.NoError(t, err)
+
+		// Act
+		gotMetadata, err := top.Metadata()
+		require.NoError(t, err)
+
+		// Assert
+		expectedMetadata := topic.Metadata{}
+		require.Equal(t, expectedMetadata, gotMetadata)
 	})
 }
 
