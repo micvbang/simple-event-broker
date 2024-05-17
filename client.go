@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
 var (
@@ -67,7 +66,7 @@ func (c *RecordClient) Add(topicName string, record []byte) error {
 	return nil
 }
 
-func (c *RecordClient) Get(topicName string, offset uint64) (recordbatch.Record, error) {
+func (c *RecordClient) Get(topicName string, offset uint64) ([]byte, error) {
 	req, err := c.request("GET", "/record", nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -94,7 +93,7 @@ func (c *RecordClient) Get(topicName string, offset uint64) (recordbatch.Record,
 		return nil, fmt.Errorf("reading body: %w", err)
 	}
 
-	return recordbatch.Record(buf), nil
+	return buf, nil
 }
 
 type GetBatchInput struct {
@@ -112,7 +111,7 @@ type GetBatchInput struct {
 	Timeout time.Duration
 }
 
-func (c *RecordClient) GetBatch(topicName string, offset uint64, input GetBatchInput) (recordbatch.RecordBatch, error) {
+func (c *RecordClient) GetBatch(topicName string, offset uint64, input GetBatchInput) ([][]byte, error) {
 	if input.MaxRecords == 0 {
 		input.MaxRecords = 10
 	}
@@ -150,7 +149,7 @@ func (c *RecordClient) GetBatch(topicName string, offset uint64, input GetBatchI
 	_, params, _ := mime.ParseMediaType(res.Header.Get("Content-Type"))
 	mr := multipart.NewReader(res.Body, params["boundary"])
 
-	recordBatch := make(recordbatch.RecordBatch, 0, input.MaxRecords)
+	recordBatch := make([][]byte, 0, input.MaxRecords)
 	for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
 		record, err := io.ReadAll(part)
 		if err != nil {

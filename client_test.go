@@ -6,7 +6,6 @@ import (
 
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,7 +20,7 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 		topicName = "topicName"
 		offset    = 0
 	)
-	expectedRecord := recordbatch.Record("this is my record!")
+	expectedRecord := []byte("this is my record!")
 
 	// record does not already exist
 	_, err = srv.Storage.GetRecord(topicName, offset)
@@ -34,7 +33,7 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 	// Assert
 	gotRecord, err := srv.Storage.GetRecord(topicName, offset)
 	require.NoError(t, err)
-	require.Equal(t, expectedRecord, gotRecord)
+	require.Equal(t, expectedRecord, []byte(gotRecord))
 }
 
 // TestRecordClientAddNotAuthorized verifies that ErrNotAuthorized is returned
@@ -45,7 +44,7 @@ func TestRecordClientAddNotAuthorized(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	err = client.Add("topicName", recordbatch.Record("this is my record!"))
+	err = client.Add("topicName", []byte("this is my record!"))
 	require.ErrorIs(t, err, seb.ErrNotAuthorized)
 }
 
@@ -60,7 +59,7 @@ func TestRecordClientGetHappyPath(t *testing.T) {
 		topicName = "topicName"
 		offset    = 0
 	)
-	expectedRecord := recordbatch.Record("this is my record!")
+	expectedRecord := []byte("this is my record!")
 
 	err = client.Add(topicName, expectedRecord)
 	require.NoError(t, err)
@@ -107,7 +106,7 @@ func TestRecordClientGetBatchHappyPath(t *testing.T) {
 	const topicName = "topic-name"
 	srv := tester.HTTPServer(t)
 
-	expectedRecords := make(recordbatch.RecordBatch, 16)
+	expectedRecords := make([][]byte, 16)
 	for i := range len(expectedRecords) {
 		expectedRecords[i] = tester.RandomBytes(t, 32)
 		_, err := srv.Storage.AddRecord(topicName, expectedRecords[i])
@@ -153,7 +152,7 @@ func TestRecordClientGetBatchOffsetOutOfBounds(t *testing.T) {
 	const topicName = "topic-name"
 	srv := tester.HTTPServer(t)
 
-	offset, err := srv.Storage.AddRecord(topicName, recordbatch.Record("this be record"))
+	offset, err := srv.Storage.AddRecord(topicName, []byte("this be record"))
 	require.NoError(t, err)
 
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
