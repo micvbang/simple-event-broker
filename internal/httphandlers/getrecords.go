@@ -15,12 +15,12 @@ import (
 )
 
 type RecordBatchGetter interface {
-	GetRecordBatch(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error)
+	GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error)
 }
 
 const multipartFormData = "multipart/form-data"
 
-func GetRecordBatch(log logger.Logger, s RecordBatchGetter) http.HandlerFunc {
+func GetRecords(log logger.Logger, s RecordBatchGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("hit %s", r.URL)
 
@@ -68,7 +68,7 @@ func GetRecordBatch(log logger.Logger, s RecordBatchGetter) http.HandlerFunc {
 			WithField("max-records", maxRecords).
 			WithField("timeout", timeout)
 
-		recordBatch, err := s.GetRecordBatch(ctx, topicName, offset, maxRecords, softMaxBytes)
+		recordBatch, err := s.GetRecords(ctx, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
 			if errors.Is(err, seb.ErrTopicNotFound) {
 				log.Debugf("not found: %s", err)

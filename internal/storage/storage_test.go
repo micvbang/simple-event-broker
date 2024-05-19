@@ -70,7 +70,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 				defer cancel()
 
 				// Act
-				got, err := s.GetRecordBatch(ctx, topicName, test.offset, test.maxRecords, test.softMaxBytes)
+				got, err := s.GetRecords(ctx, topicName, test.offset, test.maxRecords, test.softMaxBytes)
 				require.ErrorIs(t, err, test.err)
 
 				// Assert
@@ -145,7 +145,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 				require.ErrorIs(t, err, test.addErr)
 
 				// Act
-				got, err := s.GetRecordBatch(ctx, "does-not-exist", 0, 10, 1024)
+				got, err := s.GetRecords(ctx, "does-not-exist", 0, 10, 1024)
 				require.ErrorIs(t, err, test.getErr)
 
 				// Assert
@@ -174,7 +174,7 @@ func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 		defer cancel()
 
 		// Act
-		_, err = s.GetRecordBatch(ctx, "does-not-exist", nonExistingOffset, 10, 1024)
+		_, err = s.GetRecords(ctx, "does-not-exist", nonExistingOffset, 10, 1024)
 
 		// Assert
 		require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -198,7 +198,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 		cancel()
 
 		// Act
-		got, err := s.GetRecordBatch(ctx, topicName, 0, 10, 1024)
+		got, err := s.GetRecords(ctx, topicName, 0, 10, 1024)
 
 		// Assert
 		require.ErrorIs(t, err, context.Canceled)
