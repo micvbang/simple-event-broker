@@ -1,6 +1,7 @@
 package topic
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"path"
@@ -190,6 +191,113 @@ func (s *Topic) ReadRecord(offset uint64) (recordbatch.Record, error) {
 		return nil, fmt.Errorf("record batch '%s': %w", s.recordBatchPath(recordBatchID), err)
 	}
 	return record, nil
+}
+
+// ReadRecords returns records starting from startOffset and until either:
+// 1) ctx is cancelled
+// 2) maxRecords has been reached
+// 3) softMaxBytes has been reached
+//
+// - maxRecords defaults to 10 if 0 is given.
+// - softMaxBytes defaults to inifinity if 0 is given;
+// - softMaxBytes is "soft" because it will not be honored if it means returning
+// zero records; in this case, at least one record will be returned.
+//
+// NOTE: ReadRecords will always return all of the records that it managed
+// to fetch until one of the above conditions were met. This means that the
+// returned value should be used even if err is non-nil!
+func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, softMaxBytes int) ([]recordbatch.Record, error) {
+	if offset >= s.nextOffset.Load() {
+		return nil, fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
+	}
+
+	if maxRecords == 0 {
+		maxRecords = 10
+	}
+
+	records := make([]recordbatch.Record, 0, maxRecords)
+
+	// NOTE: we're holding the lock while reading up to maxRecords from our
+	// cache/storage. This is potentially horrible.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var (
+		batchOffset      uint64
+		batchOffsetIndex int
+	)
+	for batchOffsetIndex = len(s.recordBatchOffsets) - 1; batchOffsetIndex >= 0; batchOffsetIndex-- {
+		curBatchOffset := s.recordBatchOffsets[batchOffsetIndex]
+		if curBatchOffset <= offset {
+			batchOffset = curBatchOffset
+			break
+		}
+	}
+
+	rb, err := s.parseRecordBatch(batchOffset)
+	if err != nil {
+		return nil, fmt.Errorf("parsing record batch: %w", err)
+	}
+
+	trackByteSize := softMaxBytes != 0
+	recordBatchBytes := 0
+
+	// index of record within the current batch
+	batchRecordIndex := uint32(offset - batchOffset)
+	for len(records) < maxRecords {
+		select {
+		case <-ctx.Done():
+			return records, ctx.Err()
+		default:
+		}
+
+		// no more records left in batch -> look for records in next batch
+		if batchRecordIndex == rb.Header.NumRecords {
+			// close current batch
+			rb.Close()
+
+			// move to next batch
+			batchOffsetIndex += 1
+			if batchOffsetIndex >= len(s.recordBatchOffsets) {
+				// NOTE: this means there's no next batch
+				return records, nil
+			}
+			batchRecordIndex = 0
+			batchOffset = s.recordBatchOffsets[batchOffsetIndex]
+			rb, err = s.parseRecordBatch(batchOffset)
+			if err != nil {
+				return records, fmt.Errorf("parsing record batch: %w", err)
+			}
+		}
+
+		record, err := rb.Record(batchRecordIndex)
+		if err != nil {
+			return records, fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
+		}
+
+		firstRecord := len(records) == 0
+		withinByteSize := recordBatchBytes+len(record) <= softMaxBytes
+
+		// Possibilities:
+		// 1) we don't care about the size
+		// 2) we care about the size but the first record is larger than the
+		// given soft max. In order not to potentially block the consumer
+		// indefinitely, we return at least one record.
+		// 3) we care about the size and it has to be within the soft max
+		if !trackByteSize || firstRecord || trackByteSize && withinByteSize {
+			recordBatchBytes += len(record)
+			records = append(records, record)
+			batchRecordIndex += 1
+		}
+
+		if trackByteSize && !withinByteSize {
+			break
+		}
+
+	}
+	rb.Close()
+
+	return records, nil
 }
 
 // NextOffset returns the topic's next offset (offset of the next record added).

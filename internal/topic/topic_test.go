@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/inty"
+	"github.com/micvbang/go-helpy/slicey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -16,7 +17,7 @@ import (
 )
 
 var (
-	log = logger.NewDefault(context.Background())
+	log = logger.NewWithLevel(context.Background(), logger.LevelWarn)
 )
 
 // TestStorageEmpty verifies that reading from an empty topic returns
@@ -355,8 +356,7 @@ func TestStorageCompressFiles(t *testing.T) {
 // next record that is added, i.e. the id of most-recently-added+1.
 func TestTopicEndOffset(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		const topicName = "topicName"
-		s, err := topic.New(log, backingStorage, topicName, cache, topic.Gzip{})
+		s, err := topic.New(log, backingStorage, "topic", cache, topic.Gzip{})
 		require.NoError(t, err)
 
 		// no record added yet, next id should be 0
@@ -383,8 +383,7 @@ func TestTopicEndOffset(t *testing.T) {
 // expected offset has been reached.
 func TestTopicOffsetCond(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		const topicName = "topicName"
-		s, err := topic.New(log, backingStorage, topicName, cache, topic.Gzip{})
+		s, err := topic.New(log, backingStorage, "topic", cache, topic.Gzip{})
 		require.NoError(t, err)
 
 		ctx := context.Background()
@@ -419,8 +418,7 @@ func TestTopicOffsetCond(t *testing.T) {
 // returns when the given context expires.
 func TestTopicOffsetCondContextExpired(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		const topicName = "topicName"
-		s, err := topic.New(log, backingStorage, topicName, cache, topic.Gzip{})
+		s, err := topic.New(log, backingStorage, "topic", cache, topic.Gzip{})
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -444,4 +442,216 @@ func TestTopicOffsetCondContextExpired(t *testing.T) {
 		// (test will time out if returned isn't closed)
 		<-returned
 	})
+}
+
+// TestTopicReadRecords verifies that ReadRecords() returns the expected records
+// with the given offset, max number of records, and soft max bytes.
+func TestTopicReadRecords(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
+		topic, err := topic.New(log, storage, "topic", cache, nil)
+		require.NoError(t, err)
+
+		const (
+			recordSize      = 5
+			recordBatchSize = 10
+			recordBatches   = 20
+			totalRecords    = recordBatchSize * recordBatches
+		)
+
+		records := []recordbatch.Record{}
+		for i := 0; i < recordBatches; i++ {
+			expectedRecordBatch := tester.MakeRandomRecordBatchSize(recordBatchSize, recordSize)
+			_, err := topic.AddRecordBatch(expectedRecordBatch)
+			require.NoError(t, err)
+
+			records = append(records, expectedRecordBatch...)
+		}
+
+		tests := map[string]struct {
+			offset          uint64
+			maxRecords      int
+			softMaxBytes    int
+			expectedRecords []recordbatch.Record
+			expectedErr     error
+		}{
+			"all":                            {offset: 0, maxRecords: totalRecords, expectedRecords: records},
+			"offset, first":                  {offset: 0, maxRecords: 1, expectedRecords: records[:1]},
+			"offset, last":                   {offset: totalRecords - 1, maxRecords: 1, expectedRecords: records[totalRecords-1:]},
+			"offset, mid":                    {offset: totalRecords / 2, maxRecords: 1, expectedRecords: records[totalRecords/2 : totalRecords/2+1]},
+			"max records, default":           {offset: 0, maxRecords: 0, expectedRecords: records[:10]},
+			"max records, 100":               {offset: 0, maxRecords: totalRecords + 100, expectedRecords: records},
+			"max records, 5000":              {offset: 20, maxRecords: 5000, expectedRecords: records[20:]},
+			"max records, 20":                {offset: 10, maxRecords: 20, expectedRecords: records[10:30]},
+			"max bytes, 20":                  {offset: 10, maxRecords: 50, softMaxBytes: 20 * recordSize, expectedRecords: records[10:30]},
+			"max bytes, at least one record": {offset: 10, maxRecords: 50, softMaxBytes: 1, expectedRecords: records[10:11]},
+			"max bytes before max records":   {offset: 10, maxRecords: 4, softMaxBytes: 5 * recordSize, expectedRecords: records[10:14]},
+		}
+
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				// Act
+				gotRecords, err := topic.ReadRecords(context.Background(), test.offset, test.maxRecords, test.softMaxBytes)
+
+				// Assert
+				require.NoError(t, err)
+				require.Equal(t, test.expectedRecords, gotRecords)
+				require.ErrorIs(t, err, test.expectedErr)
+			})
+		}
+	})
+}
+
+// TestTopicReadRecordsOutOfBounds verifies that seb.ErrOutOfBounds is returned
+// when requesting an offset larger than the existing max offset.
+func TestTopicReadRecordsOutOfBounds(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
+		topic, err := topic.New(log, storage, "topic", cache, nil)
+		require.NoError(t, err)
+
+		expectedRecordBatch := tester.MakeRandomRecordBatch(10)
+		_, err = topic.AddRecordBatch(expectedRecordBatch)
+		require.NoError(t, err)
+
+		// Act
+		_, err = topic.ReadRecords(context.Background(), 100, 1, 0)
+
+		// Assert
+		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+	})
+}
+
+// TestTopicReadRecordsContextExpired verifies that ReadRecords()
+// returns the context error when the context expires before returning all of
+// the requested records.
+func TestTopicReadRecordsContextExpired(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
+		topic, err := topic.New(log, storage, "topic", cache, nil)
+		require.NoError(t, err)
+
+		expectedRecordBatch := tester.MakeRandomRecordBatch(10)
+		_, err = topic.AddRecordBatch(expectedRecordBatch)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // NOTE: canceled immediately
+
+		// Act
+		_, err = topic.ReadRecords(ctx, 0, len(expectedRecordBatch), 0)
+
+		// Assert
+		require.ErrorIs(t, err, context.Canceled)
+	})
+}
+
+// BenchmarkTopicReadBatchUsingReadRecordRepeatedly benchmarks reading a record
+// batch using repeated calls to Topic.ReadRecord(). It's here to compare
+// against getting the same result doing a single call to Topic.ReadRecords().
+func BenchmarkTopicReadBatchUsingReadRecordRepeatedly(b *testing.B) {
+	benchmarkTopicReadRecordBatch(b, func(topic *topic.Topic, offset uint64, numRecords int) ([]recordbatch.Record, error) {
+		records := make([]recordbatch.Record, numRecords)
+		for offset := uint64(0); offset < uint64(numRecords); offset++ {
+			record, err := topic.ReadRecord(offset)
+			if err != nil {
+				return records, err
+			}
+
+			records[int(offset)] = record
+		}
+
+		return records, nil
+	})
+}
+
+// BenchmarkTopicReadBatchUsingReadRecords benchmarks reading a record batch
+// using Topic.ReadRecords(). It's here to compare against getting the same
+// result doing repeated calls to Topic.ReadRecord().
+func BenchmarkTopicReadBatchUsingReadRecords(b *testing.B) {
+	benchmarkTopicReadRecordBatch(b, func(topic *topic.Topic, offset uint64, numRecords int) ([]recordbatch.Record, error) {
+		return topic.ReadRecords(context.Background(), offset, numRecords, 0)
+	})
+}
+
+func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *topic.Topic, offset uint64, numRecords int) ([]recordbatch.Record, error)) {
+	diskCache, err := cache.NewDiskStorage(log, b.TempDir())
+	require.NoError(b, err)
+
+	cache, err := cache.New(log, diskCache)
+	require.NoError(b, err)
+
+	topicStorage := topic.NewDiskStorage(log, b.TempDir())
+
+	topic, err := topic.New(log, topicStorage, "topic", cache, topic.Gzip{})
+	require.NoError(b, err)
+
+	const (
+		recordBatchSize = 10
+		recordBatches   = 5
+		recordsTotal    = recordBatchSize * recordBatches
+	)
+
+	for i := 0; i < recordBatches; i++ {
+		expectedRecordBatch := tester.MakeRandomRecordBatch(recordBatchSize)
+		_, err := topic.AddRecordBatch(expectedRecordBatch)
+		require.NoError(b, err)
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		records, err := readRecords(topic, 0, recordsTotal)
+		if err != nil {
+			b.Fatalf("unexpected error: %s", err)
+		}
+		if len(records) != recordsTotal {
+			b.Fatalf("expected %d records, got %d", recordsTotal, len(records))
+		}
+	}
+}
+
+// BenchmarkTopicReadRecordUsingReadRecord benchmarks reading a single record
+// using Topic.ReadRecord(). It's here to compare against doing the same using
+// Topic.ReadRecords().
+func BenchmarkTopicReadRecordUsingReadRecord(b *testing.B) {
+	benchmarkTopicReadRecord(b, func(topic *topic.Topic, offset uint64) (recordbatch.Record, error) {
+		return topic.ReadRecord(offset)
+	})
+}
+
+// BenchmarkTopicReadRecordUsingReadRecords benchmarks reading a single record
+// using Topic.ReadRecords(). It's here to compare against doing the same using
+// Topic.ReadRecord()
+func BenchmarkTopicReadRecordUsingReadRecords(b *testing.B) {
+	benchmarkTopicReadRecord(b, func(topic *topic.Topic, offset uint64) (recordbatch.Record, error) {
+		records, err := topic.ReadRecords(context.Background(), offset, 1, 0)
+		return records[0], err
+	})
+}
+
+func benchmarkTopicReadRecord(b *testing.B, readRecord func(t *topic.Topic, offset uint64) (recordbatch.Record, error)) {
+	diskCache, err := cache.NewDiskStorage(log, b.TempDir())
+	require.NoError(b, err)
+
+	cache, err := cache.New(log, diskCache)
+	require.NoError(b, err)
+
+	topicStorage := topic.NewDiskStorage(log, b.TempDir())
+
+	topic, err := topic.New(log, topicStorage, "topic", cache, topic.Gzip{})
+	require.NoError(b, err)
+
+	expectedRecordBatch := tester.MakeRandomRecordBatch(10)
+	topic.AddRecordBatch(expectedRecordBatch)
+
+	const offset = 5
+
+	b.ResetTimer()
+	for range b.N {
+		record, err := readRecord(topic, offset)
+		if err != nil {
+			b.Fatalf("unexpected error: %s", err)
+		}
+
+		if !slicey.Equal(record, expectedRecordBatch[offset]) {
+			b.Fatalf("incorrect record returned: %s vs %s", record, expectedRecordBatch[offset])
+		}
+	}
 }
