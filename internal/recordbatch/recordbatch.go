@@ -129,9 +129,13 @@ func (rb *Parser) Record(recordIndex uint32) (Record, error) {
 	// read record bytes
 	size := rb.recordIndex[recordIndex+1] - recordOffset
 	record := make(Record, size)
-	_, err = io.ReadFull(rb.rdr, record)
+	n, err := io.ReadFull(rb.rdr, record)
 	if err != nil {
 		return nil, fmt.Errorf("reading record: %w", err)
+	}
+
+	if n != int(size) {
+		return nil, fmt.Errorf("reading record index %d: expected to read %d, read %d", recordIndex, size, n)
 	}
 
 	return record, nil
