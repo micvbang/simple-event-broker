@@ -136,11 +136,9 @@ func (s *Storage) GetRecordBatch(ctx context.Context, topicName string, offset u
 		maxRecords = 10
 	}
 
-	recordBatch := make([]recordbatch.Record, 0, maxRecords)
-
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
-		return recordBatch, err
+		return nil, err
 	}
 
 	// wait for startOffset to become available. Can only return errors from
@@ -149,54 +147,14 @@ func (s *Storage) GetRecordBatch(ctx context.Context, topicName string, offset u
 	if err != nil {
 		ctxExpiredErr := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 		if ctxExpiredErr {
-			return recordBatch, fmt.Errorf("waiting for offset %d to be reached: %w", offset, err)
+			return nil, fmt.Errorf("waiting for offset %d to be reached: %w", offset, err)
 		}
 
 		s.log.Errorf("unexpected error when waiting for offset %d to be reached: %s", offset, err)
-		return recordBatch, fmt.Errorf("unexpected when waiting for offset %d to be reached: %w", offset, err)
+		return nil, fmt.Errorf("unexpected when waiting for offset %d to be reached: %w", offset, err)
 	}
 
-	recordBatchBytes := 0
-	maxOffset := offset + uint64(maxRecords)
-	for curOffset := offset; curOffset < maxOffset; curOffset++ {
-		select {
-		case <-ctx.Done():
-			return recordBatch, ctx.Err()
-		default:
-		}
-
-		record, err := tb.topic.ReadRecord(curOffset)
-		if err != nil {
-			// no more records available
-			if errors.Is(err, seb.ErrOutOfBounds) {
-				break
-			}
-
-			return recordBatch, fmt.Errorf("reading record at offset %d: %w", curOffset, err)
-		}
-
-		trackBytes := softMaxBytes > 0
-		withinByteSize := recordBatchBytes+len(record) <= softMaxBytes
-		firstRecord := len(recordBatch) == 0
-
-		// Possibilities:
-		// 1) we don't care about the size
-		// 2) we care about the size but the first record is larger than the
-		// given soft max. In order not to potentially block the consumer
-		// indefinitely, we return at least one record.
-		// 3) we care about the size and it has to be within the soft max
-		if !trackBytes || firstRecord || trackBytes && withinByteSize {
-			recordBatchBytes += len(record)
-			recordBatch = append(recordBatch, record)
-		}
-
-		// exit loop if we reached capacity
-		if trackBytes && !withinByteSize {
-			break
-		}
-	}
-
-	return recordBatch, nil
+	return tb.topic.ReadRecords(ctx, offset, maxRecords, softMaxBytes)
 }
 
 // EndOffset returns the most recent offset

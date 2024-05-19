@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	log = logger.NewDefault(context.Background())
+	log = logger.NewWithLevel(context.Background(), logger.LevelWarn)
 )
 
 // TestGetRecordsOffsetAndMaxCount verifies that the expected records are
@@ -53,8 +53,8 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			"0-4":                       {offset: 0, maxRecords: 5, expected: allRecords[0:5]},
 			"1-5":                       {offset: 1, maxRecords: 5, expected: allRecords[1:6]},
 			"6-6":                       {offset: 6, maxRecords: 1, expected: allRecords[6:7]},
-			"0-100":                     {offset: 0, maxRecords: 100, expected: allRecords[:]},
-			"32-100 (out of bounds)":    {offset: 32, maxRecords: 100, expected: allRecords[:0], err: context.DeadlineExceeded},
+			"0-100":                     {offset: 0, maxRecords: 100, expected: allRecords},
+			"32-100 (out of bounds)":    {offset: 32, maxRecords: 100, expected: nil, err: context.DeadlineExceeded},
 			"soft max bytes 5 records":  {offset: 3, maxRecords: 10, softMaxBytes: recordSize * 5, expected: allRecords[3:8]},
 			"soft max bytes 10 records": {offset: 7, maxRecords: 10, softMaxBytes: recordSize * 10, expected: allRecords[7:17]},
 			"max records 10":            {offset: 5, maxRecords: 10, softMaxBytes: recordSize * 15, expected: allRecords[5:15]},
@@ -129,7 +129,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 			getErr          error
 		}{
 			"false": {autoCreateTopic: false, addErr: seb.ErrTopicNotFound, getErr: seb.ErrTopicNotFound},
-			"true":  {autoCreateTopic: true, addErr: nil, getErr: nil},
+			"true":  {autoCreateTopic: true, addErr: nil, getErr: seb.ErrOutOfBounds},
 		}
 
 		for name, test := range tests {
@@ -149,7 +149,8 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 				require.ErrorIs(t, err, test.getErr)
 
 				// Assert
-				require.Equal(t, recordbatch.RecordBatch{}, got)
+				var expected recordbatch.RecordBatch
+				require.Equal(t, expected, got)
 			})
 		}
 	})
