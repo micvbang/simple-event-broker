@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/micvbang/go-helpy/bytey"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/stretchr/testify/require"
@@ -63,7 +64,7 @@ func TestReadRecord(t *testing.T) {
 	err := recordbatch.Write(buf, records)
 	require.NoError(t, err)
 
-	rdr := bytes.NewReader(buf.Bytes())
+	rdr := bytey.NewBuffer(buf.Bytes())
 	parser, err := recordbatch.Parse(rdr)
 	require.NoError(t, err)
 
@@ -110,7 +111,7 @@ func TestReadRecordOutOfBounds(t *testing.T) {
 	err := recordbatch.Write(buf, records)
 	require.NoError(t, err)
 
-	rdr := bytes.NewReader(buf.Bytes())
+	rdr := bytey.NewBuffer(buf.Bytes())
 	parser, err := recordbatch.Parse(rdr)
 	require.NoError(t, err)
 

@@ -83,12 +83,12 @@ var ErrOutOfBounds = fmt.Errorf("attempting to read out of bounds record")
 type Parser struct {
 	Header      Header
 	recordIndex []uint32
-	rdr         io.ReadSeeker
+	rdr         io.ReadSeekCloser
 }
 
 // Parse reads a RecordBatch file and returns a Parser which can be used to
 // read individual records.
-func Parse(rdr io.ReadSeeker) (*Parser, error) {
+func Parse(rdr io.ReadSeekCloser) (*Parser, error) {
 	header := Header{}
 	err := binary.Read(rdr, byteOrder, &header)
 	if err != nil {
@@ -135,4 +135,8 @@ func (rb *Parser) Record(recordIndex uint32) (Record, error) {
 	}
 
 	return record, nil
+}
+
+func (rb *Parser) Close() error {
+	return rb.rdr.Close()
 }

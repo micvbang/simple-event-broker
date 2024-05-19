@@ -73,8 +73,9 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 		if err != nil {
 			return nil, fmt.Errorf("reading record batch header: %w", err)
 		}
-		storage.nextOffset.Store(newestRecordBatchOffset + uint64(parser.Header.NumRecords))
+		defer parser.Close()
 
+		storage.nextOffset.Store(newestRecordBatchOffset + uint64(parser.Header.NumRecords))
 		storage.OffsetCond = NewOffsetCond(newestRecordBatchOffset)
 	}
 
@@ -182,6 +183,7 @@ func (s *Topic) ReadRecord(offset uint64) (recordbatch.Record, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing record batch: %w", err)
 	}
+	defer rb.Close()
 
 	record, err := rb.Record(uint32(offset - recordBatchID))
 	if err != nil {
@@ -197,6 +199,9 @@ func (s *Topic) NextOffset() uint64 {
 
 func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, error) {
 	recordBatchPath := s.recordBatchPath(recordBatchID)
+
+	// NOTE: f is given to recordbatch.Parser, which will own it and be responsible
+	// for closing it.
 	f, err := s.cache.Reader(recordBatchPath)
 	if err != nil {
 		s.log.Infof("%s not found in cache", recordBatchPath)
