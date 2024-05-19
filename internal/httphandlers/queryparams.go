@@ -56,12 +56,12 @@ func QueryString(s string) (any, error) {
 
 func QueryUint64(s string) (any, error) {
 	if s == "" {
-		return "", ErrQueryParameterRequired
+		return uint64(0), ErrQueryParameterRequired
 	}
 
 	v, err := uint64y.FromString(s)
 	if err != nil {
-		return 0, fmt.Errorf("parsing '%s' as a uint64", s)
+		return uint64(0), fmt.Errorf("parsing '%s' as a uint64", s)
 	}
 	return v, nil
 }
