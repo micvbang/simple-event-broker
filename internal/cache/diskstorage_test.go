@@ -134,3 +134,33 @@ func TestDiskCacheListFromDiskEmpty(t *testing.T) {
 	// Assert
 	require.Equal(t, []string{}, gotKeys)
 }
+
+// TestDiskCacheListExisting verifies that List returns the expected keys when
+// listing an existing cache.
+// NOTE: this is a regression test for a bug found on 2024-05-21, where the
+// file's full path was used as the key, instead of just the key that was given
+// by the caller.
+func TestDiskCacheListExistingCache(t *testing.T) {
+	rootDir := t.TempDir()
+	c, err := cache.NewDiskStorage(log, rootDir)
+	require.NoError(t, err)
+
+	const theKey = "Vrvirksomhed/000000000000.record_batch"
+	w, err := c.Writer(theKey)
+	require.NoError(t, err)
+
+	tester.WriteAndClose(t, w, tester.RandomBytes(t, 16))
+
+	c2, err := cache.NewDiskStorage(log, rootDir)
+	require.NoError(t, err)
+
+	// Act
+	items, err := c2.List()
+	require.NoError(t, err)
+
+	// Assert
+	require.Equal(t, 1, len(items))
+
+	item := items[theKey]
+	require.Equal(t, theKey, item.Key)
+}

@@ -61,10 +61,11 @@ func (c *DiskCache) List() (map[string]CacheItem, error) {
 		Recursive: true,
 	}
 	err := filepathy.Walk(c.rootDir, fileWalkConfig, func(path string, info os.FileInfo, err error) error {
-		cacheItems[path] = CacheItem{
+		trimmedPath := strings.TrimPrefix(path, c.rootDir)
+		cacheItems[trimmedPath] = CacheItem{
 			Size:       info.Size(),
 			AccessedAt: info.ModTime(),
-			Key:        strings.TrimPrefix(path, c.rootDir),
+			Key:        trimmedPath,
 		}
 		return nil
 	})
