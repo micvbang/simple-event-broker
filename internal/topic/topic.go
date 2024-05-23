@@ -169,16 +169,7 @@ func (s *Topic) ReadRecord(offset uint64) (recordbatch.Record, error) {
 		return nil, fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
 	}
 
-	s.mu.Lock()
-	var recordBatchID uint64
-	for i := len(s.recordBatchOffsets) - 1; i >= 0; i-- {
-		curBatchID := s.recordBatchOffsets[i]
-		if curBatchID <= offset {
-			recordBatchID = curBatchID
-			break
-		}
-	}
-	s.mu.Unlock()
+	recordBatchID := s.offsetGetRecordBatchID(offset)
 
 	rb, err := s.parseRecordBatch(recordBatchID)
 	if err != nil {
@@ -217,17 +208,19 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 
 	records := make([]recordbatch.Record, 0, maxRecords)
 
-	// NOTE: we're holding the lock while reading up to maxRecords from our
-	// cache/storage. This is potentially horrible.
+	// make a local copy of recordBatchOffsets so that we don't have to hold the
+	// lock for the rest of the function.
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	recordBatchOffsets := make([]uint64, len(s.recordBatchOffsets))
+	copy(recordBatchOffsets, s.recordBatchOffsets)
+	s.mu.Unlock()
 
 	var (
 		batchOffset      uint64
 		batchOffsetIndex int
 	)
-	for batchOffsetIndex = len(s.recordBatchOffsets) - 1; batchOffsetIndex >= 0; batchOffsetIndex-- {
-		curBatchOffset := s.recordBatchOffsets[batchOffsetIndex]
+	for batchOffsetIndex = len(recordBatchOffsets) - 1; batchOffsetIndex >= 0; batchOffsetIndex-- {
+		curBatchOffset := recordBatchOffsets[batchOffsetIndex]
 		if curBatchOffset <= offset {
 			batchOffset = curBatchOffset
 			break
@@ -258,12 +251,12 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 
 			// move to next batch
 			batchOffsetIndex += 1
-			if batchOffsetIndex >= len(s.recordBatchOffsets) {
+			if batchOffsetIndex >= len(recordBatchOffsets) {
 				// NOTE: this means there's no next batch
 				return records, nil
 			}
 			batchRecordIndex = 0
-			batchOffset = s.recordBatchOffsets[batchOffsetIndex]
+			batchOffset = recordBatchOffsets[batchOffsetIndex]
 			rb, err = s.parseRecordBatch(batchOffset)
 			if err != nil {
 				return records, fmt.Errorf("parsing record batch: %w", err)
