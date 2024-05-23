@@ -3,11 +3,13 @@ package recordbatch_test
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"testing"
 	"time"
 
 	"github.com/micvbang/go-helpy/bytey"
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 	"github.com/stretchr/testify/require"
@@ -119,5 +121,42 @@ func TestReadRecordOutOfBounds(t *testing.T) {
 	_, err = parser.Record(numRecords)
 
 	// Verify
-	require.ErrorIs(t, err, recordbatch.ErrOutOfBounds)
+	require.ErrorIs(t, err, seb.ErrOutOfBounds)
+}
+
+// BenchmarkWrite evaluates how fast recordbatch.Write can serialzie and write a
+// recordbatch to an in-memory buffer.
+func BenchmarkWrite(b *testing.B) {
+	benchmarkWrite(b, recordbatch.Write)
+}
+
+func benchmarkWrite(b *testing.B, f func(io.Writer, recordbatch.RecordBatch) error) {
+	type testCase struct {
+		recordSize int
+		records    int
+	}
+	tests := map[string]testCase{}
+	for records := 8; records < 1024; records *= 2 {
+		for recordSize := 32; recordSize < 1024; recordSize *= 2 {
+			tests[fmt.Sprintf("%d, %d bytes", records, recordSize)] = testCase{
+				recordSize: recordSize, records: records,
+			}
+		}
+	}
+
+	for name, test := range tests {
+		b.Run(name, func(b *testing.B) {
+			recordBatch := tester.MakeRandomRecordBatchSize(test.records, test.recordSize)
+			buf := bytes.NewBuffer(make([]byte, len(recordBatch)*test.recordSize))
+
+			b.ResetTimer()
+			for range b.N {
+				err := f(buf, recordBatch)
+				if err != nil {
+					b.Fatalf("unexpected error: %s", err)
+				}
+			}
+		})
+
+	}
 }

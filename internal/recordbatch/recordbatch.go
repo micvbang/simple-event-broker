@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	seb "github.com/micvbang/simple-event-broker"
 )
 
 var (
@@ -69,16 +71,20 @@ func Write(wtr io.Writer, rb RecordBatch) error {
 		return fmt.Errorf("writing record indexes %d: %w", recordIndex, err)
 	}
 
-	for i, record := range rb {
-		err = binary.Write(wtr, byteOrder, record)
-		if err != nil {
-			return fmt.Errorf("writing record %d/%d: %w", i+1, len(rb), err)
-		}
+	// pack records into a single byte slice so that we can write them with
+	// a single call to binary.Write(). This is much faster even if the number
+	// if records is low (benchmarks with 8 rows were still ~2x speed-up!)
+	records := make([]byte, 0, recordIndex)
+	for _, record := range rb {
+		records = append(records, record...)
+	}
+
+	err = binary.Write(wtr, byteOrder, records)
+	if err != nil {
+		return fmt.Errorf("writing records length %d: %w", len(rb), err)
 	}
 	return nil
 }
-
-var ErrOutOfBounds = fmt.Errorf("attempting to read out of bounds record")
 
 type Parser struct {
 	Header      Header
@@ -110,7 +116,7 @@ func Parse(rdr io.ReadSeekCloser) (*Parser, error) {
 
 func (rb *Parser) Record(recordIndex uint32) (Record, error) {
 	if recordIndex >= rb.Header.NumRecords {
-		return nil, fmt.Errorf("%d records available, record index %d does not exist: %w", rb.Header.NumRecords, recordIndex, ErrOutOfBounds)
+		return nil, fmt.Errorf("%d records available, record index %d does not exist: %w", rb.Header.NumRecords, recordIndex, seb.ErrOutOfBounds)
 	}
 
 	recordOffset := rb.recordIndex[recordIndex]
