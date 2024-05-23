@@ -2,6 +2,7 @@ package cache_test
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -251,9 +252,12 @@ func TestCacheSizeOverwriteItem(t *testing.T) {
 // This is a regression test for a bug that was spotted on 2024-05-08.
 func TestCacheEvictAfterFailure(t *testing.T) {
 	cacheStorage := &cacheStorageMock{}
+
+	removeErr := fmt.Errorf("everything is on fire!")
 	cacheStorage.MockRemove = func(key string) error {
-		return fmt.Errorf("everything is on fire!")
+		return removeErr
 	}
+
 	cacheStorage.MockList = func() (map[string]cache.CacheItem, error) {
 		cacheItems := map[string]cache.CacheItem{
 			"key1": {
@@ -270,17 +274,19 @@ func TestCacheEvictAfterFailure(t *testing.T) {
 
 	// Act
 	err = c.EvictLeastRecentlyUsed(1)
-	require.Error(t, err)
+	require.ErrorIs(t, err, removeErr)
 
-	hasReturned := false
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
 	// Assert
 	go func() {
+		defer wg.Done()
 		c.EvictLeastRecentlyUsed(1)
-		hasReturned = true
 	}()
 
-	require.Eventually(t, func() bool { return hasReturned }, 1*time.Second, 10*time.Millisecond)
+	// Test will time out if EvictLeastRecentlyUsed does not return
+	wg.Wait()
 }
 
 type cacheStorageMock struct {
