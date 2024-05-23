@@ -21,7 +21,7 @@ func TestGetTopicHappyPath(t *testing.T) {
 	)
 
 	server := tester.HTTPServer(t)
-	defer server.Server.Close()
+	defer server.Close()
 
 	for range topicRecords {
 		_, err := server.Storage.AddRecord(topicName, tester.RandomBytes(t, 32))
@@ -86,7 +86,6 @@ func TestGetTopicNotFound(t *testing.T) {
 
 			// Assert
 			require.Equal(t, test.statusCode, response.StatusCode)
-
 		})
 	}
 }

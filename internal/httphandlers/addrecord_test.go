@@ -20,6 +20,8 @@ func TestAddRecordHappyPath(t *testing.T) {
 
 	// add record s.t. returned offset in HTTP response is not 0 (default value)
 	server := tester.HTTPServer(t)
+	defer server.Close()
+
 	_, err := server.Storage.AddRecord(topicName, recordbatch.Record("haps"))
 	require.NoError(t, err)
 
@@ -47,6 +49,9 @@ func TestAddRecordMissingTopic(t *testing.T) {
 		// NOTE: no topic-name set
 	})
 
-	response := tester.HTTPServer(t).DoWithAuth(r)
+	server := tester.HTTPServer(t)
+	defer server.Close()
+
+	response := server.DoWithAuth(r)
 	require.Equal(t, http.StatusBadRequest, response.StatusCode)
 }

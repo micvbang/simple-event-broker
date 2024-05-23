@@ -15,6 +15,7 @@ import (
 // either the topic name or offset does not exist.
 func TestGetRecordExistence(t *testing.T) {
 	server := tester.HTTPServer(t)
+	defer server.Close()
 
 	expectedPayload := []byte("haps")
 	const topicName = "topicName"

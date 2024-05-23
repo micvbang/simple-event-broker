@@ -13,6 +13,8 @@ import (
 // endpoint for adding a record.
 func TestRecordClientAddHappyPath(t *testing.T) {
 	srv := tester.HTTPServer(t)
+	defer srv.Close()
+
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
 	require.NoError(t, err)
 
@@ -40,6 +42,8 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 // when using an invalid API key.
 func TestRecordClientAddNotAuthorized(t *testing.T) {
 	srv := tester.HTTPServer(t, tester.HTTPAPIKey("working-api-key"))
+	defer srv.Close()
+
 	client, err := seb.NewRecordClient(srv.Server.URL, "invalid-api-key")
 	require.NoError(t, err)
 
@@ -52,6 +56,8 @@ func TestRecordClientAddNotAuthorized(t *testing.T) {
 // endpoint for getting a record.
 func TestRecordClientGetHappyPath(t *testing.T) {
 	srv := tester.HTTPServer(t)
+	defer srv.Close()
+
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
 	require.NoError(t, err)
 
@@ -76,6 +82,8 @@ func TestRecordClientGetHappyPath(t *testing.T) {
 // using an invalid API key.
 func TestRecordClientGetNotAuthorized(t *testing.T) {
 	srv := tester.HTTPServer(t, tester.HTTPAPIKey("working-api-key"))
+	defer srv.Close()
+
 	client, err := seb.NewRecordClient(srv.Server.URL, "invalid-api-key")
 	require.NoError(t, err)
 
@@ -90,6 +98,8 @@ func TestRecordClientGetNotAuthorized(t *testing.T) {
 // attempting to retrieve a record with an offset that does not exist.
 func TestRecordClientGetNotFound(t *testing.T) {
 	srv := tester.HTTPServer(t)
+	defer srv.Close()
+
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
 	require.NoError(t, err)
 
@@ -105,6 +115,7 @@ func TestRecordClientGetNotFound(t *testing.T) {
 func TestRecordClientGetBatchHappyPath(t *testing.T) {
 	const topicName = "topic-name"
 	srv := tester.HTTPServer(t)
+	defer srv.Close()
 
 	expectedRecords := make([][]byte, 16)
 	for i := range len(expectedRecords) {
@@ -132,6 +143,7 @@ func TestRecordClientGetBatchHappyPath(t *testing.T) {
 // returned when attempting to read from a topic that does not exist.
 func TestRecordClientGetBatchTopicDoesNotExist(t *testing.T) {
 	srv := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
+	defer srv.Close()
 
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
 	require.NoError(t, err)
@@ -151,6 +163,7 @@ func TestRecordClientGetBatchTopicDoesNotExist(t *testing.T) {
 func TestRecordClientGetBatchOffsetOutOfBounds(t *testing.T) {
 	const topicName = "topic-name"
 	srv := tester.HTTPServer(t)
+	defer srv.Close()
 
 	offset, err := srv.Storage.AddRecord(topicName, []byte("this be record"))
 	require.NoError(t, err)

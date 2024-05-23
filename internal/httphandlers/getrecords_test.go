@@ -20,6 +20,7 @@ import (
 // either the topic name does not exist or the offset is out of bounds.
 func TestGetRecordsExistence(t *testing.T) {
 	server := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
+	defer server.Close()
 
 	const topicName = "topicName"
 
@@ -79,6 +80,7 @@ func TestGetRecordsExistence(t *testing.T) {
 func TestGetRecordsURLParameters(t *testing.T) {
 	const topicName = "topic-name"
 	server := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
+	defer server.Close()
 
 	err := server.Storage.CreateTopic(topicName)
 	require.NoError(t, err)
@@ -200,6 +202,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 // returned in multipart/form-data formatting.
 func TestGetRecordsMultipartFormData(t *testing.T) {
 	server := tester.HTTPServer(t)
+	defer server.Close()
 
 	const (
 		topicName  = "topicName"
