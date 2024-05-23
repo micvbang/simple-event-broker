@@ -131,7 +131,7 @@ func parseFlags() flags {
 
 	// http
 	fs.StringVar(&f.httpListenAddress, "http-address", "127.0.0.1", "Address to listen for HTTP traffic")
-	fs.IntVar(&f.httpListenPort, "http-port", 8080, "Port to listen for HTTP traffic")
+	fs.IntVar(&f.httpListenPort, "http-port", 51313, "Port to listen for HTTP traffic")
 	fs.StringVar(&f.httpAPIKey, "http-api-key", "api-key", "API key for authorizing HTTP requests (this is not safe and needs to be changed)")
 
 	// http debug
