@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/micvbang/go-helpy/timey"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
@@ -55,7 +57,7 @@ func TestGetTopicHappyPath(t *testing.T) {
 			err := httphelpers.ParseJSONAndClose(response.Body, &output)
 			require.NoError(t, err)
 			require.Equal(t, test.metadata.NextOffset, output.NextOffset)
-			require.Equal(t, test.metadata.LatestCommitAt, output.LatestCommitAt)
+			require.True(t, timey.DiffEqual(10*time.Millisecond, test.metadata.LatestCommitAt, output.LatestCommitAt))
 			require.Equal(t, "application/json", response.Header.Get("Content-Type"))
 		})
 	}
