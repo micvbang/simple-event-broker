@@ -87,6 +87,11 @@ func (b *BlockingBatcher) AddRecords(records []recordbatch.Record) ([]uint64, er
 
 	// block caller until record has been peristed (or persisting failed)
 	response := <-responses
+
+	if len(response.offsets) != len(records) {
+		// This is not supposed to happen; if it does, we can't trust b.persist().
+		panic(fmt.Sprintf("unexpected number of offsets returned %d, expected %d", len(response.offsets), len(records)))
+	}
 	return response.offsets, response.err
 
 }
@@ -100,9 +105,9 @@ func (b *BlockingBatcher) AddRecord(record recordbatch.Record) (uint64, error) {
 		return 0, err
 	}
 
-	if len(offsets) == 0 || len(offsets) > 1 {
-		// This is not supposed to happen; if it does, we can't trust anything.
-		panic(fmt.Sprintf("unexpected number of offsets returned: %d", len(offsets)))
+	if len(offsets) != 1 {
+		// This is not supposed to happen; if it does, we can't trust b.persist().
+		panic(fmt.Sprintf("unexpected number of offsets returned %d, expected 1", len(offsets)))
 	}
 
 	return offsets[0], nil

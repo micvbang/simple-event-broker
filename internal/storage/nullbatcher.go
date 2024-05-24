@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
@@ -9,6 +10,7 @@ import (
 // nullBatcher calls persist() for every record it receives, always creating a
 // record batch of size 1. This is useful for testing.
 type nullBatcher struct {
+	mu      sync.Mutex
 	persist Persist
 }
 
@@ -18,20 +20,34 @@ func NewNullBatcher(persist Persist) *nullBatcher {
 	}
 }
 
-func (b *nullBatcher) AddRecord(r recordbatch.Record) (uint64, error) {
-	// TODO: make threadsafe; calls to persist() aren't!!
-	offsets, err := b.persist(recordbatch.RecordBatch{r})
+func (b *nullBatcher) AddRecords(records []recordbatch.Record) ([]uint64, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	offsets, err := b.persist(records)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(offsets) != len(records) {
+		// This is not supposed to happen; if it does, we can't trust b.persist()
+		panic(fmt.Sprintf("unexpected number of offsets returned %d, expected %d", len(offsets), len(records)))
+	}
+
+	return offsets, nil
+}
+
+func (b *nullBatcher) AddRecord(record recordbatch.Record) (uint64, error) {
+	offsets, err := b.AddRecords([]recordbatch.Record{record})
 	if err != nil {
 		return 0, err
 	}
 
 	if len(offsets) != 1 {
-		return 0, fmt.Errorf("unexpected number of records %d", len(offsets))
+		// This is not supposed to happen; if it does, we can't trust b.persist()
+		panic(fmt.Sprintf("unexpected number of offsets returned: %d", len(offsets)))
 	}
 
 	return offsets[0], nil
-}
 
-func (b *nullBatcher) AddRecords(rs []recordbatch.Record) ([]uint64, error) {
-	return nil, fmt.Errorf("not implemented yet")
 }

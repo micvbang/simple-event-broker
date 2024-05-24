@@ -183,110 +183,112 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 	wg.Wait()
 }
 
-// TestBlockingBatcherConcurrency verifies that many concurrent calls to
-// AddRecords() and AddRecord() blocks and returns the correct offsets to all
-// callers.
+// TestBlockingBatcherConcurrency verifies that concurrent calls to AddRecords()
+// and AddRecord() block and returns the correct offsets to all callers.
 func TestBlockingBatcherConcurrency(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, s topic.Storage, c *cache.Cache) {
-		ctx := context.Background()
-
 		topic, err := topic.New(log, s, "topicName", c, nil)
 		require.NoError(t, err)
 
-		recordBatches := make([][]recordbatch.Record, 50)
-		for i := 0; i < len(recordBatches); i++ {
-			recordBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
-		}
-
 		batcher := storage.NewBlockingBatcher(log, 5*time.Millisecond, 32*sizey.KB, topic.AddRecordBatch)
-
-		const (
-			batchAdders  = 50
-			singleAdders = 100
-		)
-
-		var recordsAdded atomic.Int32
-		stop := make(chan struct{})
-
-		wg := sync.WaitGroup{}
-		wg.Add(batchAdders + singleAdders)
-
-		// concurrently add records using AddRecords()
-		for range batchAdders {
-			go func() {
-				defer wg.Done()
-
-				added := 0
-				for {
-					select {
-					case <-stop:
-						recordsAdded.Add(int32(added))
-						return
-					default:
-					}
-
-					expectedRecords := slicey.Random(recordBatches)
-
-					// Act
-					offsets, err := batcher.AddRecords(expectedRecords)
-					require.NoError(t, err)
-
-					// Assert
-					require.Equal(t, len(expectedRecords), len(offsets))
-
-					gotRecords, err := topic.ReadRecords(ctx, offsets[0], len(offsets), 0)
-					require.NoError(t, err)
-
-					require.Equal(t, len(expectedRecords), len(gotRecords))
-					for i, expected := range expectedRecords {
-						got := gotRecords[i]
-						require.Equal(t, expected, got)
-					}
-
-					added += len(expectedRecords)
-				}
-			}()
-		}
-
-		// concurrently add records using AddRecord()
-		for range singleAdders {
-			go func() {
-				defer wg.Done()
-
-				added := 0
-				for {
-					select {
-					case <-stop:
-						recordsAdded.Add(int32(added))
-						return
-					default:
-					}
-
-					expectedRecord := slicey.Random(recordBatches)[0]
-
-					// Act
-					offset, err := batcher.AddRecord(expectedRecord)
-					require.NoError(t, err)
-
-					// Assert
-					gotRecord, err := topic.ReadRecord(offset)
-					require.NoError(t, err)
-
-					require.Equal(t, expectedRecord, gotRecord)
-
-					added += len(expectedRecord)
-				}
-			}()
-		}
-
-		// Run workers concurrently for a while
-		time.Sleep(250 * time.Millisecond)
-		close(stop)
-
-		wg.Wait()
-
-		// assert that some minimum amount of records were added concurrently
-		added := int(recordsAdded.Load())
-		require.True(t, added >= 50_000)
+		testBlockingBatcherConcurrency(t, batcher, topic)
 	})
+}
+
+func testBlockingBatcherConcurrency(t *testing.T, batcher storage.RecordBatcher, topic *topic.Topic) {
+	ctx := context.Background()
+
+	recordBatches := make([][]recordbatch.Record, 50)
+	for i := 0; i < len(recordBatches); i++ {
+		recordBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
+	}
+
+	const (
+		batchAdders  = 50
+		singleAdders = 100
+	)
+
+	var recordsAdded atomic.Int32
+	stop := make(chan struct{})
+
+	wg := sync.WaitGroup{}
+	wg.Add(batchAdders + singleAdders)
+
+	// concurrently add records using AddRecords()
+	for range batchAdders {
+		go func() {
+			defer wg.Done()
+
+			added := 0
+			for {
+				select {
+				case <-stop:
+					recordsAdded.Add(int32(added))
+					return
+				default:
+				}
+
+				expectedRecords := slicey.Random(recordBatches)
+
+				// Act
+				offsets, err := batcher.AddRecords(expectedRecords)
+				require.NoError(t, err)
+
+				// Assert
+				require.Equal(t, len(expectedRecords), len(offsets))
+
+				gotRecords, err := topic.ReadRecords(ctx, offsets[0], len(offsets), 0)
+				require.NoError(t, err)
+
+				require.Equal(t, len(expectedRecords), len(gotRecords))
+				for i, expected := range expectedRecords {
+					got := gotRecords[i]
+					require.Equal(t, expected, got)
+				}
+
+				added += len(expectedRecords)
+			}
+		}()
+	}
+
+	// concurrently add records using AddRecord()
+	for range singleAdders {
+		go func() {
+			defer wg.Done()
+
+			added := 0
+			for {
+				select {
+				case <-stop:
+					recordsAdded.Add(int32(added))
+					return
+				default:
+				}
+
+				expectedRecord := slicey.Random(recordBatches)[0]
+
+				// Act
+				offset, err := batcher.AddRecord(expectedRecord)
+				require.NoError(t, err)
+
+				// Assert
+				gotRecord, err := topic.ReadRecord(offset)
+				require.NoError(t, err)
+
+				require.Equal(t, expectedRecord, gotRecord)
+
+				added += len(expectedRecord)
+			}
+		}()
+	}
+
+	// Run workers concurrently for a while
+	time.Sleep(250 * time.Millisecond)
+	close(stop)
+
+	wg.Wait()
+
+	// assert that some minimum amount of records were added concurrently
+	added := int(recordsAdded.Load())
+	require.True(t, added >= 10_000)
 }
