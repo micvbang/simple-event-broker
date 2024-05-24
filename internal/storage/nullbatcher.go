@@ -19,6 +19,7 @@ func NewNullBatcher(persist Persist) *nullBatcher {
 }
 
 func (b *nullBatcher) AddRecord(r recordbatch.Record) (uint64, error) {
+	// TODO: make threadsafe; calls to persist() aren't!!
 	offsets, err := b.persist(recordbatch.RecordBatch{r})
 	if err != nil {
 		return 0, err
@@ -29,4 +30,8 @@ func (b *nullBatcher) AddRecord(r recordbatch.Record) (uint64, error) {
 	}
 
 	return offsets[0], nil
+}
+
+func (b *nullBatcher) AddRecords(rs []recordbatch.Record) ([]uint64, error) {
+	return nil, fmt.Errorf("not implemented yet")
 }

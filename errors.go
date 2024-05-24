@@ -9,4 +9,5 @@ var (
 	ErrNotInCache         = fmt.Errorf("not in cache")
 	ErrNotInStorage       = fmt.Errorf("not in storage")
 	ErrUnauthorized       = fmt.Errorf("unauthorized")
+	ErrPayloadTooLarge    = fmt.Errorf("payload too large")
 )

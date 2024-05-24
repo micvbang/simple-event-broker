@@ -2,8 +2,10 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
@@ -11,15 +13,29 @@ import (
 type Persist func(recordbatch.RecordBatch) ([]uint64, error)
 
 type blockedAdd struct {
-	record   recordbatch.Record
+	records  []recordbatch.Record
+	numBytes int
 	response chan<- addResponse
 }
 
 type addResponse struct {
-	offset uint64
-	err    error
+	offsets []uint64
+	err     error
 }
 
+// BlockingBatcher is responsible for batching records before persisting them
+// into topic storage. Batching is done to amortize the cost of persisting data
+// to topic storage. This is helpful when the topic storage is an object store
+// that is expected to have large latencies and per-call $ costs.
+//
+// BlockingBatcher collects records for a batch until either
+// 1) the block time has elapsed
+// 2) the soft maximum number of bytes has been reached
+//
+// persistRecordBatch() will be called once the most recent context returned by
+// contextFactory() has expired, or bytesSoftMax has been reached. Beware of
+// long-lived contexts returned by contextFactory() as this could block all
+// adders until the context expires!
 type BlockingBatcher struct {
 	log          logger.Logger
 	bytesSoftMax int
@@ -49,34 +65,59 @@ func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persist P
 	return b
 }
 
-// AddRecord adds record to the ongoing record batch and blocks until
-// persistRecordBatch() has been called and completed.
-//
-// persistRecordBatch() will be called once the most recent context returned by
-// contextFactory() has expired, or bytesSoftMax has been reached. Beware of
-// long-lived contexts returned by contextFactory(); AddRecord() could block all
-// callers until the context expires.
-func (b *BlockingBatcher) AddRecord(r recordbatch.Record) (uint64, error) {
+// AddRecords adds records to the batch that is currently being built and blocks
+// until persistRecordBatch() has been called and completed; when AddRecords returns,
+// the given record has either been persisted to topic storage or failed.
+func (b *BlockingBatcher) AddRecords(records []recordbatch.Record) ([]uint64, error) {
+	numBytes := 0
+	for _, record := range records {
+		numBytes += len(record)
+	}
+	if numBytes > b.bytesSoftMax {
+		return nil, fmt.Errorf("%w (%d bytes), bytes max is %d", seb.ErrPayloadTooLarge, numBytes, b.bytesSoftMax)
+	}
+
 	responses := make(chan addResponse)
 
 	b.callers <- blockedAdd{
 		response: responses,
-		record:   r,
+		records:  records,
+		numBytes: numBytes,
 	}
 
 	// block caller until record has been peristed (or persisting failed)
 	response := <-responses
-	return response.offset, response.err
+	return response.offsets, response.err
+
+}
+
+// AddRecord adds record to the batch that is currently being built and blocks
+// until persistRecordBatch() has been called and completed; when AddRecord returns,
+// the given record has either been persisted to topic storage or failed.
+func (b *BlockingBatcher) AddRecord(record recordbatch.Record) (uint64, error) {
+	offsets, err := b.AddRecords([]recordbatch.Record{record})
+	if err != nil {
+		return 0, err
+	}
+
+	if len(offsets) == 0 || len(offsets) > 1 {
+		// This is not supposed to happen; if it does, we can't trust anything.
+		panic(fmt.Sprintf("unexpected number of offsets returned: %d", len(offsets)))
+	}
+
+	return offsets[0], nil
 }
 
 func (b *BlockingBatcher) collectBatches() {
 	for {
 		blockedCallers := make([]blockedAdd, 0, 64)
 
-		// block until AddRecord() is called, starting a new batch collection
+		// block until there are records coming in, starting a new batch collection
 		blockedCaller := <-b.callers
 		blockedCallers = append(blockedCallers, blockedCaller)
-		batchBytes := len(blockedCaller.record)
+
+		batchBytes := blockedCaller.numBytes
+		batchRecords := len(blockedCaller.records)
 
 		ctx, cancel := context.WithCancel(b.contextFactory())
 		defer cancel()
@@ -88,7 +129,9 @@ func (b *BlockingBatcher) collectBatches() {
 
 			case blockedCaller := <-b.callers:
 				blockedCallers = append(blockedCallers, blockedCaller)
-				batchBytes += len(blockedCaller.record)
+				batchBytes += blockedCaller.numBytes
+				batchRecords += len(blockedCaller.records)
+
 				b.log.Debugf("added record to batch (%d)", len(blockedCallers))
 				if batchBytes >= b.bytesSoftMax {
 					b.log.Debugf("batch size exceeded soft max (%d/%d), collecting", batchBytes, b.bytesSoftMax)
@@ -103,27 +146,30 @@ func (b *BlockingBatcher) collectBatches() {
 			case <-ctx.Done():
 				b.log.Debugf("batch collection time: %v", time.Since(t0))
 
-				recordBatch := make(recordbatch.RecordBatch, len(blockedCallers))
-				for i, add := range blockedCallers {
-					recordBatch[i] = add.record
+				records := make([]recordbatch.Record, 0, batchRecords)
+				for _, add := range blockedCallers {
+					records = append(records, add.records...)
 				}
 
-				// block until recordBatch is persisted or persisting failed
-				offsets, err := b.persist(recordBatch)
-				b.log.Debugf("%d records persisted (err: %v)", len(recordBatch), err)
+				// block until records are persisted or persisting failed
+				offsets, err := b.persist(records)
+				b.log.Debugf("%d records persisted (err: %v)", len(records), err)
 				if err != nil {
-					b.log.Debugf("reporting error to %d waiting callers", len(recordBatch))
+					b.log.Debugf("reporting error to %d waiting callers", len(records))
 
 					// offsets should be 0 in all responses
-					offsets = make([]uint64, len(recordBatch))
+					offsets = make([]uint64, len(records))
 				}
 
 				// unblock callers
-				for i, blockedCaller := range blockedCallers {
+				offsetIndex := 0
+				for _, blockedCaller := range blockedCallers {
+					offsetMax := offsetIndex + len(blockedCaller.records)
 					blockedCaller.response <- addResponse{
-						offset: offsets[i],
-						err:    err,
+						offsets: offsets[offsetIndex:offsetMax],
+						err:     err,
 					}
+					offsetIndex = offsetMax
 					close(blockedCaller.response)
 				}
 
