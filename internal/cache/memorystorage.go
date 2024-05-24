@@ -1,8 +1,8 @@
 package cache
 
 import (
-	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/micvbang/go-helpy/bytey"
@@ -22,6 +22,7 @@ type MemoryCache struct {
 	log logger.Logger
 	now func() time.Time
 
+	mu    sync.Mutex
 	items map[string]memoryCacheItem
 }
 
@@ -34,6 +35,9 @@ func NewMemoryStorage(log logger.Logger) *MemoryCache {
 }
 
 func (mc *MemoryCache) Reader(key string) (io.ReadSeekCloser, error) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+
 	item, ok := mc.items[key]
 	if !ok {
 		return nil, seb.ErrNotInCache
@@ -41,18 +45,18 @@ func (mc *MemoryCache) Reader(key string) (io.ReadSeekCloser, error) {
 	item.accessedAt = mc.now()
 	mc.items[key] = item
 
-	// Caller expects a new Reader into the item, so we need to reset the offset.
-	_, err := item.buf.Seek(0, io.SeekStart)
-	if err != nil {
-		return nil, fmt.Errorf("seeking to start of buffer: %w", err)
-	}
-
-	return nops.NopReadSeekCloser(item.buf), nil
+	// in case there are multiple callers asking for the same file, we need to
+	// provide them with different readers as they would otherwise race for the
+	// offset.
+	buf := bytey.NewBuffer(item.buf.Bytes())
+	return nops.NopReadSeekCloser(buf), nil
 }
 
 func (mc *MemoryCache) Writer(key string) (io.WriteCloser, error) {
-	buf := bytey.NewBuffer(nil)
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
 
+	buf := bytey.NewBuffer(nil)
 	mc.items[key] = memoryCacheItem{
 		buf:        buf,
 		accessedAt: mc.now(),
@@ -62,11 +66,17 @@ func (mc *MemoryCache) Writer(key string) (io.WriteCloser, error) {
 }
 
 func (mc *MemoryCache) Remove(key string) error {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+
 	delete(mc.items, key)
 	return nil
 }
 
 func (mc *MemoryCache) List() (map[string]CacheItem, error) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+
 	cacheItems := make(map[string]CacheItem, len(mc.items))
 	for key, item := range mc.items {
 		cacheItems[key] = CacheItem{
@@ -79,6 +89,9 @@ func (mc *MemoryCache) List() (map[string]CacheItem, error) {
 }
 
 func (mc *MemoryCache) SizeOf(key string) (CacheItem, error) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+
 	item, ok := mc.items[key]
 	if !ok {
 		return CacheItem{}, seb.ErrNotInCache
