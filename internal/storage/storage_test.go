@@ -82,14 +82,11 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 	})
 }
 
-// TestStorageAutoCreateTopic verifies that AddRecords returns
-// seb.ErrTopicNotFound when autoCreateTopic is false, and automatically
-// creates the topic if it is true.
-func TestAddRecordAutoCreateTopic(t *testing.T) {
+// TestAddRecordsAutoCreateTopic verifies that AddRecord and AddRecords returns
+// seb.ErrTopicNotFound when autoCreateTopic is false, and automatically creates
+// the topic when it is true.
+func TestAddRecordsAutoCreateTopic(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts topic.Storage, cache *cache.Cache) {
-		const topicName = "topic-name"
-		expectedRecord := recordbatch.Record("this is a record")
-
 		tests := map[string]struct {
 			autoCreateTopic bool
 			err             error
@@ -106,11 +103,23 @@ func TestAddRecordAutoCreateTopic(t *testing.T) {
 					storage.WithAutoCreateTopic(test.autoCreateTopic),
 				)
 
-				// Act
-				_, err := s.AddRecord(topicName, expectedRecord)
+				// AddRecord
+				{
+					// Act
+					_, err := s.AddRecord("first", recordbatch.Record("this is a record"))
 
-				// Assert
-				require.ErrorIs(t, err, test.err)
+					// Assert
+					require.ErrorIs(t, err, test.err)
+				}
+
+				// AddRecords
+				{
+					// Act
+					_, err := s.AddRecords("second", tester.MakeRandomRecordBatch(5))
+
+					// Assert
+					require.ErrorIs(t, err, test.err)
+				}
 			})
 		}
 	})
@@ -236,8 +245,8 @@ func TestCreateTopicHappyPath(t *testing.T) {
 
 // TestCreateTopicAlreadyExistsInStorage verifies that calling CreateTopic on
 // different instances of storage.Storage returns ErrTopicAlreadyExists when
-// attempting to create a topic that already exists in the backing storage (at
-// least one record was added to the topic in its lifetime)
+// attempting to create a topic that already exists in topic storage (at least
+// one record was added to the topic in its lifetime)
 func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, bs topic.Storage, cache *cache.Cache) {
 		const topicName = "topic-name"
@@ -255,8 +264,8 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 			require.NoError(t, err)
 
 			// NOTE: the test relies on there being a created at least one
-			// record in the backing storage, since that's the only (current)
-			// way to "create" a topic in the backing storage.
+			// record in topic storage, since that's the only (current) way to
+			// persist information about a topic's existence.
 			_, err = s1.AddRecord(topicName, recordbatch.Record("this is a record"))
 			require.NoError(t, err)
 		}
@@ -274,7 +283,6 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 			err := s2.CreateTopic(topicName)
 
 			// Assert
-
 			// we expect Storage to complain that topic alreay exists, because
 			// it exists in the backing storage.
 			require.ErrorIs(t, err, seb.ErrTopicAlreadyExists)
@@ -307,7 +315,7 @@ func TestStorageMetadataHappyPath(t *testing.T) {
 	tester.TestStorage(t, autoCreate, func(t *testing.T, s *storage.Storage) {
 		const topicName = "topic-name"
 
-		for numRecords := uint64(1); numRecords <= 10; numRecords++ {
+		for numRecords := 1; numRecords <= 10; numRecords++ {
 			_, err := s.AddRecord(topicName, []byte("this be record"))
 			require.NoError(t, err)
 
@@ -315,10 +323,9 @@ func TestStorageMetadataHappyPath(t *testing.T) {
 			require.NoError(t, err)
 			t0 := time.Now()
 
-			require.Equal(t, numRecords, gotMetadata.NextOffset)
+			require.Equal(t, uint64(numRecords), gotMetadata.NextOffset)
 			require.True(t, timey.DiffEqual(5*time.Millisecond, t0, gotMetadata.LatestCommitAt))
 		}
-
 	})
 }
 
@@ -342,4 +349,54 @@ func TestStorageMetadataTopicNotFound(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestAddRecordsHappyPath verifies that AddRecords adds the expected records.
+func TestAddRecordsHappyPath(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts topic.Storage, cache *cache.Cache) {
+		s := storage.New(log,
+			storage.NewTopicFactory(ts, cache),
+			storage.WithNullBatcher(),
+			storage.WithAutoCreateTopic(true),
+		)
+
+		const topicName = "topic"
+		expectedRecords := tester.MakeRandomRecordBatch(5)
+
+		// Act
+		_, err := s.AddRecords(topicName, expectedRecords)
+		require.NoError(t, err)
+
+		// Assert
+		gotRecords, err := s.GetRecords(context.Background(), topicName, 0, 9999, 0)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedRecords, gotRecords)
+	})
+}
+
+// TestAddRecordHappyPath verifies that AddRecord adds the expected records.
+func TestAddRecordHappyPath(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts topic.Storage, cache *cache.Cache) {
+		s := storage.New(log,
+			storage.NewTopicFactory(ts, cache),
+			storage.WithNullBatcher(),
+			storage.WithAutoCreateTopic(true),
+		)
+
+		const topicName = "topic"
+		expectedRecords := tester.MakeRandomRecordBatch(5)
+
+		// Act
+		for _, record := range expectedRecords {
+			_, err := s.AddRecord(topicName, record)
+			require.NoError(t, err)
+		}
+
+		// Assert
+		gotRecords, err := s.GetRecords(context.Background(), topicName, 0, 9999, 0)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedRecords, gotRecords)
+	})
 }

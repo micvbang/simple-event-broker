@@ -15,7 +15,8 @@ import (
 )
 
 type RecordBatcher interface {
-	AddRecord(r recordbatch.Record) (uint64, error)
+	AddRecord(recordbatch.Record) (uint64, error)
+	AddRecords([]recordbatch.Record) ([]uint64, error)
 }
 
 type topicBatcher struct {
@@ -81,6 +82,21 @@ func (s *Storage) AddRecord(topicName string, record recordbatch.Record) (uint64
 		return 0, fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
 	}
 	return offset, nil
+}
+
+// AddRecords adds record to topicName, using the configured batcher. It returns
+// only once data has been committed to topic storage.
+func (s *Storage) AddRecords(topicName string, records []recordbatch.Record) ([]uint64, error) {
+	tb, err := s.getTopicBatcher(topicName)
+	if err != nil {
+		return nil, err
+	}
+
+	offsets, err := tb.batcher.AddRecords(records)
+	if err != nil {
+		return nil, fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
+	}
+	return offsets, nil
 }
 
 // GetRecord returns the record at offset in topicName. It will only return offsets
