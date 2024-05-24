@@ -85,8 +85,10 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 
 // AddRecordBatch writes recordBatch to the topic's backing storage and returns
 // the ids of the newly added records in the same order as the records were given.
+//
 // NOTE: AddRecordBatch is NOT thread safe. It's up to the caller to ensure that
-// this is not called concurrently.
+// this is not called concurrently. This is normally the responsibility of a
+// RecordBatcher.
 func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, error) {
 	recordBatchID := s.nextOffset.Load()
 
