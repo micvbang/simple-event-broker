@@ -100,10 +100,10 @@ func TestAddRecordAutoCreateTopic(t *testing.T) {
 
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
-				s := storage.NewWithAutoCreate(log,
+				s := storage.New(log,
 					storage.NewTopicFactory(ts, cache),
-					storage.NewNullBatcherFactory(),
-					test.autoCreateTopic,
+					storage.WithNullBatcher(),
+					storage.WithAutoCreateTopic(test.autoCreateTopic),
 				)
 
 				// Act
@@ -135,10 +135,10 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
-				s := storage.NewWithAutoCreate(log,
+				s := storage.New(log,
 					storage.NewTopicFactory(ts, cache),
-					storage.NewNullBatcherFactory(),
-					test.autoCreateTopic,
+					storage.WithNullBatcher(),
+					storage.WithAutoCreateTopic(test.autoCreateTopic),
 				)
 
 				// will return an error if autoCreateTopic is false
@@ -243,14 +243,12 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 		const topicName = "topic-name"
 
 		{
-			s1 := storage.NewWithAutoCreate(log,
+			s1 := storage.New(log,
 				func(log logger.Logger, topicName string) (*topic.Topic, error) {
 					return topic.New(log, bs, topicName, cache, &topic.Gzip{})
 				},
-				func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
-					return storage.NewNullBatcher(t.AddRecordBatch)
-				},
-				false,
+				storage.WithNullBatcher(),
+				storage.WithAutoCreateTopic(false),
 			)
 
 			err := s1.CreateTopic(topicName)
@@ -264,14 +262,12 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 		}
 
 		{
-			s2 := storage.NewWithAutoCreate(log,
+			s2 := storage.New(log,
 				func(log logger.Logger, topicName string) (*topic.Topic, error) {
 					return topic.New(log, bs, topicName, cache, &topic.Gzip{})
 				},
-				func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
-					return storage.NewNullBatcher(t.AddRecordBatch)
-				},
-				false,
+				storage.WithNullBatcher(),
+				storage.WithAutoCreateTopic(false),
 			)
 
 			// Act

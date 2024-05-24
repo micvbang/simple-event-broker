@@ -6,19 +6,19 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
-// NullBatcher calls persist() for every record it receives, always creating a
+// nullBatcher calls persist() for every record it receives, always creating a
 // record batch of size 1. This is useful for testing.
-type NullBatcher struct {
+type nullBatcher struct {
 	persist Persist
 }
 
-func NewNullBatcher(persist Persist) *NullBatcher {
-	return &NullBatcher{
+func NewNullBatcher(persist Persist) *nullBatcher {
+	return &nullBatcher{
 		persist: persist,
 	}
 }
 
-func (b *NullBatcher) AddRecord(r recordbatch.Record) (uint64, error) {
+func (b *nullBatcher) AddRecord(r recordbatch.Record) (uint64, error) {
 	offsets, err := b.persist(recordbatch.RecordBatch{r})
 	if err != nil {
 		return 0, err

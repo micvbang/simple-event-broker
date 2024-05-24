@@ -29,9 +29,9 @@ func NewTopicFactory(ts topic.Storage, cache *cache.Cache) TopicFactory {
 	}
 }
 
-type BatcherFactory func(logger.Logger, *topic.Topic) RecordBatcher
+type batcherFactory func(logger.Logger, *topic.Topic) RecordBatcher
 
-func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) BatcherFactory {
+func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) batcherFactory {
 	return func(log logger.Logger, t *topic.Topic) RecordBatcher {
 		log = log.Name("blocking batcher")
 
@@ -46,7 +46,7 @@ func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) Batch
 	}
 }
 
-func NewNullBatcherFactory() BatcherFactory {
+func NewNullBatcherFactory() batcherFactory {
 	return func(l logger.Logger, t *topic.Topic) RecordBatcher {
 		return NewNullBatcher(t.AddRecordBatch)
 	}

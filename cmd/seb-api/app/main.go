@@ -94,11 +94,15 @@ func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax i
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
-	storageLogger := log.Name("storage")
 	s3TopicFactory := storage.NewS3TopicFactory(cfg, s3BucketName, cache, &topic.Gzip{})
 	blockingBatcherFactory := storage.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
 
-	return storage.New(storageLogger, s3TopicFactory, blockingBatcherFactory), nil
+	storage := storage.New(
+		log.Name("storage"),
+		s3TopicFactory,
+		storage.WithBatcherFactory(blockingBatcherFactory),
+	)
+	return storage, nil
 }
 
 type flags struct {

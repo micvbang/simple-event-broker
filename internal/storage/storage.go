@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/micvbang/go-helpy/sizey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
@@ -32,39 +34,42 @@ type Storage struct {
 	topicBatchers map[string]topicBatcher
 }
 
-// New returns a Storage that utilizes the given createTopic and createBatcher
-// to store data in the configured backing storage of the Topic. createTopic is
-// used to initialize the Topic for each individual topic, and createBatcher is
-// used to initialize the batching strategy used for the created Topic.
-func New(log logger.Logger, topicFactory TopicFactory, batcherFactory BatcherFactory) *Storage {
-	return newStorage(log, topicFactory, batcherFactory, true)
+type Opts struct {
+	AutoCreateTopic bool
+	BatcherFactory  batcherFactory
 }
 
-func NewWithAutoCreate(
-	log logger.Logger,
-	topicFactory TopicFactory,
-	batcherFactory BatcherFactory,
-	autoCreateTopics bool,
-) *Storage {
-	return newStorage(log, topicFactory, batcherFactory, autoCreateTopics)
-}
+// New returns a Storage that utilizes topicFactory to store records.
+//
+// It defaults to automatically create topics if they don't already exist.
+// It defaults to batch records using NewBlockingBatcherFactory(1s, 10MB),
+// meaning that added records will only be persisted once one of these limits
+// have been reached; 1 second has passed, or the total size of records waiting
+// exceeds 10MB.
+//
+// If you wish to change the defaults, use the WithXX methods.
+func New(log logger.Logger, topicFactory TopicFactory, optFuncs ...func(*Opts)) *Storage {
+	opts := Opts{
+		AutoCreateTopic: true,
+		BatcherFactory:  NewBlockingBatcherFactory(1*time.Second, 10*sizey.MB),
+	}
 
-func newStorage(
-	log logger.Logger,
-	topicFactory TopicFactory,
-	batcherFactory BatcherFactory,
-	autoCreateTopics bool,
-) *Storage {
+	for _, optFunc := range optFuncs {
+		optFunc(&opts)
+	}
+
 	return &Storage{
 		log:              log,
-		autoCreateTopics: autoCreateTopics,
+		autoCreateTopics: opts.AutoCreateTopic,
 		topicFactory:     topicFactory,
-		batcherFactory:   batcherFactory,
+		batcherFactory:   opts.BatcherFactory,
 		mu:               &sync.Mutex{},
 		topicBatchers:    make(map[string]topicBatcher),
 	}
 }
 
+// AddRecord adds record to topicName, using the configured batcher. It returns
+// only once data has been committed to topic storage.
 func (s *Storage) AddRecord(topicName string, record recordbatch.Record) (uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
@@ -78,6 +83,8 @@ func (s *Storage) AddRecord(topicName string, record recordbatch.Record) (uint64
 	return offset, nil
 }
 
+// GetRecord returns the record at offset in topicName. It will only return offsets
+// that have been committed to topic storage.
 func (s *Storage) GetRecord(topicName string, offset uint64) (recordbatch.Record, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
@@ -211,4 +218,36 @@ func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
 	}
 
 	return tb, nil
+}
+
+// WithAutoCreateTopic sets whether to automatically create topics if they don't
+// already exist.
+func WithAutoCreateTopic(autoCreate bool) func(*Opts) {
+	return func(o *Opts) {
+		o.AutoCreateTopic = autoCreate
+	}
+}
+
+// WithBatcherFactory sets the WithBatcherFactory to use. This is used to
+// configure how long (in time, number of bytes or records) records are kept
+// waiting before being persisted to topic storage.
+func WithBatcherFactory(f batcherFactory) func(*Opts) {
+	return func(o *Opts) {
+		o.BatcherFactory = f
+	}
+}
+
+// WithNullBatcher sets the BatcherFactory to WithNullBatcher. WithNullBatcher
+// does not batch records, but persists them one-by-one to topic storage.
+func WithNullBatcher() func(*Opts) {
+	return func(o *Opts) {
+		o.BatcherFactory = NewNullBatcherFactory()
+	}
+}
+
+func WithOpts(opts Opts) func(*Opts) {
+	return func(o *Opts) {
+		o.AutoCreateTopic = opts.AutoCreateTopic
+		o.BatcherFactory = opts.BatcherFactory
+	}
 }

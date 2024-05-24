@@ -76,11 +76,12 @@ func httpServer(t *testing.T, config httpServerConfig) *HTTPTestServer {
 		return topic.New(log, memoryTopicStorage, topicName, cache, nil)
 	}
 
-	batcherFactory := func(l logger.Logger, t *topic.Topic) storage.RecordBatcher {
-		return storage.NewNullBatcher(t.AddRecordBatch)
-	}
-
-	storage := storage.NewWithAutoCreate(log, topicFactory, batcherFactory, config.storageTopicAutoCreate)
+	storage := storage.New(
+		log,
+		topicFactory,
+		storage.WithNullBatcher(),
+		storage.WithAutoCreateTopic(config.storageTopicAutoCreate),
+	)
 	sebhttp.RegisterRoutes(log, mux, storage, config.apiKey)
 
 	return &HTTPTestServer{
