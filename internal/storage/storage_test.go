@@ -254,7 +254,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 		{
 			s1 := storage.New(log,
 				func(log logger.Logger, topicName string) (*topic.Topic, error) {
-					return topic.New(log, bs, topicName, cache, &topic.Gzip{})
+					return topic.New(log, bs, topicName, cache)
 				},
 				storage.WithNullBatcher(),
 				storage.WithAutoCreateTopic(false),
@@ -273,7 +273,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 		{
 			s2 := storage.New(log,
 				func(log logger.Logger, topicName string) (*topic.Topic, error) {
-					return topic.New(log, bs, topicName, cache, &topic.Gzip{})
+					return topic.New(log, bs, topicName, cache)
 				},
 				storage.WithNullBatcher(),
 				storage.WithAutoCreateTopic(false),

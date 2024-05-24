@@ -15,7 +15,6 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/micvbang/simple-event-broker/internal/storage"
-	"github.com/micvbang/simple-event-broker/internal/topic"
 )
 
 func Run() {
@@ -26,19 +25,14 @@ func Run() {
 	log := logger.NewWithLevel(ctx, logger.LogLevel(flags.logLevel))
 	log.Debugf("flags: %v", flags)
 
-	cacheStorage, err := cache.NewDiskStorage(log.Name("disk cache"), flags.cacheDir)
-	if err != nil {
-		log.Fatalf("creating cache storage: %w", err)
-	}
-
-	cache, err := cache.New(log, cacheStorage)
+	c, err := cache.NewDiskCache(log, flags.cacheDir)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
-	go cacheEviction(log.Name("cache eviction"), cache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
+	go cache.EvictionLoop(ctx, log.Name("cache eviction"), c, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-	blockingS3Storage, err := makeBlockingS3Storage(log, cache, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
+	blockingS3Storage, err := makeBlockingS3Storage(log, c, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
 	if err != nil {
 		log.Fatalf("making blocking s3 storage: %s", err)
 	}
@@ -65,36 +59,13 @@ func Run() {
 	log.Errorf("main returned: %s", err)
 }
 
-func cacheEviction(log logger.Logger, cache *cache.Cache, cacheMaxBytes int64, interval time.Duration) {
-	log = log.
-		WithField("max bytes", cacheMaxBytes).
-		WithField("interval", interval)
-
-	for {
-		cacheSize := cache.Size()
-
-		if cacheSize > cacheMaxBytes {
-			fillLevel := float32(cacheSize) / float32(cacheMaxBytes) * 100
-
-			log.Infof("cache full (%.2f%%, %d/%d bytes), evicting items", fillLevel, cacheSize, cacheMaxBytes)
-			err := cache.EvictLeastRecentlyUsed(cacheMaxBytes)
-			if err != nil {
-				log.Errorf("failed to evict cache: %s", err)
-			}
-		}
-
-		log.Debugf("sleeping")
-		time.Sleep(interval)
-	}
-}
-
 func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*storage.Storage, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
-	s3TopicFactory := storage.NewS3TopicFactory(cfg, s3BucketName, cache, &topic.Gzip{})
+	s3TopicFactory := storage.NewS3TopicFactory(cfg, s3BucketName, cache)
 	blockingBatcherFactory := storage.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
 
 	storage := storage.New(

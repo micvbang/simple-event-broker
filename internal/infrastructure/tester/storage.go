@@ -91,7 +91,7 @@ func TestStorage(t *testing.T, autoCreateTopic bool, f func(*testing.T, *storage
 				s := storage.New(log,
 					func(log logger.Logger, topicName string) (*topic.Topic, error) {
 						bs := backingStorageFactory(t)
-						return topic.New(log, bs, topicName, cache, &topic.Gzip{})
+						return topic.New(log, bs, topicName, cache)
 					},
 					storage.WithNullBatcher(),
 					storage.WithAutoCreateTopic(autoCreateTopic),

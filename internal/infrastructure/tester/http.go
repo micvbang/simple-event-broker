@@ -73,7 +73,7 @@ func httpServer(t *testing.T, config httpServerConfig) *HTTPTestServer {
 
 	topicFactory := func(log logger.Logger, topicName string) (*topic.Topic, error) {
 		memoryTopicStorage := topic.NewMemoryStorage(log)
-		return topic.New(log, memoryTopicStorage, topicName, cache, nil)
+		return topic.New(log, memoryTopicStorage, topicName, cache, topic.WithCompress(nil))
 	}
 
 	storage := storage.New(

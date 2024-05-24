@@ -29,15 +29,14 @@ func main() {
 	topicName := filepath.Base(absInputPath)
 	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromOffset, flags.startFromOffset+flags.numRecords-1, topicName)
 
-	cacheStorage := cache.NewMemoryStorage(log.Name("disk cache"))
-	cache, err := cache.New(log, cacheStorage)
+	cache, err := cache.NewMemoryCache(log)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
 	diskTopicStorage := topic.NewDiskStorage(log, rootDir)
 
-	topic, err := topic.New(log, diskTopicStorage, topicName, cache, topic.Gzip{})
+	topic, err := topic.New(log, diskTopicStorage, topicName, cache)
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}

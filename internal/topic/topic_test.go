@@ -25,7 +25,7 @@ var (
 // ErrOutOfBounds.
 func TestStorageEmpty(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		s, err := topic.New(log, backingStorage, "mytopic", cache, nil)
+		s, err := topic.New(log, backingStorage, "mytopic", cache, topic.WithCompress(nil))
 		require.NoError(t, err)
 
 		// Test
@@ -41,7 +41,7 @@ func TestStorageEmpty(t *testing.T) {
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		s, err := topic.New(log, backingStorage, "mytopic", cache, nil)
+		s, err := topic.New(log, backingStorage, "mytopic", cache, topic.WithCompress(nil))
 		require.NoError(t, err)
 
 		const recordBatchSize = 5
@@ -74,7 +74,7 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		s, err := topic.New(log, backingStorage, "mytopic", cache, nil)
+		s, err := topic.New(log, backingStorage, "mytopic", cache)
 		require.NoError(t, err)
 
 		recordBatch1 := tester.MakeRandomRecordBatch(5)
@@ -119,7 +119,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 		{
 			cache, err := cache.New(log, cache.NewMemoryStorage(log))
 			require.NoError(t, err)
-			s1, err := topic.New(log, backingStorage, topicName, cache, nil)
+			s1, err := topic.New(log, backingStorage, topicName, cache)
 			require.NoError(t, err)
 
 			batchStartID := uint64(0)
@@ -138,7 +138,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 		require.NoError(t, err)
 
 		// Test
-		s2, err := topic.New(log, backingStorage, topicName, cache, nil)
+		s2, err := topic.New(log, backingStorage, topicName, cache)
 		require.NoError(t, err)
 
 		// Verify
@@ -172,7 +172,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 		{
 			cache, err := cache.New(log, cache.NewMemoryStorage(log))
 			require.NoError(t, err)
-			s1, err := topic.New(log, topicStorage, topicName, cache, nil)
+			s1, err := topic.New(log, topicStorage, topicName, cache)
 			require.NoError(t, err)
 
 			offsets, err := s1.AddRecordBatch(recordBatch1)
@@ -183,7 +183,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 		cache, err := cache.New(log, cache.NewMemoryStorage(log))
 		require.NoError(t, err)
 
-		s2, err := topic.New(log, topicStorage, topicName, cache, nil)
+		s2, err := topic.New(log, topicStorage, topicName, cache)
 		require.NoError(t, err)
 
 		// Test
@@ -215,7 +215,7 @@ func TestStorageCacheWrite(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		const topicName = "my_topic"
 
-		s, err := topic.New(log, backingStorage, topicName, cache, nil)
+		s, err := topic.New(log, backingStorage, topicName, cache)
 		require.NoError(t, err)
 
 		recordBatchKey := topic.RecordBatchKey(topicName, 0)
@@ -250,7 +250,7 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		const topicName = "my_topic"
 
-		s, err := topic.New(log, backingStorage, topicName, cache, nil)
+		s, err := topic.New(log, backingStorage, topicName, cache)
 		require.NoError(t, err)
 
 		const recordBatchSize = 5
@@ -287,7 +287,7 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 		cache, err := cache.New(log, cacheStorage)
 		require.NoError(t, err)
 
-		s, err := topic.New(log, backingStorage, topicName, cache, nil)
+		s, err := topic.New(log, backingStorage, topicName, cache)
 		require.NoError(t, err)
 
 		const recordBatchSize = 5
@@ -312,14 +312,14 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 	})
 }
 
-// TestStorageCompressFiles verifies that Topic uses the given Compressor
-// to seemlessly compresses and decompresses files when they're written to the
+// TestStorageCompressFiles verifies that Topic uses the given Compress to
+// seemlessly compresses and decompresses files when they're written to the
 // backing storage.
 func TestStorageCompressFiles(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
 		const topicName = "topicName"
 		compressor := topic.Gzip{}
-		s, err := topic.New(log, backingStorage, topicName, cache, compressor)
+		s, err := topic.New(log, backingStorage, topicName, cache, topic.WithCompress(compressor))
 		require.NoError(t, err)
 
 		const recordBatchSize = 5
@@ -357,7 +357,7 @@ func TestStorageCompressFiles(t *testing.T) {
 // next record that is added, i.e. the id of most-recently-added+1.
 func TestTopicEndOffset(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		s, err := topic.New(log, backingStorage, "topic", cache, topic.Gzip{})
+		s, err := topic.New(log, backingStorage, "topic", cache)
 		require.NoError(t, err)
 
 		// no record added yet, next id should be 0
@@ -384,7 +384,7 @@ func TestTopicEndOffset(t *testing.T) {
 // expected offset has been reached.
 func TestTopicOffsetCond(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		s, err := topic.New(log, backingStorage, "topic", cache, topic.Gzip{})
+		s, err := topic.New(log, backingStorage, "topic", cache)
 		require.NoError(t, err)
 
 		ctx := context.Background()
@@ -419,7 +419,7 @@ func TestTopicOffsetCond(t *testing.T) {
 // returns when the given context expires.
 func TestTopicOffsetCondContextExpired(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage topic.Storage, cache *cache.Cache) {
-		s, err := topic.New(log, backingStorage, "topic", cache, topic.Gzip{})
+		s, err := topic.New(log, backingStorage, "topic", cache)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -449,7 +449,7 @@ func TestTopicOffsetCondContextExpired(t *testing.T) {
 // with the given offset, max number of records, and soft max bytes.
 func TestTopicReadRecords(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
-		topic, err := topic.New(log, storage, "topic", cache, nil)
+		topic, err := topic.New(log, storage, "topic", cache)
 		require.NoError(t, err)
 
 		const (
@@ -506,7 +506,7 @@ func TestTopicReadRecords(t *testing.T) {
 // when requesting an offset larger than the existing max offset.
 func TestTopicReadRecordsOutOfBounds(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
-		topic, err := topic.New(log, storage, "topic", cache, nil)
+		topic, err := topic.New(log, storage, "topic", cache)
 		require.NoError(t, err)
 
 		expectedRecordBatch := tester.MakeRandomRecordBatch(10)
@@ -526,7 +526,7 @@ func TestTopicReadRecordsOutOfBounds(t *testing.T) {
 // the requested records.
 func TestTopicReadRecordsContextExpired(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
-		topic, err := topic.New(log, storage, "topic", cache, nil)
+		topic, err := topic.New(log, storage, "topic", cache)
 		require.NoError(t, err)
 
 		expectedRecordBatch := tester.MakeRandomRecordBatch(10)
@@ -547,7 +547,7 @@ func TestTopicReadRecordsContextExpired(t *testing.T) {
 // TestTopicMetadata verifies that Metadata() returns the most recent metadata.
 func TestTopicMetadata(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
-		top, err := topic.New(log, storage, "topicName", cache, nil)
+		top, err := topic.New(log, storage, "topicName", cache)
 		require.NoError(t, err)
 
 		for i := 1; i <= 5; i++ {
@@ -572,7 +572,7 @@ func TestTopicMetadata(t *testing.T) {
 // data when the topic is empty.
 func TestTopicMetadataEmptyTopic(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage topic.Storage, cache *cache.Cache) {
-		top, err := topic.New(log, storage, "topicName", cache, nil)
+		top, err := topic.New(log, storage, "topicName", cache)
 		require.NoError(t, err)
 
 		// Act
@@ -622,7 +622,7 @@ func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *topic.Topic
 
 	topicStorage := topic.NewDiskStorage(log, b.TempDir())
 
-	topic, err := topic.New(log, topicStorage, "topic", cache, topic.Gzip{})
+	topic, err := topic.New(log, topicStorage, "topic", cache)
 	require.NoError(b, err)
 
 	const (
@@ -677,7 +677,7 @@ func benchmarkTopicReadRecord(b *testing.B, readRecord func(t *topic.Topic, offs
 
 	topicStorage := topic.NewDiskStorage(log, b.TempDir())
 
-	topic, err := topic.New(log, topicStorage, "topic", cache, topic.Gzip{})
+	topic, err := topic.New(log, topicStorage, "topic", cache)
 	require.NoError(b, err)
 
 	expectedRecordBatch := tester.MakeRandomRecordBatch(10)

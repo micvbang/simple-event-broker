@@ -28,6 +28,23 @@ type Cache struct {
 	cacheItems map[string]CacheItem
 }
 
+// NewDiskCache returns a new Cache with DiskStorage.
+func NewDiskCache(log logger.Logger, rootDir string) (*Cache, error) {
+	diskStorage, err := NewDiskStorage(log.Name("disk storage"), rootDir)
+	if err != nil {
+		return nil, fmt.Errorf("creating disk storage: %w", err)
+	}
+
+	return New(log, diskStorage)
+}
+
+// NewMemoryCache returns a new Cache with MemoryStorage.
+func NewMemoryCache(log logger.Logger) (*Cache, error) {
+	memoryStorage := NewMemoryStorage(log.Name("memory cache"))
+
+	return New(log, memoryStorage)
+}
+
 func New(log logger.Logger, cacheStorage Storage) (*Cache, error) {
 	return NewCacheWithNow(log, cacheStorage, time.Now)
 }

@@ -187,7 +187,7 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 // and AddRecord() block and returns the correct offsets to all callers.
 func TestBlockingBatcherConcurrency(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, s topic.Storage, c *cache.Cache) {
-		topic, err := topic.New(log, s, "topicName", c, nil)
+		topic, err := topic.New(log, s, "topicName", c, topic.WithCompress(nil))
 		require.NoError(t, err)
 
 		batcher := storage.NewBlockingBatcher(log, 5*time.Millisecond, 32*sizey.KB, topic.AddRecordBatch)

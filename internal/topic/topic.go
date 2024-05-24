@@ -44,13 +44,20 @@ type Topic struct {
 
 	backingStorage Storage
 	cache          *cache.Cache
-	compress       Compress
+	compression    Compress
 	OffsetCond     *OffsetCond
 }
 
-func New(log logger.Logger, backingStorage Storage, topicName string, cache *cache.Cache, compress Compress) (*Topic, error) {
-	if cache == nil {
-		return nil, fmt.Errorf("cache required")
+type Opts struct {
+	Compression Compress
+}
+
+func New(log logger.Logger, backingStorage Storage, topicName string, cache *cache.Cache, optFuncs ...func(*Opts)) (*Topic, error) {
+	opts := Opts{
+		Compression: Gzip{},
+	}
+	for _, optFunc := range optFuncs {
+		optFunc(&opts)
 	}
 
 	recordBatchOffsets, err := listRecordBatchOffsets(backingStorage, topicName)
@@ -64,7 +71,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 		topicName:          topicName,
 		recordBatchOffsets: recordBatchOffsets,
 		cache:              cache,
-		compress:           compress,
+		compression:        opts.Compression,
 		OffsetCond:         NewOffsetCond(0),
 	}
 
@@ -99,8 +106,8 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 	}
 
 	w := backingWriter
-	if s.compress != nil {
-		w, err = s.compress.NewWriter(backingWriter)
+	if s.compression != nil {
+		w, err = s.compression.NewWriter(backingWriter)
 		if err != nil {
 			return nil, fmt.Errorf("creating compression writer: %w", err)
 		}
@@ -112,7 +119,7 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 		return nil, fmt.Errorf("writing record batch: %w", err)
 	}
 
-	if s.compress != nil {
+	if s.compression != nil {
 		w.Close()
 	}
 	// once Close() returns, the data has been committed and can be retrieved by
@@ -343,8 +350,8 @@ func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, err
 		}
 
 		r := backingReader
-		if s.compress != nil {
-			r, err = s.compress.NewReader(backingReader)
+		if s.compression != nil {
+			r, err = s.compression.NewReader(backingReader)
 			if err != nil {
 				return nil, fmt.Errorf("creating compression reader: %w", err)
 			}
@@ -360,7 +367,7 @@ func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, err
 			return nil, fmt.Errorf("copying backing storage result to cache: %w", err)
 		}
 
-		if s.compress != nil {
+		if s.compression != nil {
 			r.Close()
 		}
 
@@ -436,4 +443,10 @@ func listRecordBatchOffsets(backingStorage Storage, topicName string) ([]uint64,
 // RecordBatchKey returns the symbolic path of the topicName and the recordBatchID.
 func RecordBatchKey(topicName string, recordBatchID uint64) string {
 	return filepath.Join(topicName, fmt.Sprintf("%012d%s", recordBatchID, recordBatchExtension))
+}
+
+func WithCompress(c Compress) func(*Opts) {
+	return func(o *Opts) {
+		o.Compression = c
+	}
 }
