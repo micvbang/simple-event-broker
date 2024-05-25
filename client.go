@@ -212,6 +212,10 @@ func (c *RecordClient) statusCode(res *http.Response) error {
 		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrNotFound)
 	}
 
+	if res.StatusCode == http.StatusRequestEntityTooLarge {
+		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrPayloadTooLarge)
+	}
+
 	return nil
 }
 
