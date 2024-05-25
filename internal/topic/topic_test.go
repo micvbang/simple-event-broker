@@ -461,7 +461,7 @@ func TestTopicReadRecords(t *testing.T) {
 
 		records := []recordbatch.Record{}
 		for i := 0; i < batches; i++ {
-			expectedRecordBatch := tester.MakeRandomRecordBatchSize(recordsPerBatch, recordSize)
+			expectedRecordBatch := tester.MakeRandomRecordsSize(recordsPerBatch, recordSize)
 			_, err := topic.AddRecords(expectedRecordBatch)
 			require.NoError(t, err)
 

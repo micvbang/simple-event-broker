@@ -17,7 +17,7 @@ func MakeRandomRecords(size int) []recordbatch.Record {
 	return expectedRecordBatch
 }
 
-func MakeRandomRecordBatchSize(records int, recordSize int) []recordbatch.Record {
+func MakeRandomRecordsSize(records int, recordSize int) []recordbatch.Record {
 	expectedRecordBatch := make([]recordbatch.Record, records)
 	for i := 0; i < len(expectedRecordBatch); i++ {
 		expectedRecordBatch[i] = recordbatch.Record(stringy.RandomN(recordSize))

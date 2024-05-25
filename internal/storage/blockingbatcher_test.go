@@ -11,6 +11,7 @@ import (
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
@@ -183,6 +184,35 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 	wg.Wait()
 }
 
+// TestBlockingBatcherSoftMaxSingleRecord verifies that seb.ErrPayloadTooLarge
+// is returned when attempting to add a batch of records that is larger than
+// soft max bytes. Additionally, it verifies that a _single_ record with size
+// larger than the payload is allowed.
+func TestBlockingBatcherSoftMaxSingleRecord(t *testing.T) {
+	persistRecordBatch := func(rb []recordbatch.Record) ([]uint64, error) {
+		return make([]uint64, len(rb)), nil
+	}
+
+	const bytesSoftMax = 32
+	batcher := storage.NewBlockingBatcher(log, time.Second, bytesSoftMax, persistRecordBatch)
+
+	tests := map[string]struct {
+		recordSize  int
+		records     int
+		expectedErr error
+	}{
+		"single large record": {records: 1, recordSize: bytesSoftMax + 100},
+		"many small records":  {records: bytesSoftMax + 1, recordSize: 1, expectedErr: seb.ErrPayloadTooLarge},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			records := tester.MakeRandomRecordsSize(test.records, test.recordSize)
+			_, err := batcher.AddRecords(records)
+			require.ErrorIs(t, err, test.expectedErr)
+		})
+	}
+}
+
 // TestBlockingBatcherConcurrency verifies that concurrent calls to AddRecords()
 // and AddRecord() block and returns the correct offsets to all callers.
 func TestBlockingBatcherConcurrency(t *testing.T) {
@@ -200,7 +230,7 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher storage.RecordBatcher,
 
 	recordsBatches := make([][]recordbatch.Record, 50)
 	for i := 0; i < len(recordsBatches); i++ {
-		recordsBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
+		recordsBatches[i] = tester.MakeRandomRecordsSize(inty.RandomN(32)+1, 64*sizey.B)
 	}
 
 	const (

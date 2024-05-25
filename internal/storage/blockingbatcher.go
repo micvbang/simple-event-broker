@@ -73,7 +73,10 @@ func (b *BlockingBatcher) AddRecords(records []recordbatch.Record) ([]uint64, er
 	for _, record := range records {
 		numBytes += len(record)
 	}
-	if numBytes > b.bytesSoftMax {
+
+	// NOTE: allows single records larger than bytesSoftMax; this is done to
+	// avoid making it impossible to add records of unexpectedly large size.
+	if numBytes > b.bytesSoftMax && len(records) > 1 {
 		return nil, fmt.Errorf("%w (%d bytes), bytes max is %d", seb.ErrPayloadTooLarge, numBytes, b.bytesSoftMax)
 	}
 

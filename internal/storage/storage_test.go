@@ -415,7 +415,7 @@ func TestStorageConcurrency(t *testing.T) {
 
 		recordsBatches := make([][]recordbatch.Record, 50)
 		for i := 0; i < len(recordsBatches); i++ {
-			recordsBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
+			recordsBatches[i] = tester.MakeRandomRecordsSize(inty.RandomN(32)+1, 64*sizey.B)
 		}
 
 		topicNames := []string{

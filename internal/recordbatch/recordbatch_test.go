@@ -146,7 +146,7 @@ func benchmarkWrite(b *testing.B, f func(io.Writer, []recordbatch.Record) error)
 
 	for name, test := range tests {
 		b.Run(name, func(b *testing.B) {
-			records := tester.MakeRandomRecordBatchSize(test.records, test.recordSize)
+			records := tester.MakeRandomRecordsSize(test.records, test.recordSize)
 			buf := bytes.NewBuffer(make([]byte, len(records)*test.recordSize))
 
 			b.ResetTimer()
