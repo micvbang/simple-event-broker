@@ -111,6 +111,8 @@ type GetBatchInput struct {
 	Timeout time.Duration
 }
 
+const multipartFormData = "multipart/form-data"
+
 func (c *RecordClient) GetBatch(topicName string, offset uint64, input GetBatchInput) ([][]byte, error) {
 	if input.MaxRecords == 0 {
 		input.MaxRecords = 10
@@ -146,7 +148,13 @@ func (c *RecordClient) GetBatch(topicName string, offset uint64, input GetBatchI
 		return nil, err
 	}
 
-	_, params, _ := mime.ParseMediaType(res.Header.Get("Content-Type"))
+	mediaType, params, err := mime.ParseMediaType(res.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, fmt.Errorf("parsing media type: %w", err)
+	}
+	if mediaType != multipartFormData {
+		return nil, fmt.Errorf("expected mediatype '%s', got '%s'", multipartFormData, mediaType)
+	}
 	mr := multipart.NewReader(res.Body, params["boundary"])
 
 	recordBatch := make([][]byte, 0, input.MaxRecords)

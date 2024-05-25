@@ -85,6 +85,9 @@ func GetRecords(log logger.Logger, s RecordBatchGetter) http.HandlerFunc {
 			}
 
 			if errors.Is(err, context.DeadlineExceeded) {
+				// there was no error, there is just no content
+				w.Header().Add("Content-Type", multipartFormData)
+
 				log.Debugf("deadline exceeded: %s", err)
 				w.WriteHeader(http.StatusPartialContent)
 				fmt.Fprintf(w, "deadline exceeded")
