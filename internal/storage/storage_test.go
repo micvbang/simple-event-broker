@@ -2,9 +2,14 @@ package storage_test
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/micvbang/go-helpy/inty"
+	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/go-helpy/timey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
@@ -398,5 +403,146 @@ func TestAddRecordHappyPath(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, expectedRecords, gotRecords)
+	})
+}
+
+// TestStorageConcurrency exercises thread safety when doing reads and writes
+// concurrently.
+func TestStorageConcurrency(t *testing.T) {
+	const autoCreate = true
+	tester.TestStorage(t, autoCreate, func(t *testing.T, s *storage.Storage) {
+		ctx := context.Background()
+
+		recordBatches := make([][]recordbatch.Record, 50)
+		for i := 0; i < len(recordBatches); i++ {
+			recordBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
+		}
+
+		topicNames := []string{
+			"topic1",
+			"topic2",
+			"topic3",
+			"topic4",
+			"topic5",
+		}
+
+		const (
+			batchAdders  = 50
+			singleAdders = 100
+			verifiers    = 10
+		)
+
+		type verification struct {
+			topicName string
+			offset    uint64
+			records   []recordbatch.Record
+		}
+		verifications := make(chan verification, (batchAdders+singleAdders)*2)
+
+		var recordsAdded atomic.Int32
+		stopWrites := make(chan struct{})
+
+		wg := sync.WaitGroup{}
+		wg.Add(batchAdders + singleAdders)
+
+		// concurrently add records using AddRecords()
+		for range batchAdders {
+			go func() {
+				defer wg.Done()
+
+				added := 0
+				for {
+					select {
+					case <-stopWrites:
+						recordsAdded.Add(int32(added))
+						return
+					default:
+					}
+
+					expectedRecords := slicey.Random(recordBatches)
+					topicName := slicey.Random(topicNames)
+
+					// Act
+					offsets, err := s.AddRecords(topicName, expectedRecords)
+					require.NoError(t, err)
+
+					// Assert
+					require.Equal(t, len(expectedRecords), len(offsets))
+
+					verifications <- verification{
+						topicName: topicName,
+						offset:    offsets[0],
+						records:   expectedRecords,
+					}
+
+					added += len(expectedRecords)
+				}
+			}()
+		}
+
+		// concurrently add records using AddRecord()
+		for range singleAdders {
+			go func() {
+				defer wg.Done()
+
+				added := 0
+				for {
+					select {
+					case <-stopWrites:
+						recordsAdded.Add(int32(added))
+						return
+					default:
+					}
+
+					expectedRecord := slicey.Random(recordBatches)[0]
+					topicName := slicey.Random(topicNames)
+
+					// Act
+					offset, err := s.AddRecord(topicName, expectedRecord)
+					require.NoError(t, err)
+
+					// Assert
+					verifications <- verification{
+						topicName: topicName,
+						offset:    offset,
+						records:   []recordbatch.Record{expectedRecord},
+					}
+
+					added += len(expectedRecord)
+				}
+			}()
+		}
+
+		// concurrently verify the records that were written
+		for range verifiers {
+			go func() {
+				for verification := range verifications {
+					// Act
+					gotRecords, err := s.GetRecords(ctx, verification.topicName, verification.offset, len(verification.records), 0)
+					require.NoError(t, err)
+
+					// Assert
+					require.Equal(t, len(verification.records), len(gotRecords))
+					for i, expected := range verification.records {
+						got := gotRecords[i]
+						require.Equal(t, expected, got)
+					}
+				}
+			}()
+		}
+
+		// Run workers concurrently for a while
+		time.Sleep(250 * time.Millisecond)
+
+		// stop writes and wait for all writers to return
+		close(stopWrites)
+		wg.Wait()
+
+		// stop verifiers once they've verified all writes
+		close(verifications)
+
+		// assert that some minimum amount of records were added concurrently
+		added := int(recordsAdded.Load())
+		require.Greater(t, added, 5_000)
 	})
 }
