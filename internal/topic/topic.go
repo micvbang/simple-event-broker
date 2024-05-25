@@ -90,13 +90,13 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 	return storage, nil
 }
 
-// AddRecordBatch writes recordBatch to the topic's backing storage and returns
-// the ids of the newly added records in the same order as the records were given.
+// AddRecords writes records to the topic's backing storage and returns the ids
+// of the newly added records in the same order as the records were given.
 //
-// NOTE: AddRecordBatch is NOT thread safe. It's up to the caller to ensure that
+// NOTE: AddRecords is NOT thread safe. It's up to the caller to ensure that
 // this is not called concurrently. This is normally the responsibility of a
 // RecordBatcher.
-func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, error) {
+func (s *Topic) AddRecords(records []recordbatch.Record) ([]uint64, error) {
 	recordBatchID := s.nextOffset.Load()
 
 	rbPath := RecordBatchKey(s.topicName, recordBatchID)
@@ -114,7 +114,7 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 	}
 
 	t0 := time.Now()
-	err = recordbatch.Write(w, recordBatch)
+	err = recordbatch.Write(w, records)
 	if err != nil {
 		return nil, fmt.Errorf("writing record batch: %w", err)
 	}
@@ -126,11 +126,15 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 	// ReadRecord.
 	backingWriter.Close()
 
-	nextOffset := recordBatchID + uint64(len(recordBatch))
+	nextOffset := recordBatchID + uint64(len(records))
 
-	s.log.Infof("wrote %d records (%d bytes) to %s (%s)", len(recordBatch), recordBatch.Size(), rbPath, time.Since(t0))
+	recordsSize := 0
+	for _, record := range records {
+		recordsSize += len(record)
+	}
+	s.log.Infof("wrote %d records (%d bytes) to %s (%s)", len(records), recordsSize, rbPath, time.Since(t0))
 
-	offsets := make([]uint64, 0, len(recordBatch))
+	offsets := make([]uint64, 0, len(records))
 	for i := recordBatchID; i < nextOffset; i++ {
 		offsets = append(offsets, i)
 	}
@@ -154,7 +158,7 @@ func (s *Topic) AddRecordBatch(recordBatch recordbatch.RecordBatch) ([]uint64, e
 			return offsets, nil
 		}
 
-		err = recordbatch.Write(cacheWtr, recordBatch)
+		err = recordbatch.Write(cacheWtr, records)
 		if err != nil {
 			s.log.Errorf("writing to cache (%s): %w", rbPath, err)
 		}

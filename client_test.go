@@ -226,11 +226,11 @@ func TestRecordClientGetRecordsOffsetOutOfBounds(t *testing.T) {
 	offsetTooHigh := offset + 1
 
 	// Act
-	recordBatch, err := client.GetRecords(topicName, offsetTooHigh, seb.GetRecordsInput{
+	records, err := client.GetRecords(topicName, offsetTooHigh, seb.GetRecordsInput{
 		Timeout: time.Millisecond, // NOTE: amount of time to wait for offset to exist
 	})
 
 	// Assert
 	require.NoError(t, err)
-	require.Equal(t, 0, len(recordBatch))
+	require.Equal(t, 0, len(records))
 }

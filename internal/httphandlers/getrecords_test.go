@@ -27,7 +27,7 @@ func TestGetRecordsExistence(t *testing.T) {
 	err := server.Storage.CreateTopic(topicName)
 	require.NoError(t, err)
 
-	records := tester.MakeRandomRecordBatch(16)
+	records := tester.MakeRandomRecords(16)
 	for _, record := range records {
 		_, err := server.Storage.AddRecord(topicName, record)
 		require.NoError(t, err)
@@ -209,7 +209,7 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 		recordSize = 32
 	)
 
-	expectedRecords := make(recordbatch.RecordBatch, 16)
+	expectedRecords := make([]recordbatch.Record, 16)
 	for i := range len(expectedRecords) {
 		expectedRecords[i] = tester.RandomBytes(t, recordSize)
 		_, err := server.Storage.AddRecord(topicName, expectedRecords[i])

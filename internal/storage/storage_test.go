@@ -39,7 +39,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			maxRecordsDefault = 10
 		)
 
-		allRecords := make(recordbatch.RecordBatch, 32)
+		allRecords := make([]recordbatch.Record, 32)
 		for i := range len(allRecords) {
 			allRecords[i] = tester.RandomBytes(t, recordSize)
 
@@ -51,7 +51,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			offset       uint64
 			maxRecords   int
 			softMaxBytes int
-			expected     recordbatch.RecordBatch
+			expected     []recordbatch.Record
 			err          error
 		}{
 			"max records zero":          {offset: 0, maxRecords: 0, expected: allRecords[:maxRecordsDefault]},
@@ -120,7 +120,7 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 				// AddRecords
 				{
 					// Act
-					_, err := s.AddRecords("second", tester.MakeRandomRecordBatch(5))
+					_, err := s.AddRecords("second", tester.MakeRandomRecords(5))
 
 					// Assert
 					require.ErrorIs(t, err, test.err)
@@ -164,7 +164,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 				require.ErrorIs(t, err, test.getErr)
 
 				// Assert
-				var expected recordbatch.RecordBatch
+				var expected []recordbatch.Record
 				require.Equal(t, expected, got)
 			})
 		}
@@ -203,7 +203,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Storage) {
 		const topicName = "topic-name"
 
-		allRecords := tester.MakeRandomRecordBatch(5)
+		allRecords := tester.MakeRandomRecords(5)
 		for _, record := range allRecords {
 			_, err := s.AddRecord(topicName, record)
 			require.NoError(t, err)
@@ -217,7 +217,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 
 		// Assert
 		require.ErrorIs(t, err, context.Canceled)
-		require.Equal(t, recordbatch.RecordBatch{}, got)
+		require.Equal(t, []recordbatch.Record{}, got)
 	})
 }
 
@@ -366,7 +366,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 		)
 
 		const topicName = "topic"
-		expectedRecords := tester.MakeRandomRecordBatch(5)
+		expectedRecords := tester.MakeRandomRecords(5)
 
 		// Act
 		_, err := s.AddRecords(topicName, expectedRecords)
@@ -390,7 +390,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 		)
 
 		const topicName = "topic"
-		expectedRecords := tester.MakeRandomRecordBatch(5)
+		expectedRecords := tester.MakeRandomRecords(5)
 
 		// Act
 		for _, record := range expectedRecords {
@@ -413,9 +413,9 @@ func TestStorageConcurrency(t *testing.T) {
 	tester.TestStorage(t, autoCreate, func(t *testing.T, s *storage.Storage) {
 		ctx := context.Background()
 
-		recordBatches := make([][]recordbatch.Record, 50)
-		for i := 0; i < len(recordBatches); i++ {
-			recordBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
+		recordsBatches := make([][]recordbatch.Record, 50)
+		for i := 0; i < len(recordsBatches); i++ {
+			recordsBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
 		}
 
 		topicNames := []string{
@@ -459,7 +459,7 @@ func TestStorageConcurrency(t *testing.T) {
 					default:
 					}
 
-					expectedRecords := slicey.Random(recordBatches)
+					expectedRecords := slicey.Random(recordsBatches)
 					topicName := slicey.Random(topicNames)
 
 					// Act
@@ -494,7 +494,7 @@ func TestStorageConcurrency(t *testing.T) {
 					default:
 					}
 
-					expectedRecord := slicey.Random(recordBatches)[0]
+					expectedRecord := slicey.Random(recordsBatches)[0]
 					topicName := slicey.Random(topicNames)
 
 					// Act

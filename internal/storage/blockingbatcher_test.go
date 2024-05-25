@@ -33,7 +33,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		return ctx
 	}
 
-	persistRecordBatch := func(rb recordbatch.RecordBatch) ([]uint64, error) {
+	persistRecordBatch := func(rb []recordbatch.Record) ([]uint64, error) {
 		if returnedErr != nil {
 			return nil, returnedErr
 		}
@@ -80,7 +80,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 
 	blockPersistRecordBatch := make(chan struct{})
 	returnedErr := fmt.Errorf("all is on fire!")
-	persistRecordBatch := func(rb recordbatch.RecordBatch) ([]uint64, error) {
+	persistRecordBatch := func(rb []recordbatch.Record) ([]uint64, error) {
 		<-blockPersistRecordBatch
 		return nil, returnedErr
 	}
@@ -93,14 +93,14 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 	wg.Add(numRecordBatches)
 
 	addReturned := atomic.Bool{}
-	for _, recordBatch := range tester.MakeRandomRecordBatch(numRecordBatches) {
-		recordBatch := recordBatch
+	for _, records := range tester.MakeRandomRecords(numRecordBatches) {
+		records := records
 
 		go func() {
 			defer wg.Done()
 
 			// Test
-			_, got := batcher.AddRecord(recordBatch)
+			_, got := batcher.AddRecord(records)
 			addReturned.Store(true)
 
 			// Verify
@@ -140,7 +140,7 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 		return ctx
 	}
 
-	persistRecordBatch := func(rb recordbatch.RecordBatch) ([]uint64, error) {
+	persistRecordBatch := func(rb []recordbatch.Record) ([]uint64, error) {
 		return make([]uint64, len(rb)), nil
 	}
 
@@ -190,7 +190,7 @@ func TestBlockingBatcherConcurrency(t *testing.T) {
 		topic, err := topic.New(log, s, "topicName", c, topic.WithCompress(nil))
 		require.NoError(t, err)
 
-		batcher := storage.NewBlockingBatcher(log, 5*time.Millisecond, 32*sizey.KB, topic.AddRecordBatch)
+		batcher := storage.NewBlockingBatcher(log, 5*time.Millisecond, 32*sizey.KB, topic.AddRecords)
 		testBlockingBatcherConcurrency(t, batcher, topic)
 	})
 }
@@ -198,9 +198,9 @@ func TestBlockingBatcherConcurrency(t *testing.T) {
 func testBlockingBatcherConcurrency(t *testing.T, batcher storage.RecordBatcher, topic *topic.Topic) {
 	ctx := context.Background()
 
-	recordBatches := make([][]recordbatch.Record, 50)
-	for i := 0; i < len(recordBatches); i++ {
-		recordBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
+	recordsBatches := make([][]recordbatch.Record, 50)
+	for i := 0; i < len(recordsBatches); i++ {
+		recordsBatches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
 	}
 
 	const (
@@ -228,7 +228,7 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher storage.RecordBatcher,
 				default:
 				}
 
-				expectedRecords := slicey.Random(recordBatches)
+				expectedRecords := slicey.Random(recordsBatches)
 
 				// Act
 				offsets, err := batcher.AddRecords(expectedRecords)
@@ -265,7 +265,7 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher storage.RecordBatcher,
 				default:
 				}
 
-				expectedRecord := slicey.Random(recordBatches)[0]
+				expectedRecord := slicey.Random(recordsBatches)[0]
 
 				// Act
 				offset, err := batcher.AddRecord(expectedRecord)

@@ -28,37 +28,38 @@ func NewDiskStorage(log logger.Logger, rootDir string) *DiskStorage {
 }
 
 func (ds *DiskStorage) Writer(key string) (io.WriteCloser, error) {
-	log := ds.log.WithField("recordBatchKey", key)
+	batchPath := ds.rootDirPath(key)
 
-	recordBatchPath := ds.rootDirPath(key)
+	log := ds.log.WithField("key", key).WithField("path", batchPath)
+
 	log.Debugf("creating dirs")
-	err := os.MkdirAll(filepath.Dir(recordBatchPath), os.ModePerm)
+	err := os.MkdirAll(filepath.Dir(batchPath), os.ModePerm)
 	if err != nil {
 		return nil, fmt.Errorf("creating topic dir: %w", err)
 	}
 
 	log.Debugf("creating file")
-	f, err := os.Create(recordBatchPath)
+	f, err := os.Create(batchPath)
 	if err != nil {
-		return nil, fmt.Errorf("opening file '%s': %w", recordBatchPath, err)
+		return nil, fmt.Errorf("opening file '%s': %w", batchPath, err)
 	}
 
 	return f, nil
 }
 
 func (ds *DiskStorage) Reader(key string) (io.ReadCloser, error) {
-	log := ds.log.WithField("recordBatchName", key)
+	batchPath := ds.rootDirPath(key)
 
-	recordBatchPath := ds.rootDirPath(key)
+	log := ds.log.WithField("key", key).WithField("path", batchPath)
 
 	log.Debugf("opening file")
-	f, err := os.Open(recordBatchPath)
+	f, err := os.Open(batchPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = errors.Join(err, seb.ErrNotInStorage)
 		}
 
-		return nil, fmt.Errorf("opening record batch '%s': %w", recordBatchPath, err)
+		return nil, fmt.Errorf("opening record batch '%s': %w", batchPath, err)
 	}
 
 	return f, nil

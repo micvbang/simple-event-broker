@@ -17,7 +17,7 @@ func TestNullBatcherConcurrency(t *testing.T) {
 		topic, err := topic.New(log, s, "topicName", c, topic.WithCompress(nil))
 		require.NoError(t, err)
 
-		batcher := storage.NewNullBatcher(topic.AddRecordBatch)
+		batcher := storage.NewNullBatcher(topic.AddRecords)
 		testBlockingBatcherConcurrency(t, batcher, topic)
 	})
 }

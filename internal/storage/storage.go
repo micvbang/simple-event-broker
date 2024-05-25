@@ -154,7 +154,7 @@ func (s *Storage) CreateTopic(topicName string) error {
 // NOTE: GetRecordBatch will always return all of the records that it managed to
 // fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
-func (s *Storage) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) (recordbatch.RecordBatch, error) {
+func (s *Storage) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]recordbatch.Record, error) {
 	if maxRecords == 0 {
 		maxRecords = 10
 	}

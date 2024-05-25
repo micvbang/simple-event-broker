@@ -14,17 +14,17 @@ import (
 // DiskStorage can also be read back.
 func TestDiskTopicWriterReaderHappyPath(t *testing.T) {
 	expectedBytes := tester.RandomBytes(t, 512)
-	const recordBatchKey = "some-key"
+	const recordsKey = "some-key"
 
 	d := topic.NewDiskStorage(log, t.TempDir())
 
 	// Act, write
-	wtr, err := d.Writer(recordBatchKey)
+	wtr, err := d.Writer(recordsKey)
 	require.NoError(t, err)
 	tester.WriteAndClose(t, wtr, expectedBytes)
 
 	// Act, read
-	rdr, err := d.Reader(recordBatchKey)
+	rdr, err := d.Reader(recordsKey)
 	require.NoError(t, err)
 
 	// Assert

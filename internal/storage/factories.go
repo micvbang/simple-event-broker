@@ -35,9 +35,9 @@ func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) batch
 	return func(log logger.Logger, t *topic.Topic) RecordBatcher {
 		log = log.Name("blocking batcher")
 
-		persist := func(b recordbatch.RecordBatch) ([]uint64, error) {
+		persist := func(b []recordbatch.Record) ([]uint64, error) {
 			t0 := time.Now()
-			offsets, err := t.AddRecordBatch(b)
+			offsets, err := t.AddRecords(b)
 			log.Infof("persisting to storage: %v", time.Since(t0))
 			return offsets, err
 		}
@@ -48,6 +48,6 @@ func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) batch
 
 func NewNullBatcherFactory() batcherFactory {
 	return func(l logger.Logger, t *topic.Topic) RecordBatcher {
-		return NewNullBatcher(t.AddRecordBatch)
+		return NewNullBatcher(t.AddRecords)
 	}
 }

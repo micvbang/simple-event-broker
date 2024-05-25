@@ -19,7 +19,7 @@ import (
 // io.Writer.
 func TestWrite(t *testing.T) {
 	const numRecords = 5
-	records := tester.MakeRandomRecordBatch(numRecords)
+	records := tester.MakeRandomRecords(numRecords)
 
 	unixEpochUs := time.Now().UTC().UnixMicro()
 
@@ -60,7 +60,7 @@ func TestWrite(t *testing.T) {
 // TestReadRecord verifies that ReadRecord() returns the expected data when
 // reading a specific record from a Parser.
 func TestReadRecord(t *testing.T) {
-	records := tester.MakeRandomRecordBatch(5)
+	records := tester.MakeRandomRecords(5)
 
 	buf := bytes.NewBuffer(nil)
 	err := recordbatch.Write(buf, records)
@@ -107,7 +107,7 @@ func TestReadRecord(t *testing.T) {
 // to read a record that does not exist.
 func TestReadRecordOutOfBounds(t *testing.T) {
 	const numRecords = 5
-	records := tester.MakeRandomRecordBatch(numRecords)
+	records := tester.MakeRandomRecords(numRecords)
 
 	buf := bytes.NewBuffer(nil)
 	err := recordbatch.Write(buf, records)
@@ -130,7 +130,7 @@ func BenchmarkWrite(b *testing.B) {
 	benchmarkWrite(b, recordbatch.Write)
 }
 
-func benchmarkWrite(b *testing.B, f func(io.Writer, recordbatch.RecordBatch) error) {
+func benchmarkWrite(b *testing.B, f func(io.Writer, []recordbatch.Record) error) {
 	type testCase struct {
 		recordSize int
 		records    int
@@ -146,12 +146,12 @@ func benchmarkWrite(b *testing.B, f func(io.Writer, recordbatch.RecordBatch) err
 
 	for name, test := range tests {
 		b.Run(name, func(b *testing.B) {
-			recordBatch := tester.MakeRandomRecordBatchSize(test.records, test.recordSize)
-			buf := bytes.NewBuffer(make([]byte, len(recordBatch)*test.recordSize))
+			records := tester.MakeRandomRecordBatchSize(test.records, test.recordSize)
+			buf := bytes.NewBuffer(make([]byte, len(records)*test.recordSize))
 
 			b.ResetTimer()
 			for range b.N {
-				err := f(buf, recordBatch)
+				err := f(buf, records)
 				if err != nil {
 					b.Fatalf("unexpected error: %s", err)
 				}

@@ -10,7 +10,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
 )
 
-type Persist func(recordbatch.RecordBatch) ([]uint64, error)
+type Persist func([]recordbatch.Record) ([]uint64, error)
 
 type blockedAdd struct {
 	records  []recordbatch.Record

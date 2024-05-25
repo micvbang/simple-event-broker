@@ -25,7 +25,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	server := tester.HTTPServer(t)
 	defer server.Close()
 
-	expectedRecords := tester.MakeRandomRecordBatch(32)
+	expectedRecords := tester.MakeRandomRecords(32)
 	expectedOffsets := make([]uint64, 32)
 	for i := 0; i < 32; i++ {
 		expectedOffsets[i] = uint64(i)

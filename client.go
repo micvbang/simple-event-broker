@@ -191,16 +191,16 @@ func (c *RecordClient) GetRecords(topicName string, offset uint64, input GetReco
 	}
 	mr := multipart.NewReader(res.Body, params["boundary"])
 
-	recordBatch := make([][]byte, 0, input.MaxRecords)
+	records := make([][]byte, 0, input.MaxRecords)
 	for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
 		record, err := io.ReadAll(part)
 		if err != nil {
-			return recordBatch, err
+			return records, err
 		}
-		recordBatch = append(recordBatch, record)
+		records = append(records, record)
 	}
 
-	return recordBatch, nil
+	return records, nil
 }
 
 func (c *RecordClient) statusCode(res *http.Response) error {
