@@ -43,7 +43,7 @@ func NewRecordClient(baseURL string, apiKey string) (*RecordClient, error) {
 	}, nil
 }
 
-func (c *RecordClient) Add(topicName string, record []byte) error {
+func (c *RecordClient) AddRecord(topicName string, record []byte) error {
 	req, err := c.request("POST", "/record", bytes.NewBuffer(record))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
@@ -66,7 +66,7 @@ func (c *RecordClient) Add(topicName string, record []byte) error {
 	return nil
 }
 
-func (c *RecordClient) Get(topicName string, offset uint64) ([]byte, error) {
+func (c *RecordClient) GetRecord(topicName string, offset uint64) ([]byte, error) {
 	req, err := c.request("GET", "/record", nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -96,7 +96,7 @@ func (c *RecordClient) Get(topicName string, offset uint64) ([]byte, error) {
 	return buf, nil
 }
 
-type GetBatchInput struct {
+type GetRecordsInput struct {
 	// MaxRecords is the maximum number of records to return. Defaults to 10
 	MaxRecords int
 
@@ -113,7 +113,7 @@ type GetBatchInput struct {
 
 const multipartFormData = "multipart/form-data"
 
-func (c *RecordClient) GetBatch(topicName string, offset uint64, input GetBatchInput) ([][]byte, error) {
+func (c *RecordClient) GetRecords(topicName string, offset uint64, input GetRecordsInput) ([][]byte, error) {
 	if input.MaxRecords == 0 {
 		input.MaxRecords = 10
 	}

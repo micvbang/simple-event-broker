@@ -43,7 +43,7 @@ func checkMessages(log logger.Logger, client *seb.RecordClient, topicName string
 	var lastPrint uint64
 	var offset uint64
 	for offset < uint64(numRequests) {
-		records, err := client.GetBatch(topicName, offset, seb.GetBatchInput{
+		records, err := client.GetRecords(topicName, offset, seb.GetRecordsInput{
 			SoftMaxBytes: 10 * sizey.MB,
 		})
 		if err != nil {
@@ -96,7 +96,7 @@ func sendMessages(log logger.Logger, client *seb.RecordClient, topicName string,
 			for record := range records {
 				// time.Sleep(time.Duration(inty.RandomN(1)) * time.Second)
 
-				err := client.Add(topicName, record)
+				err := client.AddRecord(topicName, record)
 				if err != nil {
 					log.Errorf("err: %s", err)
 				}

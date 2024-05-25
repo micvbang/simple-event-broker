@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRecordClientAddHappyPath verifies that Add makes a valid HTTP POST to the
-// endpoint for adding a record.
-func TestRecordClientAddHappyPath(t *testing.T) {
+// TestRecordClientAddRecordHappyPath verifies that Add makes a valid HTTP POST
+// to the endpoint for adding a record.
+func TestRecordClientAddRecordHappyPath(t *testing.T) {
 	srv := tester.HTTPServer(t)
 	defer srv.Close()
 
@@ -29,7 +29,7 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 	require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
 	// Act
-	err = client.Add(topicName, expectedRecord)
+	err = client.AddRecord(topicName, expectedRecord)
 	require.NoError(t, err)
 
 	// Assert
@@ -38,9 +38,9 @@ func TestRecordClientAddHappyPath(t *testing.T) {
 	require.Equal(t, expectedRecord, []byte(gotRecord))
 }
 
-// TestRecordClientAddNotAuthorized verifies that ErrNotAuthorized is returned
-// when using an invalid API key.
-func TestRecordClientAddNotAuthorized(t *testing.T) {
+// TestRecordClientAddRecordNotAuthorized verifies that ErrNotAuthorized is
+// returned when using an invalid API key.
+func TestRecordClientAddRecordNotAuthorized(t *testing.T) {
 	srv := tester.HTTPServer(t, tester.HTTPAPIKey("working-api-key"))
 	defer srv.Close()
 
@@ -48,13 +48,13 @@ func TestRecordClientAddNotAuthorized(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	err = client.Add("topicName", []byte("this is my record!"))
+	err = client.AddRecord("topicName", []byte("this is my record!"))
 	require.ErrorIs(t, err, seb.ErrNotAuthorized)
 }
 
-// TestRecordClientGetHappyPath verifies that Get makes a valid HTTP GET to the
-// endpoint for getting a record.
-func TestRecordClientGetHappyPath(t *testing.T) {
+// TestRecordClientGetRecordHappyPath verifies that Get makes a valid HTTP GET
+// to the endpoint for getting a record.
+func TestRecordClientGetRecordHappyPath(t *testing.T) {
 	srv := tester.HTTPServer(t)
 	defer srv.Close()
 
@@ -67,20 +67,20 @@ func TestRecordClientGetHappyPath(t *testing.T) {
 	)
 	expectedRecord := []byte("this is my record!")
 
-	err = client.Add(topicName, expectedRecord)
+	err = client.AddRecord(topicName, expectedRecord)
 	require.NoError(t, err)
 
 	// Act
-	gotRecord, err := client.Get(topicName, offset)
+	gotRecord, err := client.GetRecord(topicName, offset)
 	require.NoError(t, err)
 
 	// Assert
 	require.Equal(t, expectedRecord, gotRecord)
 }
 
-// TestRecordClientGetNotAuthorized verifies that Get returns ErrNotAuthorized when
-// using an invalid API key.
-func TestRecordClientGetNotAuthorized(t *testing.T) {
+// TestRecordClientGetRecordNotAuthorized verifies that Get returns
+// ErrNotAuthorized when using an invalid API key.
+func TestRecordClientGetRecordNotAuthorized(t *testing.T) {
 	srv := tester.HTTPServer(t, tester.HTTPAPIKey("working-api-key"))
 	defer srv.Close()
 
@@ -88,15 +88,15 @@ func TestRecordClientGetNotAuthorized(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	_, err = client.Get("topicName", 0)
+	_, err = client.GetRecord("topicName", 0)
 
 	// Assert
 	require.ErrorIs(t, err, seb.ErrNotAuthorized)
 }
 
-// TestRecordClientGetNotFound verifies that Get returns ErrNotFound when
+// TestRecordClientGetRecordNotFound verifies that Get returns ErrNotFound when
 // attempting to retrieve a record with an offset that does not exist.
-func TestRecordClientGetNotFound(t *testing.T) {
+func TestRecordClientGetRecordNotFound(t *testing.T) {
 	srv := tester.HTTPServer(t)
 	defer srv.Close()
 
@@ -104,15 +104,15 @@ func TestRecordClientGetNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	_, err = client.Get("topicName", 0)
+	_, err = client.GetRecord("topicName", 0)
 
 	// Assert
 	require.ErrorIs(t, err, seb.ErrNotFound)
 }
 
-// TestRecordClientGetBatchHappyPath verifies that GetBatch returns the expected
-// records when everything goes well.
-func TestRecordClientGetBatchHappyPath(t *testing.T) {
+// TestRecordClientGetRecordsHappyPath verifies that GetBatch returns the
+// expected records when everything goes well.
+func TestRecordClientGetRecordsHappyPath(t *testing.T) {
 	const topicName = "topic-name"
 	srv := tester.HTTPServer(t)
 	defer srv.Close()
@@ -128,7 +128,7 @@ func TestRecordClientGetBatchHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Act
-	gotRecords, err := client.GetBatch(topicName, 0, seb.GetBatchInput{
+	gotRecords, err := client.GetRecords(topicName, 0, seb.GetRecordsInput{
 		MaxRecords:   len(expectedRecords),
 		SoftMaxBytes: 9999999,
 		Timeout:      1 * time.Minute,
@@ -139,9 +139,9 @@ func TestRecordClientGetBatchHappyPath(t *testing.T) {
 	require.Equal(t, expectedRecords, gotRecords)
 }
 
-// TestRecordClientGetBatchTopicDoesNotExist verifies that ErrNotFound is
+// TestRecordClientGetRecordsTopicDoesNotExist verifies that ErrNotFound is
 // returned when attempting to read from a topic that does not exist.
-func TestRecordClientGetBatchTopicDoesNotExist(t *testing.T) {
+func TestRecordClientGetRecordsTopicDoesNotExist(t *testing.T) {
 	srv := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
 	defer srv.Close()
 
@@ -151,16 +151,16 @@ func TestRecordClientGetBatchTopicDoesNotExist(t *testing.T) {
 	offset := uint64(0)
 
 	// Act
-	_, err = client.GetBatch("does-not-exist", offset, seb.GetBatchInput{})
+	_, err = client.GetRecords("does-not-exist", offset, seb.GetRecordsInput{})
 
 	// Assert
 	// TODO: we would like to distinguish between "record not found" and "topic not found".
 	require.ErrorIs(t, err, seb.ErrNotFound)
 }
 
-// TestRecordClientGetBatchOffsetDoesNotExist verifies that no error is returned
-// when attempting to read from an offset that does not exist yet.
-func TestRecordClientGetBatchOffsetOutOfBounds(t *testing.T) {
+// TestRecordClientGetRecordsOffsetOutOfBounds verifies that no error is
+// returned when attempting to read from an offset that does not exist yet.
+func TestRecordClientGetRecordsOffsetOutOfBounds(t *testing.T) {
 	const topicName = "topic-name"
 	srv := tester.HTTPServer(t)
 	defer srv.Close()
@@ -174,7 +174,7 @@ func TestRecordClientGetBatchOffsetOutOfBounds(t *testing.T) {
 	offsetTooHigh := offset + 1
 
 	// Act
-	recordBatch, err := client.GetBatch(topicName, offsetTooHigh, seb.GetBatchInput{
+	recordBatch, err := client.GetRecords(topicName, offsetTooHigh, seb.GetRecordsInput{
 		Timeout: time.Millisecond, // NOTE: amount of time to wait for offset to exist
 	})
 
