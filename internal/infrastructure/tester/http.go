@@ -50,64 +50,81 @@ func (s *HTTPTestServer) do(r *http.Request, addDefaultAuth bool) *http.Response
 }
 
 // HTTPServer starts an HTTP test server using the given config.
-func HTTPServer(t *testing.T, confs ...func(*httpServerConfig)) *HTTPTestServer {
-	config := httpServerConfig{
-		apiKey:                 DefaultAPIKey,
-		storageTopicAutoCreate: true,
-	}
-	for _, configure := range confs {
-		configure(&config)
-	}
-
-	return httpServer(t, config)
-}
-
-func httpServer(t *testing.T, config httpServerConfig) *HTTPTestServer {
+func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 	t.Helper()
+	opts := Opts{
+		APIKey:                 DefaultAPIKey,
+		StorageTopicAutoCreate: true,
+	}
+	for _, optFn := range OptFns {
+		optFn(&opts)
+	}
 
 	log := logger.NewDefault(context.Background())
-	mux := http.NewServeMux()
 
-	cache, err := cache.New(log, cache.NewMemoryStorage(log))
-	require.NoError(t, err)
+	var c *cache.Cache
+	var s *storage.Storage
+	var err error
 
-	topicFactory := func(log logger.Logger, topicName string) (*topic.Topic, error) {
-		memoryTopicStorage := topic.NewMemoryStorage(log)
-		return topic.New(log, memoryTopicStorage, topicName, cache, topic.WithCompress(nil))
+	if opts.Dependencies == nil {
+		c, err = cache.New(log, cache.NewMemoryStorage(log))
+		require.NoError(t, err)
+
+		topicFactory := func(log logger.Logger, topicName string) (*topic.Topic, error) {
+			memoryTopicStorage := topic.NewMemoryStorage(log)
+			return topic.New(log, memoryTopicStorage, topicName, c, topic.WithCompress(nil))
+		}
+
+		s = storage.New(
+			log,
+			topicFactory,
+			storage.WithNullBatcher(),
+			storage.WithAutoCreateTopic(opts.StorageTopicAutoCreate),
+		)
+		opts.Dependencies = s
 	}
 
-	storage := storage.New(
-		log,
-		topicFactory,
-		storage.WithNullBatcher(),
-		storage.WithAutoCreateTopic(config.storageTopicAutoCreate),
-	)
-	sebhttp.RegisterRoutes(log, mux, storage, config.apiKey)
+	mux := http.NewServeMux()
+
+	sebhttp.RegisterRoutes(log, mux, opts.Dependencies, opts.APIKey)
 
 	return &HTTPTestServer{
 		t:       t,
 		Server:  httptest.NewServer(mux),
 		Mux:     mux,
-		Cache:   cache,
-		Storage: storage,
+		Cache:   c,
+		Storage: s,
 	}
 }
 
-type httpServerConfig struct {
-	apiKey                 string
-	storageTopicAutoCreate bool
+type Opts struct {
+	APIKey                 string
+	StorageTopicAutoCreate bool
+	Dependencies           sebhttp.Dependencies
 }
 
 // HTTPAPIKey sets the apiKey for HTTPServer
-func HTTPAPIKey(apiKey string) func(*httpServerConfig) {
-	return func(c *httpServerConfig) {
-		c.apiKey = apiKey
+func HTTPAPIKey(apiKey string) func(*Opts) {
+	return func(c *Opts) {
+		c.APIKey = apiKey
 	}
 }
 
 // HTTPStorageAutoCreateTopic sets automatic topic creation for HTTPServer
-func HTTPStorageAutoCreateTopic(autoCreate bool) func(*httpServerConfig) {
-	return func(c *httpServerConfig) {
-		c.storageTopicAutoCreate = autoCreate
+func HTTPStorageAutoCreateTopic(autoCreate bool) func(*Opts) {
+	return func(c *Opts) {
+		c.StorageTopicAutoCreate = autoCreate
+	}
+}
+
+// HTTPDependencies sets the http dependencies, avoiding creation of the
+// defaults.
+//
+// This is mostly useful when mocking is required to make a test possible to
+// test. Otherwise it's generally preferred to just set up the required state
+// using the default dependencies.
+func HTTPDependencies(deps sebhttp.Dependencies) func(*Opts) {
+	return func(c *Opts) {
+		c.Dependencies = deps
 	}
 }
