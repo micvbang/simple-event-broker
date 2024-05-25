@@ -11,7 +11,7 @@ import (
 )
 
 func RegisterRoutes(log logger.Logger, mux *http.ServeMux, storage *storage.Storage, apiKey string) {
-	// TODO: we don't want something more secure and easier to manage than a
+	// TODO: we want something more secure and easier to manage than a
 	// single, static API key.
 	apiKeyBs := []byte(apiKey)
 
