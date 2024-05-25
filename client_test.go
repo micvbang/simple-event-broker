@@ -1,6 +1,7 @@
 package seb_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -49,6 +50,57 @@ func TestRecordClientAddRecordNotAuthorized(t *testing.T) {
 
 	// Act
 	err = client.AddRecord("topicName", []byte("this is my record!"))
+	require.ErrorIs(t, err, seb.ErrNotAuthorized)
+}
+
+func TestRecordClientAddRecordsHappyPath(t *testing.T) {
+	srv := tester.HTTPServer(t)
+	defer srv.Close()
+
+	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
+	require.NoError(t, err)
+
+	const (
+		topicName = "topicName"
+		offset    = 0
+	)
+	expectedRecords := [][]byte{
+		tester.RandomBytes(t, 32),
+		tester.RandomBytes(t, 32),
+		tester.RandomBytes(t, 32),
+		tester.RandomBytes(t, 32),
+		tester.RandomBytes(t, 32),
+	}
+
+	// ensure record does not already exist
+	_, err = srv.Storage.GetRecord(topicName, offset)
+	require.ErrorIs(t, err, seb.ErrOutOfBounds)
+
+	// Act
+	err = client.AddRecords(topicName, expectedRecords)
+	require.NoError(t, err)
+
+	// Assert
+	gotRecords, err := srv.Storage.GetRecords(context.Background(), topicName, offset, 100, 0)
+	require.NoError(t, err)
+	gotRecordsBytes := make([][]byte, len(gotRecords))
+	for i, record := range gotRecords {
+		gotRecordsBytes[i] = record
+	}
+	require.Equal(t, expectedRecords, gotRecordsBytes)
+}
+
+// TestRecordClientAddRecordsNotAuthorized verifies that ErrNotAuthorized is
+// returned when using an invalid API key.
+func TestRecordClientAddRecordsNotAuthorized(t *testing.T) {
+	srv := tester.HTTPServer(t, tester.HTTPAPIKey("working-api-key"))
+	defer srv.Close()
+
+	client, err := seb.NewRecordClient(srv.Server.URL, "invalid-api-key")
+	require.NoError(t, err)
+
+	// Act
+	err = client.AddRecords("topicName", [][]byte{tester.RandomBytes(t, 8)})
 	require.ErrorIs(t, err, seb.ErrNotAuthorized)
 }
 

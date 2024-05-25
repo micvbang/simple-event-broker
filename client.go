@@ -66,6 +66,40 @@ func (c *RecordClient) AddRecord(topicName string, record []byte) error {
 	return nil
 }
 
+func (c *RecordClient) AddRecords(topicName string, records [][]byte) error {
+	size := 0
+	for _, record := range records {
+		size += len(record)
+	}
+	buf := bytes.NewBuffer(make([]byte, 0, size+1024))
+
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, records)
+	if err != nil {
+		return err
+	}
+
+	req, err := c.request("POST", "/records", buf)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Add("Content-Type", contentType)
+	httphelpers.AddQueryParams(req, map[string]string{"topic-name": topicName})
+
+	res, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("sending request: %w", err)
+	}
+	defer res.Body.Close()
+	io.Copy(io.Discard, res.Body)
+
+	err = c.statusCode(res)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *RecordClient) GetRecord(topicName string, offset uint64) ([]byte, error) {
 	req, err := c.request("GET", "/record", nil)
 	if err != nil {
