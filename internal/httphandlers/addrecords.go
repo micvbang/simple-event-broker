@@ -1,12 +1,14 @@
 package httphandlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
 
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
@@ -54,6 +56,11 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 
 		offsets, err := s.AddRecords(topicName, records)
 		if err != nil {
+			if errors.Is(err, seb.ErrPayloadTooLarge) {
+				w.WriteHeader(http.StatusRequestEntityTooLarge)
+				return
+			}
+
 			log.Errorf("failed to add: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, err.Error())

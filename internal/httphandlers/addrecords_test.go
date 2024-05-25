@@ -10,10 +10,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,6 +58,36 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, expectedRecords, gotRecords)
+}
+
+// TestAddRecordsPayloadTooLarge verifies that http.StatusRequestEntityTooLarge
+// is returned when AddRecords() receives seb.ErrPayloadTooLarge from its
+// dependency.
+func TestAddRecordsPayloadTooLarge(t *testing.T) {
+	deps := &sebhttp.MockDependencies{}
+	deps.AddRecordsMock = func(topicName string, records []recordbatch.Record) ([]uint64, error) {
+		return nil, seb.ErrPayloadTooLarge
+	}
+
+	server := tester.HTTPServer(t, tester.HTTPDependencies(deps))
+	defer server.Close()
+
+	records := tester.MakeRandomRecords(1)
+
+	buf := bytes.NewBuffer(nil)
+	r := httptest.NewRequest("POST", "/records", buf)
+
+	contentType := writeMultipartFormDataPayload(t, buf, records)
+	r.Header.Add("Content-Type", contentType)
+	httphelpers.AddQueryParams(r, map[string]string{
+		"topic-name": "topic",
+	})
+
+	// Act
+	response := server.DoWithAuth(r)
+
+	// Assert
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.StatusCode)
 }
 
 // Verifies that http.BadRequest is returned when leaving out the required
