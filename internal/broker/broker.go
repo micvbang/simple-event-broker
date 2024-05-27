@@ -10,13 +10,13 @@ import (
 	"github.com/micvbang/go-helpy/sizey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 )
 
 type RecordBatcher interface {
-	AddRecord(recordbatch.Record) (uint64, error)
-	AddRecords([]recordbatch.Record) ([]uint64, error)
+	AddRecord(sebrecords.Record) (uint64, error)
+	AddRecords([]sebrecords.Record) ([]uint64, error)
 }
 
 type topicBatcher struct {
@@ -71,7 +71,7 @@ func New(log logger.Logger, topicFactory TopicFactory, optFuncs ...func(*Opts)) 
 
 // AddRecord adds record to topicName, using the configured batcher. It returns
 // only once data has been committed to topic storage.
-func (s *Broker) AddRecord(topicName string, record recordbatch.Record) (uint64, error) {
+func (s *Broker) AddRecord(topicName string, record sebrecords.Record) (uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return 0, err
@@ -86,7 +86,7 @@ func (s *Broker) AddRecord(topicName string, record recordbatch.Record) (uint64,
 
 // AddRecords adds record to topicName, using the configured batcher. It returns
 // only once data has been committed to topic storage.
-func (s *Broker) AddRecords(topicName string, records []recordbatch.Record) ([]uint64, error) {
+func (s *Broker) AddRecords(topicName string, records []sebrecords.Record) ([]uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
@@ -101,7 +101,7 @@ func (s *Broker) AddRecords(topicName string, records []recordbatch.Record) ([]u
 
 // GetRecord returns the record at offset in topicName. It will only return offsets
 // that have been committed to topic storage.
-func (s *Broker) GetRecord(topicName string, offset uint64) (recordbatch.Record, error) {
+func (s *Broker) GetRecord(topicName string, offset uint64) (sebrecords.Record, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (s *Broker) CreateTopic(topicName string) error {
 // NOTE: GetRecordBatch will always return all of the records that it managed to
 // fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
-func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]recordbatch.Record, error) {
+func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]sebrecords.Record, error) {
 	if maxRecords == 0 {
 		maxRecords = 10
 	}

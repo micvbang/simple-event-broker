@@ -12,7 +12,7 @@ import (
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,7 +85,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 	err := server.Storage.CreateTopic(topicName)
 	require.NoError(t, err)
 
-	_, err = server.Storage.AddRecord(topicName, recordbatch.Record("record"))
+	_, err = server.Storage.AddRecord(topicName, sebrecords.Record("record"))
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -209,7 +209,7 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 		recordSize = 32
 	)
 
-	expectedRecords := make([]recordbatch.Record, 16)
+	expectedRecords := make([]sebrecords.Record, 16)
 	for i := range len(expectedRecords) {
 		expectedRecords[i] = tester.RandomBytes(t, recordSize)
 		_, err := server.Storage.AddRecord(topicName, expectedRecords[i])
@@ -220,7 +220,7 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 		offset          uint64
 		maxRecords      int
 		maxBytes        int
-		expectedRecords []recordbatch.Record
+		expectedRecords []sebrecords.Record
 	}{
 		"all records": {
 			offset:          0,
@@ -284,7 +284,7 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 				gotRecord, err := io.ReadAll(part)
 				require.NoError(t, err)
 
-				require.Equal(t, expectedRecord, recordbatch.Record(gotRecord))
+				require.Equal(t, expectedRecord, sebrecords.Record(gotRecord))
 				localOffset += 1
 			}
 		})

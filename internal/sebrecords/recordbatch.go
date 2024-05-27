@@ -1,4 +1,4 @@
-package recordbatch
+package sebrecords
 
 import (
 	"encoding/binary"

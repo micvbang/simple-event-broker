@@ -11,11 +11,11 @@ import (
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 type RecordsAdder interface {
-	AddRecords(topicName string, records []recordbatch.Record) ([]uint64, error)
+	AddRecords(topicName string, records []sebrecords.Record) ([]uint64, error)
 }
 
 type AddRecordsOutput struct {
@@ -41,7 +41,7 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 			return
 		}
 
-		records := make([]recordbatch.Record, 0, 256)
+		records := make([]sebrecords.Record, 0, 256)
 
 		mr := multipart.NewReader(r.Body, mediaParams["boundary"])
 		for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {

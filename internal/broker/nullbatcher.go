@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 // nullBatcher calls persist() for every record it receives, always creating a
@@ -20,7 +20,7 @@ func NewNullBatcher(persist Persist) *nullBatcher {
 	}
 }
 
-func (b *nullBatcher) AddRecords(records []recordbatch.Record) ([]uint64, error) {
+func (b *nullBatcher) AddRecords(records []sebrecords.Record) ([]uint64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -37,8 +37,8 @@ func (b *nullBatcher) AddRecords(records []recordbatch.Record) ([]uint64, error)
 	return offsets, nil
 }
 
-func (b *nullBatcher) AddRecord(record recordbatch.Record) (uint64, error) {
-	offsets, err := b.AddRecords([]recordbatch.Record{record})
+func (b *nullBatcher) AddRecord(record sebrecords.Record) (uint64, error) {
+	offsets, err := b.AddRecords([]sebrecords.Record{record})
 	if err != nil {
 		return 0, err
 	}

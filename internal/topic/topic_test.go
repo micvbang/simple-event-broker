@@ -12,7 +12,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
@@ -109,7 +109,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 		const topicName = "my_topic"
 
 		totalRecords := 0
-		recordsBatch := make([][]recordbatch.Record, 50)
+		recordsBatch := make([][]sebrecords.Record, 50)
 		for i := 0; i < len(recordsBatch); i++ {
 			batchSize := 1 + inty.RandomN(5)
 			totalRecords += batchSize
@@ -337,7 +337,7 @@ func TestStorageCompressFiles(t *testing.T) {
 
 		buf := tester.ReadToMemory(t, compressorReader)
 
-		parser, err := recordbatch.Parse(buf)
+		parser, err := sebrecords.Parse(buf)
 		require.NoError(t, err)
 		require.Equal(t, uint32(len(expectedRecordBatch)), parser.Header.NumRecords)
 
@@ -459,7 +459,7 @@ func TestTopicReadRecords(t *testing.T) {
 			totalRecords    = recordsPerBatch * batches
 		)
 
-		records := []recordbatch.Record{}
+		records := []sebrecords.Record{}
 		for i := 0; i < batches; i++ {
 			expectedRecordBatch := tester.MakeRandomRecordsSize(recordsPerBatch, recordSize)
 			_, err := topic.AddRecords(expectedRecordBatch)
@@ -472,7 +472,7 @@ func TestTopicReadRecords(t *testing.T) {
 			offset          uint64
 			maxRecords      int
 			softMaxBytes    int
-			expectedRecords []recordbatch.Record
+			expectedRecords []sebrecords.Record
 			expectedErr     error
 		}{
 			"all":                            {offset: 0, maxRecords: totalRecords, expectedRecords: records},
@@ -589,8 +589,8 @@ func TestTopicMetadataEmptyTopic(t *testing.T) {
 // batch using repeated calls to Topic.ReadRecord(). It's here to compare
 // against getting the same result doing a single call to Topic.ReadRecords().
 func BenchmarkTopicReadBatchUsingReadRecordRepeatedly(b *testing.B) {
-	benchmarkTopicReadRecordBatch(b, func(topic *topic.Topic, offset uint64, numRecords int) ([]recordbatch.Record, error) {
-		records := make([]recordbatch.Record, numRecords)
+	benchmarkTopicReadRecordBatch(b, func(topic *topic.Topic, offset uint64, numRecords int) ([]sebrecords.Record, error) {
+		records := make([]sebrecords.Record, numRecords)
 		for offset := uint64(0); offset < uint64(numRecords); offset++ {
 			record, err := topic.ReadRecord(offset)
 			if err != nil {
@@ -608,12 +608,12 @@ func BenchmarkTopicReadBatchUsingReadRecordRepeatedly(b *testing.B) {
 // using Topic.ReadRecords(). It's here to compare against getting the same
 // result doing repeated calls to Topic.ReadRecord().
 func BenchmarkTopicReadBatchUsingReadRecords(b *testing.B) {
-	benchmarkTopicReadRecordBatch(b, func(topic *topic.Topic, offset uint64, numRecords int) ([]recordbatch.Record, error) {
+	benchmarkTopicReadRecordBatch(b, func(topic *topic.Topic, offset uint64, numRecords int) ([]sebrecords.Record, error) {
 		return topic.ReadRecords(context.Background(), offset, numRecords, 0)
 	})
 }
 
-func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *topic.Topic, offset uint64, numRecords int) ([]recordbatch.Record, error)) {
+func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *topic.Topic, offset uint64, numRecords int) ([]sebrecords.Record, error)) {
 	diskCache, err := cache.NewDiskStorage(log, b.TempDir())
 	require.NoError(b, err)
 
@@ -653,7 +653,7 @@ func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *topic.Topic
 // using Topic.ReadRecord(). It's here to compare against doing the same using
 // Topic.ReadRecords().
 func BenchmarkTopicReadRecordUsingReadRecord(b *testing.B) {
-	benchmarkTopicReadRecord(b, func(topic *topic.Topic, offset uint64) (recordbatch.Record, error) {
+	benchmarkTopicReadRecord(b, func(topic *topic.Topic, offset uint64) (sebrecords.Record, error) {
 		return topic.ReadRecord(offset)
 	})
 }
@@ -662,13 +662,13 @@ func BenchmarkTopicReadRecordUsingReadRecord(b *testing.B) {
 // using Topic.ReadRecords(). It's here to compare against doing the same using
 // Topic.ReadRecord()
 func BenchmarkTopicReadRecordUsingReadRecords(b *testing.B) {
-	benchmarkTopicReadRecord(b, func(topic *topic.Topic, offset uint64) (recordbatch.Record, error) {
+	benchmarkTopicReadRecord(b, func(topic *topic.Topic, offset uint64) (sebrecords.Record, error) {
 		records, err := topic.ReadRecords(context.Background(), offset, 1, 0)
 		return records[0], err
 	})
 }
 
-func benchmarkTopicReadRecord(b *testing.B, readRecord func(t *topic.Topic, offset uint64) (recordbatch.Record, error)) {
+func benchmarkTopicReadRecord(b *testing.B, readRecord func(t *topic.Topic, offset uint64) (sebrecords.Record, error)) {
 	diskCache, err := cache.NewDiskStorage(log, b.TempDir())
 	require.NoError(b, err)
 

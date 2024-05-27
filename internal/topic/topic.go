@@ -16,7 +16,7 @@ import (
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 type File struct {
@@ -97,7 +97,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 // NOTE: AddRecords is NOT thread safe. It's up to the caller to ensure that
 // this is not called concurrently. This is normally the responsibility of a
 // RecordBatcher.
-func (s *Topic) AddRecords(records []recordbatch.Record) ([]uint64, error) {
+func (s *Topic) AddRecords(records []sebrecords.Record) ([]uint64, error) {
 	recordBatchID := s.nextOffset.Load()
 
 	rbPath := RecordBatchKey(s.topicName, recordBatchID)
@@ -115,7 +115,7 @@ func (s *Topic) AddRecords(records []recordbatch.Record) ([]uint64, error) {
 	}
 
 	t0 := time.Now()
-	err = recordbatch.Write(w, records)
+	err = sebrecords.Write(w, records)
 	if err != nil {
 		return nil, fmt.Errorf("writing record batch: %w", err)
 	}
@@ -159,7 +159,7 @@ func (s *Topic) AddRecords(records []recordbatch.Record) ([]uint64, error) {
 			return offsets, nil
 		}
 
-		err = recordbatch.Write(cacheWtr, records)
+		err = sebrecords.Write(cacheWtr, records)
 		if err != nil {
 			s.log.Errorf("writing to cache (%s): %w", rbPath, err)
 		}
@@ -178,7 +178,7 @@ func (s *Topic) AddRecords(records []recordbatch.Record) ([]uint64, error) {
 	return offsets, nil
 }
 
-func (s *Topic) ReadRecord(offset uint64) (recordbatch.Record, error) {
+func (s *Topic) ReadRecord(offset uint64) (sebrecords.Record, error) {
 	if offset >= s.nextOffset.Load() {
 		return nil, fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
 	}
@@ -211,7 +211,7 @@ func (s *Topic) ReadRecord(offset uint64) (recordbatch.Record, error) {
 // NOTE: ReadRecords will always return all of the records that it managed
 // to fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
-func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, softMaxBytes int) ([]recordbatch.Record, error) {
+func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, softMaxBytes int) ([]sebrecords.Record, error) {
 	if offset >= s.nextOffset.Load() {
 		return nil, fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
 	}
@@ -220,7 +220,7 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 		maxRecords = 10
 	}
 
-	records := make([]recordbatch.Record, 0, maxRecords)
+	records := make([]sebrecords.Record, 0, maxRecords)
 
 	// make a local copy of recordBatchOffsets so that we don't have to hold the
 	// lock for the rest of the function.
@@ -338,10 +338,10 @@ func (s *Topic) Metadata() (Metadata, error) {
 	}, nil
 }
 
-func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, error) {
+func (s *Topic) parseRecordBatch(recordBatchID uint64) (*sebrecords.Parser, error) {
 	recordBatchPath := s.recordBatchPath(recordBatchID)
 
-	// NOTE: f is given to recordbatch.Parser, which will own it and be responsible
+	// NOTE: f is given to sebrecords.Parser, which will own it and be responsible
 	// for closing it.
 	f, err := s.cache.Reader(recordBatchPath)
 	if err != nil {
@@ -392,7 +392,7 @@ func (s *Topic) parseRecordBatch(recordBatchID uint64) (*recordbatch.Parser, err
 		}
 	}
 
-	rb, err := recordbatch.Parse(f)
+	rb, err := sebrecords.Parse(f)
 	if err != nil {
 		return nil, fmt.Errorf("parsing record batch '%s': %w", recordBatchPath, err)
 	}

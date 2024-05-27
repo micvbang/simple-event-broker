@@ -4,21 +4,21 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 )
 
 type MockDependencies struct {
-	AddRecordMock  func(topicName string, record recordbatch.Record) (uint64, error)
+	AddRecordMock  func(topicName string, record sebrecords.Record) (uint64, error)
 	AddRecordCalls []dependenciesAddRecordCall
 
-	AddRecordsMock  func(topicName string, records []recordbatch.Record) ([]uint64, error)
+	AddRecordsMock  func(topicName string, records []sebrecords.Record) ([]uint64, error)
 	AddRecordsCalls []dependenciesAddRecordsCall
 
-	GetRecordMock  func(topicName string, offset uint64) (recordbatch.Record, error)
+	GetRecordMock  func(topicName string, offset uint64) (sebrecords.Record, error)
 	GetRecordCalls []dependenciesGetRecordCall
 
-	GetRecordsMock  func(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]recordbatch.Record, error)
+	GetRecordsMock  func(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]sebrecords.Record, error)
 	GetRecordsCalls []dependenciesGetRecordsCall
 
 	MetadataMock  func(topicName string) (topic.Metadata, error)
@@ -27,13 +27,13 @@ type MockDependencies struct {
 
 type dependenciesAddRecordCall struct {
 	TopicName string
-	Record    recordbatch.Record
+	Record    sebrecords.Record
 
 	Out0 uint64
 	Out1 error
 }
 
-func (_v *MockDependencies) AddRecord(topicName string, record recordbatch.Record) (uint64, error) {
+func (_v *MockDependencies) AddRecord(topicName string, record sebrecords.Record) (uint64, error) {
 	if _v.AddRecordMock == nil {
 		msg := fmt.Sprintf("call to %T.AddRecord, but MockAddRecord is not set", _v)
 		panic(msg)
@@ -51,13 +51,13 @@ func (_v *MockDependencies) AddRecord(topicName string, record recordbatch.Recor
 
 type dependenciesAddRecordsCall struct {
 	TopicName string
-	Records   []recordbatch.Record
+	Records   []sebrecords.Record
 
 	Out0 []uint64
 	Out1 error
 }
 
-func (_v *MockDependencies) AddRecords(topicName string, records []recordbatch.Record) ([]uint64, error) {
+func (_v *MockDependencies) AddRecords(topicName string, records []sebrecords.Record) ([]uint64, error) {
 	if _v.AddRecordsMock == nil {
 		msg := fmt.Sprintf("call to %T.AddRecords, but MockAddRecords is not set", _v)
 		panic(msg)
@@ -77,11 +77,11 @@ type dependenciesGetRecordCall struct {
 	TopicName string
 	Offset    uint64
 
-	Out0 recordbatch.Record
+	Out0 sebrecords.Record
 	Out1 error
 }
 
-func (_v *MockDependencies) GetRecord(topicName string, offset uint64) (recordbatch.Record, error) {
+func (_v *MockDependencies) GetRecord(topicName string, offset uint64) (sebrecords.Record, error) {
 	if _v.GetRecordMock == nil {
 		msg := fmt.Sprintf("call to %T.GetRecord, but MockGetRecord is not set", _v)
 		panic(msg)
@@ -104,11 +104,11 @@ type dependenciesGetRecordsCall struct {
 	MaxRecords   int
 	SoftMaxBytes int
 
-	Out0 []recordbatch.Record
+	Out0 []sebrecords.Record
 	Out1 error
 }
 
-func (_v *MockDependencies) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]recordbatch.Record, error) {
+func (_v *MockDependencies) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]sebrecords.Record, error) {
 	if _v.GetRecordsMock == nil {
 		msg := fmt.Sprintf("call to %T.GetRecords, but MockGetRecords is not set", _v)
 		panic(msg)

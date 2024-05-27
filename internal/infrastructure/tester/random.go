@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,6 +16,6 @@ func RandomBytes(t *testing.T, size int) []byte {
 	return bs
 }
 
-func RandomRecord(t *testing.T, size int) recordbatch.Record {
+func RandomRecord(t *testing.T, size int) sebrecords.Record {
 	return RandomBytes(t, size)
 }

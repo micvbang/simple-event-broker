@@ -16,7 +16,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +39,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			maxRecordsDefault = 10
 		)
 
-		allRecords := make([]recordbatch.Record, 32)
+		allRecords := make([]sebrecords.Record, 32)
 		for i := range len(allRecords) {
 			allRecords[i] = tester.RandomBytes(t, recordSize)
 
@@ -51,7 +51,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			offset       uint64
 			maxRecords   int
 			softMaxBytes int
-			expected     []recordbatch.Record
+			expected     []sebrecords.Record
 			err          error
 		}{
 			"max records zero":          {offset: 0, maxRecords: 0, expected: allRecords[:maxRecordsDefault]},
@@ -111,7 +111,7 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 				// AddRecord
 				{
 					// Act
-					_, err := s.AddRecord("first", recordbatch.Record("this is a record"))
+					_, err := s.AddRecord("first", sebrecords.Record("this is a record"))
 
 					// Assert
 					require.ErrorIs(t, err, test.err)
@@ -164,7 +164,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 				require.ErrorIs(t, err, test.getErr)
 
 				// Assert
-				var expected []recordbatch.Record
+				var expected []sebrecords.Record
 				require.Equal(t, expected, got)
 			})
 		}
@@ -217,7 +217,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 
 		// Assert
 		require.ErrorIs(t, err, context.Canceled)
-		require.Equal(t, []recordbatch.Record{}, got)
+		require.Equal(t, []sebrecords.Record{}, got)
 	})
 }
 
@@ -232,7 +232,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		_, err := s.GetRecord(topicName, 0)
 		require.ErrorIs(t, err, seb.ErrTopicNotFound)
 
-		_, err = s.AddRecord(topicName, recordbatch.Record("this is a record"))
+		_, err = s.AddRecord(topicName, sebrecords.Record("this is a record"))
 		require.ErrorIs(t, err, seb.ErrTopicNotFound)
 
 		// Act
@@ -243,7 +243,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		_, err = s.GetRecord(topicName, 0)
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
-		_, err = s.AddRecord(topicName, recordbatch.Record("this is a record"))
+		_, err = s.AddRecord(topicName, sebrecords.Record("this is a record"))
 		require.NoError(t, err)
 	})
 }
@@ -271,7 +271,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 			// NOTE: the test relies on there being a created at least one
 			// record in topic storage, since that's the only (current) way to
 			// persist information about a topic's existence.
-			_, err = s1.AddRecord(topicName, recordbatch.Record("this is a record"))
+			_, err = s1.AddRecord(topicName, sebrecords.Record("this is a record"))
 			require.NoError(t, err)
 		}
 
@@ -413,7 +413,7 @@ func TestStorageConcurrency(t *testing.T) {
 	tester.TestStorage(t, autoCreate, func(t *testing.T, s *broker.Broker) {
 		ctx := context.Background()
 
-		recordsBatches := make([][]recordbatch.Record, 50)
+		recordsBatches := make([][]sebrecords.Record, 50)
 		for i := 0; i < len(recordsBatches); i++ {
 			recordsBatches[i] = tester.MakeRandomRecordsSize(inty.RandomN(32)+1, 64*sizey.B)
 		}
@@ -435,7 +435,7 @@ func TestStorageConcurrency(t *testing.T) {
 		type verification struct {
 			topicName string
 			offset    uint64
-			records   []recordbatch.Record
+			records   []sebrecords.Record
 		}
 		verifications := make(chan verification, (batchAdders+singleAdders)*2)
 
@@ -505,7 +505,7 @@ func TestStorageConcurrency(t *testing.T) {
 					verifications <- verification{
 						topicName: topicName,
 						offset:    offset,
-						records:   []recordbatch.Record{expectedRecord},
+						records:   []sebrecords.Record{expectedRecord},
 					}
 
 					added += len(expectedRecord)

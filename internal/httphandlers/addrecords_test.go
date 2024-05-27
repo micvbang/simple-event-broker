@@ -14,7 +14,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,7 +64,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 // dependency.
 func TestAddRecordsPayloadTooLarge(t *testing.T) {
 	deps := &httphandlers.MockDependencies{}
-	deps.AddRecordsMock = func(topicName string, records []recordbatch.Record) ([]uint64, error) {
+	deps.AddRecordsMock = func(topicName string, records []sebrecords.Record) ([]uint64, error) {
 		return nil, seb.ErrPayloadTooLarge
 	}
 
@@ -104,7 +104,7 @@ func TestAddRecordsMissingTopic(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, response.StatusCode)
 }
 
-func writeMultipartFormDataPayload(t *testing.T, w io.Writer, records []recordbatch.Record) string {
+func writeMultipartFormDataPayload(t *testing.T, w io.Writer, records []sebrecords.Record) string {
 	mw := multipart.NewWriter(w)
 	for i, record := range records {
 		fw, err := mw.CreateFormField(fmt.Sprintf("some-name-%d", i))

@@ -1,4 +1,4 @@
-package recordbatch_test
+package sebrecords_test
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"github.com/micvbang/go-helpy/bytey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,24 +23,24 @@ func TestWrite(t *testing.T) {
 
 	unixEpochUs := time.Now().UTC().UnixMicro()
 
-	recordbatch.UnixEpochUs = func() int64 {
+	sebrecords.UnixEpochUs = func() int64 {
 		return unixEpochUs
 	}
 
-	expectedHeader := recordbatch.Header{
-		MagicBytes:  recordbatch.FileFormatMagicBytes,
-		Version:     recordbatch.FileFormatVersion,
+	expectedHeader := sebrecords.Header{
+		MagicBytes:  sebrecords.FileFormatMagicBytes,
+		Version:     sebrecords.FileFormatVersion,
 		UnixEpochUs: unixEpochUs,
 		NumRecords:  uint32(len(records)),
 	}
 	buf := bytes.NewBuffer(nil)
 
 	// Test
-	err := recordbatch.Write(buf, records)
+	err := sebrecords.Write(buf, records)
 	require.NoError(t, err)
 
 	// Verify
-	gotHeader := recordbatch.Header{}
+	gotHeader := sebrecords.Header{}
 	err = binary.Read(buf, binary.LittleEndian, &gotHeader)
 
 	require.NoError(t, err)
@@ -63,17 +63,17 @@ func TestReadRecord(t *testing.T) {
 	records := tester.MakeRandomRecords(5)
 
 	buf := bytes.NewBuffer(nil)
-	err := recordbatch.Write(buf, records)
+	err := sebrecords.Write(buf, records)
 	require.NoError(t, err)
 
 	rdr := bytey.NewBuffer(buf.Bytes())
-	parser, err := recordbatch.Parse(rdr)
+	parser, err := sebrecords.Parse(rdr)
 	require.NoError(t, err)
 
 	tests := map[string]struct {
 		rdr         io.ReadSeeker
 		recordIndex uint32
-		expected    recordbatch.Record
+		expected    sebrecords.Record
 	}{
 		"first": {
 			recordIndex: 0,
@@ -110,11 +110,11 @@ func TestReadRecordOutOfBounds(t *testing.T) {
 	records := tester.MakeRandomRecords(numRecords)
 
 	buf := bytes.NewBuffer(nil)
-	err := recordbatch.Write(buf, records)
+	err := sebrecords.Write(buf, records)
 	require.NoError(t, err)
 
 	rdr := bytey.NewBuffer(buf.Bytes())
-	parser, err := recordbatch.Parse(rdr)
+	parser, err := sebrecords.Parse(rdr)
 	require.NoError(t, err)
 
 	// Test
@@ -124,13 +124,13 @@ func TestReadRecordOutOfBounds(t *testing.T) {
 	require.ErrorIs(t, err, seb.ErrOutOfBounds)
 }
 
-// BenchmarkWrite evaluates how fast recordbatch.Write can serialzie and write a
+// BenchmarkWrite evaluates how fast sebrecords.Write can serialzie and write a
 // recordbatch to an in-memory buffer.
 func BenchmarkWrite(b *testing.B) {
-	benchmarkWrite(b, recordbatch.Write)
+	benchmarkWrite(b, sebrecords.Write)
 }
 
-func benchmarkWrite(b *testing.B, f func(io.Writer, []recordbatch.Record) error) {
+func benchmarkWrite(b *testing.B, f func(io.Writer, []sebrecords.Record) error) {
 	type testCase struct {
 		recordSize int
 		records    int

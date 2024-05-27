@@ -7,13 +7,13 @@ import (
 
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/recordbatch"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
-type Persist func([]recordbatch.Record) ([]uint64, error)
+type Persist func([]sebrecords.Record) ([]uint64, error)
 
 type blockedAdd struct {
-	records  []recordbatch.Record
+	records  []sebrecords.Record
 	numBytes int
 	response chan<- addResponse
 }
@@ -68,7 +68,7 @@ func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persist P
 // AddRecords adds records to the batch that is currently being built and blocks
 // until persistRecordBatch() has been called and completed; when AddRecords returns,
 // the given record has either been persisted to topic storage or failed.
-func (b *BlockingBatcher) AddRecords(records []recordbatch.Record) ([]uint64, error) {
+func (b *BlockingBatcher) AddRecords(records []sebrecords.Record) ([]uint64, error) {
 	numBytes := 0
 	for _, record := range records {
 		numBytes += len(record)
@@ -102,8 +102,8 @@ func (b *BlockingBatcher) AddRecords(records []recordbatch.Record) ([]uint64, er
 // AddRecord adds record to the batch that is currently being built and blocks
 // until persistRecordBatch() has been called and completed; when AddRecord returns,
 // the given record has either been persisted to topic storage or failed.
-func (b *BlockingBatcher) AddRecord(record recordbatch.Record) (uint64, error) {
-	offsets, err := b.AddRecords([]recordbatch.Record{record})
+func (b *BlockingBatcher) AddRecord(record sebrecords.Record) (uint64, error) {
+	offsets, err := b.AddRecords([]sebrecords.Record{record})
 	if err != nil {
 		return 0, err
 	}
@@ -154,7 +154,7 @@ func (b *BlockingBatcher) collectBatches() {
 			case <-ctx.Done():
 				b.log.Debugf("batch collection time: %v", time.Since(t0))
 
-				records := make([]recordbatch.Record, 0, batchRecords)
+				records := make([]sebrecords.Record, 0, batchRecords)
 				for _, add := range blockedCallers {
 					records = append(records, add.records...)
 				}
