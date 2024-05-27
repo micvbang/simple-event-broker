@@ -15,7 +15,6 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
-	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,7 +63,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 // is returned when AddRecords() receives seb.ErrPayloadTooLarge from its
 // dependency.
 func TestAddRecordsPayloadTooLarge(t *testing.T) {
-	deps := &sebhttp.MockDependencies{}
+	deps := &httphandlers.MockDependencies{}
 	deps.AddRecordsMock = func(topicName string, records []recordbatch.Record) ([]uint64, error) {
 		return nil, seb.ErrPayloadTooLarge
 	}

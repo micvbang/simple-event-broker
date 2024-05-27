@@ -1,4 +1,4 @@
-package sebhttp_test
+package httphelpers_test
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,7 +18,7 @@ var log = logger.NewDefault(context.Background())
 func TestAPIKeyAPIKeyValidity(t *testing.T) {
 	const workingAPIKey = "working API key"
 
-	requireAPIKey := sebhttp.NewAPIKeyHandler(log, func(ctx context.Context, apiKey string) (bool, error) {
+	requireAPIKey := httphelpers.NewAPIKeyHandler(log, func(ctx context.Context, apiKey string) (bool, error) {
 		return apiKey == workingAPIKey, nil
 	})
 
@@ -32,12 +32,12 @@ func TestAPIKeyAPIKeyValidity(t *testing.T) {
 		expectedStatusCode int
 	}{
 		"happy path with bearer": {
-			apiKeyHeader:       sebhttp.APIKeyHeader,
+			apiKeyHeader:       httphelpers.APIKeyHeader,
 			apiKey:             "Bearer working API key",
 			expectedStatusCode: http.StatusOK,
 		},
 		"happy path without bearer": {
-			apiKeyHeader:       sebhttp.APIKeyHeader,
+			apiKeyHeader:       httphelpers.APIKeyHeader,
 			apiKey:             workingAPIKey,
 			expectedStatusCode: http.StatusOK,
 		},
@@ -52,17 +52,17 @@ func TestAPIKeyAPIKeyValidity(t *testing.T) {
 			expectedStatusCode: http.StatusUnauthorized,
 		},
 		"incorrect api key": {
-			apiKeyHeader:       sebhttp.APIKeyHeader,
+			apiKeyHeader:       httphelpers.APIKeyHeader,
 			apiKey:             "not an api key",
 			expectedStatusCode: http.StatusUnauthorized,
 		},
 		"invalid bearer, missing space": {
-			apiKeyHeader:       sebhttp.APIKeyHeader,
+			apiKeyHeader:       httphelpers.APIKeyHeader,
 			apiKey:             "Bearerworking API key",
 			expectedStatusCode: http.StatusUnauthorized,
 		},
 		"invalid bearer, using colon": {
-			apiKeyHeader:       sebhttp.APIKeyHeader,
+			apiKeyHeader:       httphelpers.APIKeyHeader,
 			apiKey:             "Bearer: working API key",
 			expectedStatusCode: http.StatusUnauthorized,
 		},

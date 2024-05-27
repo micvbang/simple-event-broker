@@ -1,4 +1,4 @@
-package sebhttp
+package httphelpers
 
 import (
 	"fmt"

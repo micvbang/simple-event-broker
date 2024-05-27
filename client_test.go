@@ -6,9 +6,9 @@ import (
 	"time"
 
 	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/recordbatch"
-	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -241,7 +241,7 @@ func TestRecordClientGetRecordsOffsetOutOfBounds(t *testing.T) {
 // returns ErrPayloadTooLarge when receiving status code
 // http.StatusRequestEntityTooLarge.
 func TestRecordClientAddRecordsPayloadTooLarge(t *testing.T) {
-	deps := &sebhttp.MockDependencies{}
+	deps := &httphandlers.MockDependencies{}
 	deps.AddRecordsMock = func(topicName string, records []recordbatch.Record) ([]uint64, error) {
 		return nil, seb.ErrPayloadTooLarge
 	}

@@ -1,4 +1,4 @@
-package sebhttp
+package httphandlers
 
 import (
 	"context"

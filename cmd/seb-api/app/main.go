@@ -13,8 +13,9 @@ import (
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
+	"github.com/micvbang/simple-event-broker/internal/httphandlers"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 )
 
 func Run() {
@@ -38,7 +39,7 @@ func Run() {
 	}
 
 	mux := http.NewServeMux()
-	sebhttp.RegisterRoutes(log, mux, blockingS3Storage, flags.httpAPIKey)
+	httphandlers.RegisterRoutes(log, mux, blockingS3Storage, flags.httpAPIKey)
 
 	errs := make(chan error, 8)
 
@@ -51,7 +52,7 @@ func Run() {
 	if flags.httpEnableDebug {
 		go func() {
 			logPprof := log.Name("pprof")
-			errs <- sebhttp.ListenAndServePprof(logPprof, flags.httpDebugListenAddress, flags.httpDebugListenPort)
+			errs <- httphelpers.ListenAndServePprof(logPprof, flags.httpDebugListenAddress, flags.httpDebugListenPort)
 		}()
 	}
 

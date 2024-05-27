@@ -8,8 +8,8 @@ import (
 
 	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
+	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/sebhttp"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
@@ -86,7 +86,7 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 
 	mux := http.NewServeMux()
 
-	sebhttp.RegisterRoutes(log, mux, opts.Dependencies, opts.APIKey)
+	httphandlers.RegisterRoutes(log, mux, opts.Dependencies, opts.APIKey)
 
 	return &HTTPTestServer{
 		t:       t,
@@ -100,7 +100,7 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 type Opts struct {
 	APIKey                 string
 	StorageTopicAutoCreate bool
-	Dependencies           sebhttp.Dependencies
+	Dependencies           httphandlers.Dependencies
 }
 
 // HTTPAPIKey sets the apiKey for HTTPServer
@@ -123,7 +123,7 @@ func HTTPStorageAutoCreateTopic(autoCreate bool) func(*Opts) {
 // This is mostly useful when mocking is required to make a test possible to
 // test. Otherwise it's generally preferred to just set up the required state
 // using the default dependencies.
-func HTTPDependencies(deps sebhttp.Dependencies) func(*Opts) {
+func HTTPDependencies(deps httphandlers.Dependencies) func(*Opts) {
 	return func(c *Opts) {
 		c.Dependencies = deps
 	}
