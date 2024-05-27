@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 )
 
@@ -27,7 +28,7 @@ func EvictionLoop(ctx context.Context, log logger.Logger, cache *Cache, cacheMax
 		}
 
 		fillLevel := float32(cacheSize) / float32(cacheMaxBytes) * 100
-		log.Infof("cache full (%.2f%%, %d/%d bytes), evicting items", fillLevel, cacheSize, cacheMaxBytes)
+		log.Infof("cache full (%.2f%%, %s/%s bytes), evicting items", fillLevel, sizey.FormatBytes(cacheSize), sizey.FormatBytes(cacheMaxBytes))
 
 		err := cache.EvictLeastRecentlyUsed(cacheMaxBytes)
 		if err != nil {

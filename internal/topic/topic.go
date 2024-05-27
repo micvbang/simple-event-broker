@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/uint64y"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
@@ -132,7 +133,7 @@ func (s *Topic) AddRecords(records []recordbatch.Record) ([]uint64, error) {
 	for _, record := range records {
 		recordsSize += len(record)
 	}
-	s.log.Infof("wrote %d records (%d bytes) to %s (%s)", len(records), recordsSize, rbPath, time.Since(t0))
+	s.log.Infof("wrote %d records (%s bytes) to %s (%s)", len(records), sizey.FormatBytes(recordsSize), rbPath, time.Since(t0))
 
 	offsets := make([]uint64, 0, len(records))
 	for i := recordBatchID; i < nextOffset; i++ {

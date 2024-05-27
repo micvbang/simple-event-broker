@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/micvbang/go-helpy/sizey"
 	seb "github.com/micvbang/simple-event-broker"
 )
 
@@ -72,7 +73,7 @@ func Write(wtr io.Writer, rb []Record) error {
 
 	err = binary.Write(wtr, byteOrder, records)
 	if err != nil {
-		return fmt.Errorf("writing records length %d: %w", len(rb), err)
+		return fmt.Errorf("writing records length %s: %w", sizey.FormatBytes(len(rb)), err)
 	}
 	return nil
 }
