@@ -1,16 +1,16 @@
-package topic_test
+package sebtopic_test
 
 import (
 	"io"
 	"testing"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
 
-var compressors = []topic.Compress{
-	topic.Gzip{},
+var compressors = []sebtopic.Compress{
+	sebtopic.Gzip{},
 }
 
 // TestCompressors verifies that all compressors can write random bytes and read

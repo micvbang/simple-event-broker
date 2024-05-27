@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
 type MockDependencies struct {
@@ -21,7 +21,7 @@ type MockDependencies struct {
 	GetRecordsMock  func(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]sebrecords.Record, error)
 	GetRecordsCalls []dependenciesGetRecordsCall
 
-	MetadataMock  func(topicName string) (topic.Metadata, error)
+	MetadataMock  func(topicName string) (sebtopic.Metadata, error)
 	MetadataCalls []dependenciesMetadataCall
 }
 
@@ -130,11 +130,11 @@ func (_v *MockDependencies) GetRecords(ctx context.Context, topicName string, of
 type dependenciesMetadataCall struct {
 	TopicName string
 
-	Out0 topic.Metadata
+	Out0 sebtopic.Metadata
 	Out1 error
 }
 
-func (_v *MockDependencies) Metadata(topicName string) (topic.Metadata, error) {
+func (_v *MockDependencies) Metadata(topicName string) (sebtopic.Metadata, error) {
 	if _v.MetadataMock == nil {
 		msg := fmt.Sprintf("call to %T.Metadata, but MockMetadata is not set", _v)
 		panic(msg)

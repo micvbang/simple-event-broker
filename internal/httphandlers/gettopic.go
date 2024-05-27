@@ -9,11 +9,11 @@ import (
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
 type TopicGetter interface {
-	Metadata(topicName string) (topic.Metadata, error)
+	Metadata(topicName string) (sebtopic.Metadata, error)
 }
 
 type GetTopicOutput struct {

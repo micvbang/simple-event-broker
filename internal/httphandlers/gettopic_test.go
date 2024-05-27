@@ -10,7 +10,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,9 +34,9 @@ func TestGetTopicHappyPath(t *testing.T) {
 
 	tests := map[string]struct {
 		topicName string
-		metadata  topic.Metadata
+		metadata  sebtopic.Metadata
 	}{
-		"empty":      {topicName: "has-no-records", metadata: topic.Metadata{}},
+		"empty":      {topicName: "has-no-records", metadata: sebtopic.Metadata{}},
 		"one record": {topicName: topicName, metadata: expectedMetadata},
 	}
 

@@ -1,4 +1,4 @@
-package topic
+package sebtopic
 
 import (
 	"context"

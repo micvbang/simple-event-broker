@@ -1,4 +1,4 @@
-package topic_test
+package sebtopic_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/uint64y"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	sebtopic "github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +17,7 @@ import (
 // NOTE: test will time out if Wait() does not return.
 func TestOffsetCondDoesNotWaitWhenOffsetHighEnough(t *testing.T) {
 	existingOffset := uint64(10)
-	offsetCond := topic.NewOffsetCond(existingOffset)
+	offsetCond := sebtopic.NewOffsetCond(existingOffset)
 
 	// Act, assert
 	err := offsetCond.Wait(context.Background(), existingOffset-1)
@@ -28,7 +28,7 @@ func TestOffsetCondDoesNotWaitWhenOffsetHighEnough(t *testing.T) {
 // state s.t. following calls to Wait() will not block if they are waiting for
 // an offset that has already been seen.
 func TestOffsetCondUpdatesInternalOffset(t *testing.T) {
-	offsetCond := topic.NewOffsetCond(0)
+	offsetCond := sebtopic.NewOffsetCond(0)
 	offsetCond.Broadcast(100)
 
 	// Act, assert
@@ -54,7 +54,7 @@ func TestOffsetCondUpdatesInternalOffset(t *testing.T) {
 // offset has been broadcast.
 func TestOffsetCondWaitsUntilOffset(t *testing.T) {
 	const waitUntilOffset = 5
-	offsetCond := topic.NewOffsetCond(0)
+	offsetCond := sebtopic.NewOffsetCond(0)
 
 	waiting := make(chan struct{})
 	returned := make(chan struct{})
@@ -85,7 +85,7 @@ func TestOffsetCondWaitsUntilOffset(t *testing.T) {
 func TestOffsetCondWaitsUntilContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	offsetCond := topic.NewOffsetCond(0)
+	offsetCond := sebtopic.NewOffsetCond(0)
 
 	waiting := make(chan struct{})
 	returned := make(chan struct{})
@@ -109,7 +109,7 @@ func TestOffsetCondWaitsUntilContext(t *testing.T) {
 // TestOffsetCondManyWaits verifies that many waiters can be unblocked at the
 // same time, and that they _are_ all unblocked.
 func TestOffsetCondManyWaits(t *testing.T) {
-	offsetCond := topic.NewOffsetCond(0)
+	offsetCond := sebtopic.NewOffsetCond(0)
 
 	const numWaiters = 100
 

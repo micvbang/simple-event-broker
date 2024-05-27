@@ -10,7 +10,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,25 +63,25 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 	log := logger.NewDefault(context.Background())
 
 	var c *cache.Cache
-	var s *sebbroker.Broker
+	var broker *sebbroker.Broker
 	var err error
 
 	if opts.Dependencies == nil {
 		c, err = cache.New(log, cache.NewMemoryStorage(log))
 		require.NoError(t, err)
 
-		topicFactory := func(log logger.Logger, topicName string) (*topic.Topic, error) {
-			memoryTopicStorage := topic.NewMemoryStorage(log)
-			return topic.New(log, memoryTopicStorage, topicName, c, topic.WithCompress(nil))
+		topicFactory := func(log logger.Logger, topicName string) (*sebtopic.Topic, error) {
+			memoryTopicStorage := sebtopic.NewMemoryStorage(log)
+			return sebtopic.New(log, memoryTopicStorage, topicName, c, sebtopic.WithCompress(nil))
 		}
 
-		s = sebbroker.New(
+		broker = sebbroker.New(
 			log,
 			topicFactory,
 			sebbroker.WithNullBatcher(),
 			sebbroker.WithAutoCreateTopic(opts.StorageTopicAutoCreate),
 		)
-		opts.Dependencies = s
+		opts.Dependencies = broker
 	}
 
 	mux := http.NewServeMux()
@@ -93,7 +93,7 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 		Server: httptest.NewServer(mux),
 		Mux:    mux,
 		Cache:  c,
-		Broker: s,
+		Broker: broker,
 	}
 }
 

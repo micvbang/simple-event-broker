@@ -11,7 +11,7 @@ import (
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
 type RecordBatcher interface {
@@ -21,15 +21,15 @@ type RecordBatcher interface {
 
 type topicBatcher struct {
 	batcher RecordBatcher
-	topic   *topic.Topic
+	topic   *sebtopic.Topic
 }
 
 type Broker struct {
 	log logger.Logger
 
 	autoCreateTopics bool
-	topicFactory     func(log logger.Logger, topicName string) (*topic.Topic, error)
-	batcherFactory   func(logger.Logger, *topic.Topic) RecordBatcher
+	topicFactory     func(log logger.Logger, topicName string) (*sebtopic.Topic, error)
+	batcherFactory   func(logger.Logger, *sebtopic.Topic) RecordBatcher
 
 	mu            *sync.Mutex
 	topicBatchers map[string]topicBatcher
@@ -181,10 +181,10 @@ func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64
 }
 
 // Metadata returns metadata about the topic.
-func (s *Broker) Metadata(topicName string) (topic.Metadata, error) {
+func (s *Broker) Metadata(topicName string) (sebtopic.Metadata, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
-		return topic.Metadata{}, err
+		return sebtopic.Metadata{}, err
 	}
 
 	return tb.topic.Metadata()

@@ -16,7 +16,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -216,8 +216,8 @@ func TestBlockingBatcherSoftMaxSingleRecord(t *testing.T) {
 // TestBlockingBatcherConcurrency verifies that concurrent calls to AddRecords()
 // and AddRecord() block and returns the correct offsets to all callers.
 func TestBlockingBatcherConcurrency(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, s topic.Storage, c *cache.Cache) {
-		topic, err := topic.New(log, s, "topicName", c, topic.WithCompress(nil))
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, s sebtopic.Storage, c *cache.Cache) {
+		topic, err := sebtopic.New(log, s, "topicName", c, sebtopic.WithCompress(nil))
 		require.NoError(t, err)
 
 		batcher := sebbroker.NewBlockingBatcher(log, 5*time.Millisecond, 32*sizey.KB, topic.AddRecords)
@@ -225,7 +225,7 @@ func TestBlockingBatcherConcurrency(t *testing.T) {
 	})
 }
 
-func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatcher, topic *topic.Topic) {
+func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatcher, topic *sebtopic.Topic) {
 	ctx := context.Background()
 
 	recordsBatches := make([][]sebrecords.Record, 50)

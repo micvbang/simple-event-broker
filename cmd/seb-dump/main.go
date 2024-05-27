@@ -11,7 +11,7 @@ import (
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	sebtopic "github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
 func main() {
@@ -34,9 +34,9 @@ func main() {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
-	diskTopicStorage := topic.NewDiskStorage(log, rootDir)
+	diskTopicStorage := sebtopic.NewDiskStorage(log, rootDir)
 
-	topic, err := topic.New(log, diskTopicStorage, topicName, cache)
+	topic, err := sebtopic.New(log, diskTopicStorage, topicName, cache)
 	if err != nil {
 		log.Fatalf("failed to initialized disk storage: %s", err)
 	}

@@ -1,10 +1,10 @@
-package topic_test
+package sebtopic_test
 
 import (
 	"testing"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	sebtopic "github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +16,7 @@ func TestDiskTopicWriterReaderHappyPath(t *testing.T) {
 	expectedBytes := tester.RandomBytes(t, 512)
 	const recordsKey = "some-key"
 
-	d := topic.NewDiskStorage(log, t.TempDir())
+	d := sebtopic.NewDiskStorage(log, t.TempDir())
 
 	// Act, write
 	wtr, err := d.Writer(recordsKey)

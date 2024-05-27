@@ -8,31 +8,31 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
-	"github.com/micvbang/simple-event-broker/internal/topic"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
-type TopicFactory func(_ logger.Logger, topicName string) (*topic.Topic, error)
+type TopicFactory func(_ logger.Logger, topicName string) (*sebtopic.Topic, error)
 
 func NewS3TopicFactory(cfg aws.Config, s3BucketName string, cache *cache.Cache) TopicFactory {
-	return func(log logger.Logger, topicName string) (*topic.Topic, error) {
+	return func(log logger.Logger, topicName string) (*sebtopic.Topic, error) {
 		storageLogger := log.Name("s3 storage").WithField("topic-name", topicName).WithField("bucket", s3BucketName)
 
 		s3Client := s3.NewFromConfig(cfg)
-		s3Storage := topic.NewS3Storage(storageLogger, s3Client, s3BucketName, "")
-		return topic.New(log, s3Storage, topicName, cache)
+		s3Storage := sebtopic.NewS3Storage(storageLogger, s3Client, s3BucketName, "")
+		return sebtopic.New(log, s3Storage, topicName, cache)
 	}
 }
 
-func NewTopicFactory(ts topic.Storage, cache *cache.Cache) TopicFactory {
-	return func(log logger.Logger, topicName string) (*topic.Topic, error) {
-		return topic.New(log, ts, topicName, cache)
+func NewTopicFactory(ts sebtopic.Storage, cache *cache.Cache) TopicFactory {
+	return func(log logger.Logger, topicName string) (*sebtopic.Topic, error) {
+		return sebtopic.New(log, ts, topicName, cache)
 	}
 }
 
-type batcherFactory func(logger.Logger, *topic.Topic) RecordBatcher
+type batcherFactory func(logger.Logger, *sebtopic.Topic) RecordBatcher
 
 func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) batcherFactory {
-	return func(log logger.Logger, t *topic.Topic) RecordBatcher {
+	return func(log logger.Logger, t *sebtopic.Topic) RecordBatcher {
 		log = log.Name("blocking batcher")
 
 		persist := func(b []sebrecords.Record) ([]uint64, error) {
@@ -47,7 +47,7 @@ func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) batch
 }
 
 func NewNullBatcherFactory() batcherFactory {
-	return func(l logger.Logger, t *topic.Topic) RecordBatcher {
+	return func(l logger.Logger, t *sebtopic.Topic) RecordBatcher {
 		return NewNullBatcher(t.AddRecords)
 	}
 }
