@@ -547,16 +547,16 @@ func TestTopicReadRecordsContextExpired(t *testing.T) {
 // TestTopicMetadata verifies that Metadata() returns the most recent metadata.
 func TestTopicMetadata(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
-		top, err := sebtopic.New(log, storage, "topicName", cache)
+		topic, err := sebtopic.New(log, storage, "topicName", cache)
 		require.NoError(t, err)
 
 		for i := 1; i <= 5; i++ {
 			records := tester.MakeRandomRecords(32)
-			_, err = top.AddRecords(records)
+			_, err = topic.AddRecords(records)
 			require.NoError(t, err)
 
 			// Act
-			gotMetadata, err := top.Metadata()
+			gotMetadata, err := topic.Metadata()
 			require.NoError(t, err)
 			t0 := time.Now()
 
@@ -572,11 +572,11 @@ func TestTopicMetadata(t *testing.T) {
 // data when the topic is empty.
 func TestTopicMetadataEmptyTopic(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
-		top, err := sebtopic.New(log, storage, "topicName", cache)
+		topic, err := sebtopic.New(log, storage, "topicName", cache)
 		require.NoError(t, err)
 
 		// Act
-		gotMetadata, err := top.Metadata()
+		gotMetadata, err := topic.Metadata()
 		require.NoError(t, err)
 
 		// Assert
