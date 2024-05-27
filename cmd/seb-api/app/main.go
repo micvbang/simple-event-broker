@@ -11,11 +11,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/micvbang/go-helpy/sizey"
-	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 )
 
 func Run() {
@@ -33,7 +33,7 @@ func Run() {
 
 	go cache.EvictionLoop(ctx, log.Name("cache eviction"), c, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-	blockingS3Storage, err := makeBlockingS3Storage(log, c, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
+	blockingS3Storage, err := makeBlockingS3Broker(log, c, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
 	if err != nil {
 		log.Fatalf("making blocking s3 storage: %s", err)
 	}
@@ -60,21 +60,21 @@ func Run() {
 	log.Errorf("main returned: %s", err)
 }
 
-func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*broker.Broker, error) {
+func makeBlockingS3Broker(log logger.Logger, cache *cache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*sebbroker.Broker, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
-	s3TopicFactory := broker.NewS3TopicFactory(cfg, s3BucketName, cache)
-	blockingBatcherFactory := broker.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
+	s3TopicFactory := sebbroker.NewS3TopicFactory(cfg, s3BucketName, cache)
+	blockingBatcherFactory := sebbroker.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
 
-	storage := broker.New(
+	broker := sebbroker.New(
 		log.Name("storage"),
 		s3TopicFactory,
-		broker.WithBatcherFactory(blockingBatcherFactory),
+		sebbroker.WithBatcherFactory(blockingBatcherFactory),
 	)
-	return storage, nil
+	return broker, nil
 }
 
 type flags struct {

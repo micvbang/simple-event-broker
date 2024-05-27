@@ -9,6 +9,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +29,7 @@ func TestRecordClientAddRecordHappyPath(t *testing.T) {
 	expectedRecord := []byte("this is my record!")
 
 	// record does not already exist
-	_, err = srv.Storage.GetRecord(topicName, offset)
+	_, err = srv.Broker.GetRecord(topicName, offset)
 	require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
 	// Act
@@ -36,7 +37,7 @@ func TestRecordClientAddRecordHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert
-	gotRecord, err := srv.Storage.GetRecord(topicName, offset)
+	gotRecord, err := srv.Broker.GetRecord(topicName, offset)
 	require.NoError(t, err)
 	require.Equal(t, expectedRecord, []byte(gotRecord))
 }
@@ -75,7 +76,7 @@ func TestRecordClientAddRecordsHappyPath(t *testing.T) {
 	}
 
 	// ensure record does not already exist
-	_, err = srv.Storage.GetRecord(topicName, offset)
+	_, err = srv.Broker.GetRecord(topicName, offset)
 	require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
 	// Act
@@ -83,7 +84,7 @@ func TestRecordClientAddRecordsHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert
-	gotRecords, err := srv.Storage.GetRecords(context.Background(), topicName, offset, 100, 0)
+	gotRecords, err := srv.Broker.GetRecords(context.Background(), topicName, offset, 100, 0)
 	require.NoError(t, err)
 	gotRecordsBytes := make([][]byte, len(gotRecords))
 	for i, record := range gotRecords {
@@ -174,7 +175,7 @@ func TestRecordClientGetRecordsHappyPath(t *testing.T) {
 	expectedRecords := make([][]byte, 16)
 	for i := range len(expectedRecords) {
 		expectedRecords[i] = tester.RandomBytes(t, 32)
-		_, err := srv.Storage.AddRecord(topicName, expectedRecords[i])
+		_, err := srv.Broker.AddRecord(topicName, expectedRecords[i])
 		require.NoError(t, err)
 	}
 
@@ -219,7 +220,7 @@ func TestRecordClientGetRecordsOffsetOutOfBounds(t *testing.T) {
 	srv := tester.HTTPServer(t)
 	defer srv.Close()
 
-	offset, err := srv.Storage.AddRecord(topicName, []byte("this be record"))
+	offset, err := srv.Broker.AddRecord(topicName, []byte("this be record"))
 	require.NoError(t, err)
 
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)

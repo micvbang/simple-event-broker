@@ -26,10 +26,10 @@ func TestGetTopicHappyPath(t *testing.T) {
 	defer server.Close()
 
 	for range topicRecords {
-		_, err := server.Storage.AddRecord(topicName, tester.RandomBytes(t, 32))
+		_, err := server.Broker.AddRecord(topicName, tester.RandomBytes(t, 32))
 		require.NoError(t, err)
 	}
-	expectedMetadata, err := server.Storage.Metadata(topicName)
+	expectedMetadata, err := server.Broker.Metadata(topicName)
 	require.NoError(t, err)
 
 	tests := map[string]struct {

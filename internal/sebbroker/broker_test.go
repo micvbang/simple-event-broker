@@ -1,4 +1,4 @@
-package broker_test
+package sebbroker_test
 
 import (
 	"context"
@@ -12,10 +12,10 @@ import (
 	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/go-helpy/timey"
 	seb "github.com/micvbang/simple-event-broker"
-	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
@@ -30,7 +30,7 @@ var (
 // limits.
 func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 	const autoCreateTopic = true
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *broker.Broker) {
+	tester.TestBroker(t, autoCreateTopic, func(t *testing.T, s *sebbroker.Broker) {
 		const topicName = "topic-name"
 		ctx := context.Background()
 
@@ -102,16 +102,16 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
-				s := broker.New(log,
-					broker.NewTopicFactory(ts, cache),
-					broker.WithNullBatcher(),
-					broker.WithAutoCreateTopic(test.autoCreateTopic),
+				broker := sebbroker.New(log,
+					sebbroker.NewTopicFactory(ts, cache),
+					sebbroker.WithNullBatcher(),
+					sebbroker.WithAutoCreateTopic(test.autoCreateTopic),
 				)
 
 				// AddRecord
 				{
 					// Act
-					_, err := s.AddRecord("first", sebrecords.Record("this is a record"))
+					_, err := broker.AddRecord("first", sebrecords.Record("this is a record"))
 
 					// Assert
 					require.ErrorIs(t, err, test.err)
@@ -120,7 +120,7 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 				// AddRecords
 				{
 					// Act
-					_, err := s.AddRecords("second", tester.MakeRandomRecords(5))
+					_, err := broker.AddRecords("second", tester.MakeRandomRecords(5))
 
 					// Assert
 					require.ErrorIs(t, err, test.err)
@@ -149,18 +149,18 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
-				s := broker.New(log,
-					broker.NewTopicFactory(ts, cache),
-					broker.WithNullBatcher(),
-					broker.WithAutoCreateTopic(test.autoCreateTopic),
+				broker := sebbroker.New(log,
+					sebbroker.NewTopicFactory(ts, cache),
+					sebbroker.WithNullBatcher(),
+					sebbroker.WithAutoCreateTopic(test.autoCreateTopic),
 				)
 
 				// will return an error if autoCreateTopic is false
-				_, err := s.AddRecord(topicName, record)
+				_, err := broker.AddRecord(topicName, record)
 				require.ErrorIs(t, err, test.addErr)
 
 				// Act
-				got, err := s.GetRecords(ctx, "does-not-exist", 0, 10, 1024)
+				got, err := broker.GetRecords(ctx, "does-not-exist", 0, 10, 1024)
 				require.ErrorIs(t, err, test.getErr)
 
 				// Assert
@@ -176,7 +176,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 // (does not yet exist).
 func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 	const autoCreateTopic = true
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *broker.Broker) {
+	tester.TestBroker(t, autoCreateTopic, func(t *testing.T, s *sebbroker.Broker) {
 		const topicName = "topic-name"
 
 		// add record so that we know there's _something_ in the topic
@@ -200,7 +200,7 @@ func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 // respects that the given context has been called.
 func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 	autoCreateTopic := true
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *broker.Broker) {
+	tester.TestBroker(t, autoCreateTopic, func(t *testing.T, s *sebbroker.Broker) {
 		const topicName = "topic-name"
 
 		allRecords := tester.MakeRandomRecords(5)
@@ -226,7 +226,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 // created.
 func TestCreateTopicHappyPath(t *testing.T) {
 	const autoCreateTopic = false
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *broker.Broker) {
+	tester.TestBroker(t, autoCreateTopic, func(t *testing.T, s *sebbroker.Broker) {
 		const topicName = "topic-name"
 
 		_, err := s.GetRecord(topicName, 0)
@@ -257,12 +257,12 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 		const topicName = "topic-name"
 
 		{
-			s1 := broker.New(log,
+			s1 := sebbroker.New(log,
 				func(log logger.Logger, topicName string) (*topic.Topic, error) {
 					return topic.New(log, bs, topicName, cache)
 				},
-				broker.WithNullBatcher(),
-				broker.WithAutoCreateTopic(false),
+				sebbroker.WithNullBatcher(),
+				sebbroker.WithAutoCreateTopic(false),
 			)
 
 			err := s1.CreateTopic(topicName)
@@ -276,12 +276,12 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 		}
 
 		{
-			s2 := broker.New(log,
+			s2 := sebbroker.New(log,
 				func(log logger.Logger, topicName string) (*topic.Topic, error) {
 					return topic.New(log, bs, topicName, cache)
 				},
-				broker.WithNullBatcher(),
-				broker.WithAutoCreateTopic(false),
+				sebbroker.WithNullBatcher(),
+				sebbroker.WithAutoCreateTopic(false),
 			)
 
 			// Act
@@ -300,7 +300,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 // was already created.
 func TestCreateTopicAlreadyExists(t *testing.T) {
 	const autoCreateTopic = false
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *broker.Broker) {
+	tester.TestBroker(t, autoCreateTopic, func(t *testing.T, s *sebbroker.Broker) {
 		const topicName = "topic-name"
 
 		// Act
@@ -317,7 +317,7 @@ func TestCreateTopicAlreadyExists(t *testing.T) {
 // data for a topic that exists.
 func TestStorageMetadataHappyPath(t *testing.T) {
 	const autoCreate = true
-	tester.TestStorage(t, autoCreate, func(t *testing.T, s *broker.Broker) {
+	tester.TestBroker(t, autoCreate, func(t *testing.T, s *sebbroker.Broker) {
 		const topicName = "topic-name"
 
 		for numRecords := 1; numRecords <= 10; numRecords++ {
@@ -348,7 +348,7 @@ func TestStorageMetadataTopicNotFound(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			tester.TestStorage(t, test.autoCreate, func(t *testing.T, s *broker.Broker) {
+			tester.TestBroker(t, test.autoCreate, func(t *testing.T, s *sebbroker.Broker) {
 				_, err := s.Metadata("does-not-exist")
 				require.ErrorIs(t, err, test.expectedErr)
 			})
@@ -359,21 +359,21 @@ func TestStorageMetadataTopicNotFound(t *testing.T) {
 // TestAddRecordsHappyPath verifies that AddRecords adds the expected records.
 func TestAddRecordsHappyPath(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts topic.Storage, cache *cache.Cache) {
-		s := broker.New(log,
-			broker.NewTopicFactory(ts, cache),
-			broker.WithNullBatcher(),
-			broker.WithAutoCreateTopic(true),
+		broker := sebbroker.New(log,
+			sebbroker.NewTopicFactory(ts, cache),
+			sebbroker.WithNullBatcher(),
+			sebbroker.WithAutoCreateTopic(true),
 		)
 
 		const topicName = "topic"
 		expectedRecords := tester.MakeRandomRecords(5)
 
 		// Act
-		_, err := s.AddRecords(topicName, expectedRecords)
+		_, err := broker.AddRecords(topicName, expectedRecords)
 		require.NoError(t, err)
 
 		// Assert
-		gotRecords, err := s.GetRecords(context.Background(), topicName, 0, 9999, 0)
+		gotRecords, err := broker.GetRecords(context.Background(), topicName, 0, 9999, 0)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedRecords, gotRecords)
@@ -383,10 +383,10 @@ func TestAddRecordsHappyPath(t *testing.T) {
 // TestAddRecordHappyPath verifies that AddRecord adds the expected records.
 func TestAddRecordHappyPath(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts topic.Storage, cache *cache.Cache) {
-		s := broker.New(log,
-			broker.NewTopicFactory(ts, cache),
-			broker.WithNullBatcher(),
-			broker.WithAutoCreateTopic(true),
+		broker := sebbroker.New(log,
+			sebbroker.NewTopicFactory(ts, cache),
+			sebbroker.WithNullBatcher(),
+			sebbroker.WithAutoCreateTopic(true),
 		)
 
 		const topicName = "topic"
@@ -394,12 +394,12 @@ func TestAddRecordHappyPath(t *testing.T) {
 
 		// Act
 		for _, record := range expectedRecords {
-			_, err := s.AddRecord(topicName, record)
+			_, err := broker.AddRecord(topicName, record)
 			require.NoError(t, err)
 		}
 
 		// Assert
-		gotRecords, err := s.GetRecords(context.Background(), topicName, 0, 9999, 0)
+		gotRecords, err := broker.GetRecords(context.Background(), topicName, 0, 9999, 0)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedRecords, gotRecords)
@@ -410,7 +410,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 // concurrently.
 func TestStorageConcurrency(t *testing.T) {
 	const autoCreate = true
-	tester.TestStorage(t, autoCreate, func(t *testing.T, s *broker.Broker) {
+	tester.TestBroker(t, autoCreate, func(t *testing.T, s *sebbroker.Broker) {
 		ctx := context.Background()
 
 		recordsBatches := make([][]sebrecords.Record, 50)

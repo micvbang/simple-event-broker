@@ -6,10 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
@@ -20,9 +20,9 @@ type HTTPTestServer struct {
 	t      *testing.T
 	Server *httptest.Server
 
-	Mux     *http.ServeMux
-	Cache   *cache.Cache
-	Storage *broker.Broker
+	Mux    *http.ServeMux
+	Cache  *cache.Cache
+	Broker *sebbroker.Broker
 }
 
 // Close closes all of the underlying resources
@@ -63,7 +63,7 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 	log := logger.NewDefault(context.Background())
 
 	var c *cache.Cache
-	var s *broker.Broker
+	var s *sebbroker.Broker
 	var err error
 
 	if opts.Dependencies == nil {
@@ -75,11 +75,11 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 			return topic.New(log, memoryTopicStorage, topicName, c, topic.WithCompress(nil))
 		}
 
-		s = broker.New(
+		s = sebbroker.New(
 			log,
 			topicFactory,
-			broker.WithNullBatcher(),
-			broker.WithAutoCreateTopic(opts.StorageTopicAutoCreate),
+			sebbroker.WithNullBatcher(),
+			sebbroker.WithAutoCreateTopic(opts.StorageTopicAutoCreate),
 		)
 		opts.Dependencies = s
 	}
@@ -89,11 +89,11 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 	httphandlers.RegisterRoutes(log, mux, opts.Dependencies, opts.APIKey)
 
 	return &HTTPTestServer{
-		t:       t,
-		Server:  httptest.NewServer(mux),
-		Mux:     mux,
-		Cache:   c,
-		Storage: s,
+		t:      t,
+		Server: httptest.NewServer(mux),
+		Mux:    mux,
+		Cache:  c,
+		Broker: s,
 	}
 }
 

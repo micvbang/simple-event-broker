@@ -24,12 +24,12 @@ func TestGetRecordsExistence(t *testing.T) {
 
 	const topicName = "topicName"
 
-	err := server.Storage.CreateTopic(topicName)
+	err := server.Broker.CreateTopic(topicName)
 	require.NoError(t, err)
 
 	records := tester.MakeRandomRecords(16)
 	for _, record := range records {
-		_, err := server.Storage.AddRecord(topicName, record)
+		_, err := server.Broker.AddRecord(topicName, record)
 		require.NoError(t, err)
 	}
 
@@ -82,10 +82,10 @@ func TestGetRecordsURLParameters(t *testing.T) {
 	server := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
 	defer server.Close()
 
-	err := server.Storage.CreateTopic(topicName)
+	err := server.Broker.CreateTopic(topicName)
 	require.NoError(t, err)
 
-	_, err = server.Storage.AddRecord(topicName, sebrecords.Record("record"))
+	_, err = server.Broker.AddRecord(topicName, sebrecords.Record("record"))
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -212,7 +212,7 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 	expectedRecords := make([]sebrecords.Record, 16)
 	for i := range len(expectedRecords) {
 		expectedRecords[i] = tester.RandomBytes(t, recordSize)
-		_, err := server.Storage.AddRecord(topicName, expectedRecords[i])
+		_, err := server.Broker.AddRecord(topicName, expectedRecords[i])
 		require.NoError(t, err)
 	}
 

@@ -53,7 +53,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedOffsets, output.Offsets)
 
-	gotRecords, err := server.Storage.GetRecords(context.Background(), topicName, 0, len(expectedRecords), 0)
+	gotRecords, err := server.Broker.GetRecords(context.Background(), topicName, 0, len(expectedRecords), 0)
 	require.NoError(t, err)
 
 	require.Equal(t, expectedRecords, gotRecords)

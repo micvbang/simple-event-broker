@@ -1,4 +1,4 @@
-package broker_test
+package sebbroker_test
 
 import (
 	"context"
@@ -12,9 +12,9 @@ import (
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
 	seb "github.com/micvbang/simple-event-broker"
-	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
@@ -51,7 +51,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		"no error": {expected: nil},
 	}
 
-	batcher := broker.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
+	batcher := sebbroker.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
 
 	for name, test := range tests {
 		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -86,7 +86,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 		return nil, returnedErr
 	}
 
-	batcher := broker.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
+	batcher := sebbroker.NewBlockingBatcherWithConfig(log, 1024, persistRecordBatch, contextFactory)
 
 	const numRecordBatches = 5
 
@@ -147,7 +147,7 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 
 	const bytesSoftMax = 10
 
-	batcher := broker.NewBlockingBatcherWithConfig(log, bytesSoftMax, persistRecordBatch, contextFactory)
+	batcher := sebbroker.NewBlockingBatcherWithConfig(log, bytesSoftMax, persistRecordBatch, contextFactory)
 	addReturned := atomic.Bool{}
 
 	wg := &sync.WaitGroup{}
@@ -194,7 +194,7 @@ func TestBlockingBatcherSoftMaxSingleRecord(t *testing.T) {
 	}
 
 	const bytesSoftMax = 32
-	batcher := broker.NewBlockingBatcher(log, time.Second, bytesSoftMax, persistRecordBatch)
+	batcher := sebbroker.NewBlockingBatcher(log, time.Second, bytesSoftMax, persistRecordBatch)
 
 	tests := map[string]struct {
 		recordSize  int
@@ -220,12 +220,12 @@ func TestBlockingBatcherConcurrency(t *testing.T) {
 		topic, err := topic.New(log, s, "topicName", c, topic.WithCompress(nil))
 		require.NoError(t, err)
 
-		batcher := broker.NewBlockingBatcher(log, 5*time.Millisecond, 32*sizey.KB, topic.AddRecords)
+		batcher := sebbroker.NewBlockingBatcher(log, 5*time.Millisecond, 32*sizey.KB, topic.AddRecords)
 		testBlockingBatcherConcurrency(t, batcher, topic)
 	})
 }
 
-func testBlockingBatcherConcurrency(t *testing.T, batcher broker.RecordBatcher, topic *topic.Topic) {
+func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatcher, topic *topic.Topic) {
 	ctx := context.Background()
 
 	recordsBatches := make([][]sebrecords.Record, 50)

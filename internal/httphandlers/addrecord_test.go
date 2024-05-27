@@ -22,7 +22,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 	defer server.Close()
 
 	// add record s.t. returned offset in HTTP response is not 0 (default value)
-	_, err := server.Storage.AddRecord(topicName, sebrecords.Record("haps"))
+	_, err := server.Broker.AddRecord(topicName, sebrecords.Record("haps"))
 	require.NoError(t, err)
 
 	expectedRecord := tester.RandomRecord(t, 64)
@@ -45,7 +45,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedOffset, output.Offset)
 
-	gotRecord, err := server.Storage.GetRecord(topicName, expectedOffset)
+	gotRecord, err := server.Broker.GetRecord(topicName, expectedOffset)
 	require.NoError(t, err)
 	require.Equal(t, expectedRecord, gotRecord)
 }

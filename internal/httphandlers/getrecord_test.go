@@ -20,7 +20,7 @@ func TestGetRecordExistence(t *testing.T) {
 	expectedPayload := []byte("haps")
 	const topicName = "topicName"
 
-	offset, err := server.Storage.AddRecord(topicName, expectedPayload)
+	offset, err := server.Broker.AddRecord(topicName, expectedPayload)
 	require.NoError(t, err)
 
 	tests := map[string]struct {

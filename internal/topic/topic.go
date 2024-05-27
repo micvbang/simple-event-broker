@@ -66,7 +66,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 		return nil, fmt.Errorf("listing record batches: %w", err)
 	}
 
-	storage := &Topic{
+	topic := &Topic{
 		log:                log.WithField("topic-name", topicName),
 		backingStorage:     backingStorage,
 		topicName:          topicName,
@@ -78,17 +78,17 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *cac
 
 	if len(recordBatchOffsets) > 0 {
 		newestRecordBatchOffset := recordBatchOffsets[len(recordBatchOffsets)-1]
-		parser, err := storage.parseRecordBatch(newestRecordBatchOffset)
+		parser, err := topic.parseRecordBatch(newestRecordBatchOffset)
 		if err != nil {
 			return nil, fmt.Errorf("reading record batch header: %w", err)
 		}
 		defer parser.Close()
 
-		storage.nextOffset.Store(newestRecordBatchOffset + uint64(parser.Header.NumRecords))
-		storage.OffsetCond = NewOffsetCond(newestRecordBatchOffset)
+		topic.nextOffset.Store(newestRecordBatchOffset + uint64(parser.Header.NumRecords))
+		topic.OffsetCond = NewOffsetCond(newestRecordBatchOffset)
 	}
 
-	return storage, nil
+	return topic, nil
 }
 
 // AddRecords writes records to the topic's backing storage and returns the ids
