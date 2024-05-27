@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
@@ -76,7 +76,7 @@ func TestTopicStorageAndCache(t *testing.T, f func(*testing.T, topic.Storage, *c
 // TestBackingStorageAndCache makes it easy to storage.Storage with all
 // configurations of topic.BackingStorage and cache.CacheStorage
 // implementations in the same test.
-func TestStorage(t *testing.T, autoCreateTopic bool, f func(*testing.T, *storage.Broker)) {
+func TestStorage(t *testing.T, autoCreateTopic bool, f func(*testing.T, *broker.Broker)) {
 	t.Helper()
 
 	for storageName, backingStorageFactory := range storageFactories {
@@ -88,13 +88,13 @@ func TestStorage(t *testing.T, autoCreateTopic bool, f func(*testing.T, *storage
 				cache, err := cache.New(log, cacheStorage)
 				require.NoError(t, err)
 
-				s := storage.New(log,
+				s := broker.New(log,
 					func(log logger.Logger, topicName string) (*topic.Topic, error) {
 						bs := backingStorageFactory(t)
 						return topic.New(log, bs, topicName, cache)
 					},
-					storage.WithNullBatcher(),
-					storage.WithAutoCreateTopic(autoCreateTopic),
+					broker.WithNullBatcher(),
+					broker.WithAutoCreateTopic(autoCreateTopic),
 				)
 				f(t, s)
 			})

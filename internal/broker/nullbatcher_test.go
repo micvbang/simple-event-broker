@@ -1,11 +1,11 @@
-package storage_test
+package broker_test
 
 import (
 	"testing"
 
+	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ func TestNullBatcherConcurrency(t *testing.T) {
 		topic, err := topic.New(log, s, "topicName", c, topic.WithCompress(nil))
 		require.NoError(t, err)
 
-		batcher := storage.NewNullBatcher(topic.AddRecords)
+		batcher := broker.NewNullBatcher(topic.AddRecords)
 		testBlockingBatcherConcurrency(t, batcher, topic)
 	})
 }

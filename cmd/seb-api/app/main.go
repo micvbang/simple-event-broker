@@ -11,10 +11,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebhttp"
-	"github.com/micvbang/simple-event-broker/internal/storage"
 )
 
 func Run() {
@@ -59,19 +59,19 @@ func Run() {
 	log.Errorf("main returned: %s", err)
 }
 
-func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*storage.Broker, error) {
+func makeBlockingS3Storage(log logger.Logger, cache *cache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*broker.Broker, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
-	s3TopicFactory := storage.NewS3TopicFactory(cfg, s3BucketName, cache)
-	blockingBatcherFactory := storage.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
+	s3TopicFactory := broker.NewS3TopicFactory(cfg, s3BucketName, cache)
+	blockingBatcherFactory := broker.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
 
-	storage := storage.New(
+	storage := broker.New(
 		log.Name("storage"),
 		s3TopicFactory,
-		storage.WithBatcherFactory(blockingBatcherFactory),
+		broker.WithBatcherFactory(blockingBatcherFactory),
 	)
 	return storage, nil
 }

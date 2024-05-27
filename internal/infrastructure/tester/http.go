@@ -6,10 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/micvbang/simple-event-broker/internal/broker"
 	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebhttp"
-	"github.com/micvbang/simple-event-broker/internal/storage"
 	"github.com/micvbang/simple-event-broker/internal/topic"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +22,7 @@ type HTTPTestServer struct {
 
 	Mux     *http.ServeMux
 	Cache   *cache.Cache
-	Storage *storage.Broker
+	Storage *broker.Broker
 }
 
 // Close closes all of the underlying resources
@@ -63,7 +63,7 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 	log := logger.NewDefault(context.Background())
 
 	var c *cache.Cache
-	var s *storage.Broker
+	var s *broker.Broker
 	var err error
 
 	if opts.Dependencies == nil {
@@ -75,11 +75,11 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 			return topic.New(log, memoryTopicStorage, topicName, c, topic.WithCompress(nil))
 		}
 
-		s = storage.New(
+		s = broker.New(
 			log,
 			topicFactory,
-			storage.WithNullBatcher(),
-			storage.WithAutoCreateTopic(opts.StorageTopicAutoCreate),
+			broker.WithNullBatcher(),
+			broker.WithAutoCreateTopic(opts.StorageTopicAutoCreate),
 		)
 		opts.Dependencies = s
 	}
