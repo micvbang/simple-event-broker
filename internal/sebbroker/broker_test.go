@@ -313,9 +313,9 @@ func TestCreateTopicAlreadyExists(t *testing.T) {
 	})
 }
 
-// TestStorageMetadataHappyPath verifies that Metadata() returns the expected
+// TestBrokerMetadataHappyPath verifies that Metadata() returns the expected
 // data for a topic that exists.
-func TestStorageMetadataHappyPath(t *testing.T) {
+func TestBrokerMetadataHappyPath(t *testing.T) {
 	const autoCreate = true
 	tester.TestBroker(t, autoCreate, func(t *testing.T, s *sebbroker.Broker) {
 		const topicName = "topic-name"
@@ -334,10 +334,10 @@ func TestStorageMetadataHappyPath(t *testing.T) {
 	})
 }
 
-// TestStorageMetadataTopicNotFound verifies that ErrTopicNotFound is returned
+// TestBrokerMetadataTopicNotFound verifies that ErrTopicNotFound is returned
 // when attempting to read metadata from a topic that does not exist, when topic
 // auto creation is turned off.
-func TestStorageMetadataTopicNotFound(t *testing.T) {
+func TestBrokerMetadataTopicNotFound(t *testing.T) {
 	tests := map[string]struct {
 		autoCreate  bool
 		expectedErr error
@@ -406,9 +406,9 @@ func TestAddRecordHappyPath(t *testing.T) {
 	})
 }
 
-// TestStorageConcurrency exercises thread safety when doing reads and writes
+// TestBrokerConcurrency exercises thread safety when doing reads and writes
 // concurrently.
-func TestStorageConcurrency(t *testing.T) {
+func TestBrokerConcurrency(t *testing.T) {
 	const autoCreate = true
 	tester.TestBroker(t, autoCreate, func(t *testing.T, s *sebbroker.Broker) {
 		ctx := context.Background()

@@ -19,7 +19,7 @@ import (
 // TestGetRecordsExistence verifies that http.StatusNotFound is returned when
 // either the topic name does not exist or the offset is out of bounds.
 func TestGetRecordsExistence(t *testing.T) {
-	server := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
+	server := tester.HTTPServer(t, tester.HTTPBrokerAutoCreateTopic(false))
 	defer server.Close()
 
 	const topicName = "topicName"
@@ -79,7 +79,7 @@ func TestGetRecordsExistence(t *testing.T) {
 // that must exist (topic name, offset).
 func TestGetRecordsURLParameters(t *testing.T) {
 	const topicName = "topic-name"
-	server := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
+	server := tester.HTTPServer(t, tester.HTTPBrokerAutoCreateTopic(false))
 	defer server.Close()
 
 	err := server.Broker.CreateTopic(topicName)

@@ -53,8 +53,8 @@ func (s *HTTPTestServer) do(r *http.Request, addDefaultAuth bool) *http.Response
 func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 	t.Helper()
 	opts := Opts{
-		APIKey:                 DefaultAPIKey,
-		StorageTopicAutoCreate: true,
+		APIKey:                DefaultAPIKey,
+		BrokerTopicAutoCreate: true,
 	}
 	for _, optFn := range OptFns {
 		optFn(&opts)
@@ -79,7 +79,7 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 			log,
 			topicFactory,
 			sebbroker.WithNullBatcher(),
-			sebbroker.WithAutoCreateTopic(opts.StorageTopicAutoCreate),
+			sebbroker.WithAutoCreateTopic(opts.BrokerTopicAutoCreate),
 		)
 		opts.Dependencies = broker
 	}
@@ -98,9 +98,9 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 }
 
 type Opts struct {
-	APIKey                 string
-	StorageTopicAutoCreate bool
-	Dependencies           httphandlers.Dependencies
+	APIKey                string
+	BrokerTopicAutoCreate bool
+	Dependencies          httphandlers.Dependencies
 }
 
 // HTTPAPIKey sets the apiKey for HTTPServer
@@ -110,10 +110,10 @@ func HTTPAPIKey(apiKey string) func(*Opts) {
 	}
 }
 
-// HTTPStorageAutoCreateTopic sets automatic topic creation for HTTPServer
-func HTTPStorageAutoCreateTopic(autoCreate bool) func(*Opts) {
+// HTTPBrokerAutoCreateTopic sets automatic topic creation for HTTPServer
+func HTTPBrokerAutoCreateTopic(autoCreate bool) func(*Opts) {
 	return func(c *Opts) {
-		c.StorageTopicAutoCreate = autoCreate
+		c.BrokerTopicAutoCreate = autoCreate
 	}
 }
 

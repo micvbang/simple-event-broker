@@ -33,13 +33,13 @@ func Run() {
 
 	go sebcache.EvictionLoop(ctx, log.Name("cache eviction"), cache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-	blockingS3Storage, err := makeBlockingS3Broker(log, cache, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
+	blockingS3Broker, err := makeBlockingS3Broker(log, cache, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
 	if err != nil {
-		log.Fatalf("making blocking s3 storage: %s", err)
+		log.Fatalf("making blocking s3 broker: %s", err)
 	}
 
 	mux := http.NewServeMux()
-	httphandlers.RegisterRoutes(log, mux, blockingS3Storage, flags.httpAPIKey)
+	httphandlers.RegisterRoutes(log, mux, blockingS3Broker, flags.httpAPIKey)
 
 	errs := make(chan error, 8)
 

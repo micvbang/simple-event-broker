@@ -80,7 +80,7 @@ func TestGetTopicNotFound(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			server := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(test.autoCreateTopic))
+			server := tester.HTTPServer(t, tester.HTTPBrokerAutoCreateTopic(test.autoCreateTopic))
 			defer server.Close()
 
 			// Act

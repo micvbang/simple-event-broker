@@ -197,7 +197,7 @@ func TestRecordClientGetRecordsHappyPath(t *testing.T) {
 // TestRecordClientGetRecordsTopicDoesNotExist verifies that ErrNotFound is
 // returned when attempting to read from a topic that does not exist.
 func TestRecordClientGetRecordsTopicDoesNotExist(t *testing.T) {
-	srv := tester.HTTPServer(t, tester.HTTPStorageAutoCreateTopic(false))
+	srv := tester.HTTPServer(t, tester.HTTPBrokerAutoCreateTopic(false))
 	defer srv.Close()
 
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)

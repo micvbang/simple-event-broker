@@ -40,7 +40,7 @@ type Opts struct {
 	BatcherFactory  batcherFactory
 }
 
-// New returns a Storage that utilizes topicFactory to store records.
+// New returns a Broker that utilizes topicFactory to store records.
 //
 // It defaults to automatically create topics if they don't already exist.
 // It defaults to batch records using NewBlockingBatcherFactory(1s, 10MB),
@@ -131,7 +131,7 @@ func (s *Broker) CreateTopic(topicName string) error {
 	}
 
 	// since topicBatchers is just a local cache of the topics that were
-	// instantiated during the lifetime of Storage, we don't yet know whether
+	// instantiated during the lifetime of Broker, we don't yet know whether
 	// the topic already exists or not. Checking the topic's nextOffset is a
 	// hacky way to attempt to do this.
 	if tb.topic.NextOffset() != 0 {
