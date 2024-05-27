@@ -5,15 +5,15 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
 type TopicFactory func(_ logger.Logger, topicName string) (*sebtopic.Topic, error)
 
-func NewS3TopicFactory(cfg aws.Config, s3BucketName string, cache *cache.Cache) TopicFactory {
+func NewS3TopicFactory(cfg aws.Config, s3BucketName string, cache *sebcache.Cache) TopicFactory {
 	return func(log logger.Logger, topicName string) (*sebtopic.Topic, error) {
 		storageLogger := log.Name("s3 storage").WithField("topic-name", topicName).WithField("bucket", s3BucketName)
 
@@ -23,7 +23,7 @@ func NewS3TopicFactory(cfg aws.Config, s3BucketName string, cache *cache.Cache) 
 	}
 }
 
-func NewTopicFactory(ts sebtopic.Storage, cache *cache.Cache) TopicFactory {
+func NewTopicFactory(ts sebtopic.Storage, cache *sebcache.Cache) TopicFactory {
 	return func(log logger.Logger, topicName string) (*sebtopic.Topic, error) {
 		return sebtopic.New(log, ts, topicName, cache)
 	}

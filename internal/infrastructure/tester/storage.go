@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
@@ -15,9 +15,9 @@ import (
 var (
 	log logger.Logger = logger.NewDefault(context.Background())
 
-	cacheStorageFactories = map[string]func(t *testing.T) (cache.Storage, error){
-		"memory": func(t *testing.T) (cache.Storage, error) { return cache.NewMemoryStorage(log), nil },
-		"disk":   func(t *testing.T) (cache.Storage, error) { return cache.NewDiskStorage(log, t.TempDir()) },
+	cacheStorageFactories = map[string]func(t *testing.T) (sebcache.Storage, error){
+		"memory": func(t *testing.T) (sebcache.Storage, error) { return sebcache.NewMemoryStorage(log), nil },
+		"disk":   func(t *testing.T) (sebcache.Storage, error) { return sebcache.NewDiskStorage(log, t.TempDir()) },
 	}
 
 	storageFactories = map[string]func(t *testing.T) sebtopic.Storage{
@@ -28,7 +28,7 @@ var (
 
 // TestCacheStorage makes it easy to test all cache.CacheStorage
 // implementations in the same test.
-func TestCacheStorage(t *testing.T, f func(*testing.T, cache.Storage)) {
+func TestCacheStorage(t *testing.T, f func(*testing.T, sebcache.Storage)) {
 	t.Helper()
 
 	for testName, cacheStorageFactory := range cacheStorageFactories {
@@ -55,7 +55,7 @@ func TestBackingStorage(t *testing.T, f func(*testing.T, sebtopic.Storage)) {
 
 // TestTopicStorageAndCache makes it easy to test all topic.BackingStorage
 // and cache.CacheStorage implementations in the same test.
-func TestTopicStorageAndCache(t *testing.T, f func(*testing.T, sebtopic.Storage, *cache.Cache)) {
+func TestTopicStorageAndCache(t *testing.T, f func(*testing.T, sebtopic.Storage, *sebcache.Cache)) {
 	t.Helper()
 
 	for topicStorageName, topicStorageFactory := range storageFactories {
@@ -64,7 +64,7 @@ func TestTopicStorageAndCache(t *testing.T, f func(*testing.T, sebtopic.Storage,
 				cacheStorage, err := cacheStorageFactory(t)
 				require.NoError(t, err)
 
-				cache, err := cache.New(log, cacheStorage)
+				cache, err := sebcache.New(log, cacheStorage)
 				require.NoError(t, err)
 
 				f(t, topicStorageFactory(t), cache)
@@ -74,7 +74,7 @@ func TestTopicStorageAndCache(t *testing.T, f func(*testing.T, sebtopic.Storage,
 }
 
 // TestBroker makes it easy to test sebbroker.Broker with all configurations of
-// sebtopic.Storage and cache.Storage implementations in the same test.
+// sebtopic.Storage and sebcache.Storage implementations in the same test.
 func TestBroker(t *testing.T, autoCreateTopic bool, f func(*testing.T, *sebbroker.Broker)) {
 	t.Helper()
 
@@ -84,7 +84,7 @@ func TestBroker(t *testing.T, autoCreateTopic bool, f func(*testing.T, *sebbroke
 				cacheStorage, err := cacheStorageFactory(t)
 				require.NoError(t, err)
 
-				cache, err := cache.New(log, cacheStorage)
+				cache, err := sebcache.New(log, cacheStorage)
 				require.NoError(t, err)
 
 				broker := sebbroker.New(log,

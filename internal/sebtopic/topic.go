@@ -14,8 +14,8 @@ import (
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/uint64y"
 	seb "github.com/micvbang/simple-event-broker"
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
@@ -44,7 +44,7 @@ type Topic struct {
 	recordBatchOffsets []uint64
 
 	backingStorage Storage
-	cache          *cache.Cache
+	cache          *sebcache.Cache
 	compression    Compress
 	OffsetCond     *OffsetCond
 }
@@ -53,7 +53,7 @@ type Opts struct {
 	Compression Compress
 }
 
-func New(log logger.Logger, backingStorage Storage, topicName string, cache *cache.Cache, optFuncs ...func(*Opts)) (*Topic, error) {
+func New(log logger.Logger, backingStorage Storage, topicName string, cache *sebcache.Cache, optFuncs ...func(*Opts)) (*Topic, error) {
 	opts := Opts{
 		Compression: Gzip{},
 	}

@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 
 	seb "github.com/micvbang/simple-event-broker"
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	sebtopic "github.com/micvbang/simple-event-broker/internal/sebtopic"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	topicName := filepath.Base(absInputPath)
 	fmt.Printf("Dumping records [%d; %d] from topic '%s'\n", flags.startFromOffset, flags.startFromOffset+flags.numRecords-1, topicName)
 
-	cache, err := cache.NewMemoryCache(log)
+	cache, err := sebcache.NewMemoryCache(log)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}

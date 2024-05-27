@@ -12,10 +12,10 @@ import (
 	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/go-helpy/timey"
 	seb "github.com/micvbang/simple-event-broker"
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
@@ -91,7 +91,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 // seb.ErrTopicNotFound when autoCreateTopic is false, and automatically creates
 // the topic when it is true.
 func TestAddRecordsAutoCreateTopic(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *sebcache.Cache) {
 		tests := map[string]struct {
 			autoCreateTopic bool
 			err             error
@@ -133,7 +133,7 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 // TestGetRecordsTopicDoesNotExist verifies that GetRecords returns an empty
 // record batch when attempting to read from a topic that does not exist.
 func TestGetRecordsTopicDoesNotExist(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *sebcache.Cache) {
 		const topicName = "topic-name"
 		ctx := context.Background()
 		record := tester.RandomBytes(t, 8)
@@ -253,7 +253,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 // attempting to create a topic that already exists in topic storage (at least
 // one record was added to the topic in its lifetime)
 func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, bs sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, bs sebtopic.Storage, cache *sebcache.Cache) {
 		const topicName = "topic-name"
 
 		{
@@ -358,7 +358,7 @@ func TestStorageMetadataTopicNotFound(t *testing.T) {
 
 // TestAddRecordsHappyPath verifies that AddRecords adds the expected records.
 func TestAddRecordsHappyPath(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *sebcache.Cache) {
 		broker := sebbroker.New(log,
 			sebbroker.NewTopicFactory(ts, cache),
 			sebbroker.WithNullBatcher(),
@@ -382,7 +382,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 
 // TestAddRecordHappyPath verifies that AddRecord adds the expected records.
 func TestAddRecordHappyPath(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *sebcache.Cache) {
 		broker := sebbroker.New(log,
 			sebbroker.NewTopicFactory(ts, cache),
 			sebbroker.WithNullBatcher(),

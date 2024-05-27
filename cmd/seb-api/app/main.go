@@ -11,11 +11,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/micvbang/go-helpy/sizey"
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
 )
 
 func Run() {
@@ -26,14 +26,14 @@ func Run() {
 	log := logger.NewWithLevel(ctx, logger.LogLevel(flags.logLevel))
 	log.Debugf("flags: %v", flags)
 
-	c, err := cache.NewDiskCache(log, flags.cacheDir)
+	cache, err := sebcache.NewDiskCache(log, flags.cacheDir)
 	if err != nil {
 		log.Fatalf("creating disk cache: %w", err)
 	}
 
-	go cache.EvictionLoop(ctx, log.Name("cache eviction"), c, flags.cacheMaxBytes, flags.cacheEvictionInterval)
+	go sebcache.EvictionLoop(ctx, log.Name("cache eviction"), cache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-	blockingS3Storage, err := makeBlockingS3Broker(log, c, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
+	blockingS3Storage, err := makeBlockingS3Broker(log, cache, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
 	if err != nil {
 		log.Fatalf("making blocking s3 storage: %s", err)
 	}
@@ -60,7 +60,7 @@ func Run() {
 	log.Errorf("main returned: %s", err)
 }
 
-func makeBlockingS3Broker(log logger.Logger, cache *cache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*sebbroker.Broker, error) {
+func makeBlockingS3Broker(log logger.Logger, cache *sebcache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*sebbroker.Broker, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)

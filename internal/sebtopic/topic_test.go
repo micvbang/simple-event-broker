@@ -9,9 +9,9 @@ import (
 	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/go-helpy/timey"
 	seb "github.com/micvbang/simple-event-broker"
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
@@ -24,7 +24,7 @@ var (
 // TestStorageEmpty verifies that reading from an empty topic returns
 // ErrOutOfBounds.
 func TestStorageEmpty(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		s, err := sebtopic.New(log, backingStorage, "mytopic", cache, sebtopic.WithCompress(nil))
 		require.NoError(t, err)
 
@@ -40,7 +40,7 @@ func TestStorageEmpty(t *testing.T) {
 // single Record batch can be read back, and that reading out of bounds returns
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		s, err := sebtopic.New(log, backingStorage, "mytopic", cache, sebtopic.WithCompress(nil))
 		require.NoError(t, err)
 
@@ -73,7 +73,7 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 // again, and that reading beyond the number of existing records yields
 // ErrOutOfBounds.
 func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		s, err := sebtopic.New(log, backingStorage, "mytopic", cache)
 		require.NoError(t, err)
 
@@ -117,7 +117,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 		}
 
 		{
-			cache, err := cache.New(log, cache.NewMemoryStorage(log))
+			cache, err := sebcache.New(log, sebcache.NewMemoryStorage(log))
 			require.NoError(t, err)
 			s1, err := sebtopic.New(log, backingStorage, topicName, cache)
 			require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 			}
 		}
 
-		cache, err := cache.New(log, cache.NewMemoryStorage(log))
+		cache, err := sebcache.New(log, sebcache.NewMemoryStorage(log))
 		require.NoError(t, err)
 
 		// Test
@@ -170,7 +170,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 
 		records1 := tester.MakeRandomRecords(1)
 		{
-			cache, err := cache.New(log, cache.NewMemoryStorage(log))
+			cache, err := sebcache.New(log, sebcache.NewMemoryStorage(log))
 			require.NoError(t, err)
 			s1, err := sebtopic.New(log, topicStorage, topicName, cache)
 			require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 			tester.RequireOffsets(t, 0, 1, offsets)
 		}
 
-		cache, err := cache.New(log, cache.NewMemoryStorage(log))
+		cache, err := sebcache.New(log, sebcache.NewMemoryStorage(log))
 		require.NoError(t, err)
 
 		s2, err := sebtopic.New(log, topicStorage, topicName, cache)
@@ -212,7 +212,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 // TestStorageCacheWrite verifies that AddRecordBatch uses the cache to cache
 // the record batch.
 func TestStorageCacheWrite(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		const topicName = "my_topic"
 
 		s, err := sebtopic.New(log, backingStorage, topicName, cache)
@@ -247,7 +247,7 @@ func TestStorageCacheWrite(t *testing.T) {
 // TestStorageCacheWrite verifies that ReadRecord uses the cache to read
 // results.
 func TestStorageCacheReadFromCache(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		const topicName = "my_topic"
 
 		s, err := sebtopic.New(log, backingStorage, topicName, cache)
@@ -283,8 +283,8 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 	tester.TestBackingStorage(t, func(t *testing.T, backingStorage sebtopic.Storage) {
 		const topicName = "my_topic"
 
-		cacheStorage := cache.NewMemoryStorage(log)
-		cache, err := cache.New(log, cacheStorage)
+		cacheStorage := sebcache.NewMemoryStorage(log)
+		cache, err := sebcache.New(log, cacheStorage)
 		require.NoError(t, err)
 
 		s, err := sebtopic.New(log, backingStorage, topicName, cache)
@@ -316,7 +316,7 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 // seemlessly compresses and decompresses files when they're written to the
 // backing storage.
 func TestStorageCompressFiles(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		const topicName = "topicName"
 		compressor := sebtopic.Gzip{}
 		s, err := sebtopic.New(log, backingStorage, topicName, cache, sebtopic.WithCompress(compressor))
@@ -356,7 +356,7 @@ func TestStorageCompressFiles(t *testing.T) {
 // TestTopicEndOffset verifies that EndOffset returns the offset of the
 // next record that is added, i.e. the id of most-recently-added+1.
 func TestTopicEndOffset(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		s, err := sebtopic.New(log, backingStorage, "topic", cache)
 		require.NoError(t, err)
 
@@ -383,7 +383,7 @@ func TestTopicEndOffset(t *testing.T) {
 // TestTopicOffsetCond verifies that Topic.OffsetCond.Wait() blocks until the
 // expected offset has been reached.
 func TestTopicOffsetCond(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		s, err := sebtopic.New(log, backingStorage, "topic", cache)
 		require.NoError(t, err)
 
@@ -418,7 +418,7 @@ func TestTopicOffsetCond(t *testing.T) {
 // TestTopicOffsetCondContextExpired verifies that Topic.OffsetCond.Wait()
 // returns when the given context expires.
 func TestTopicOffsetCondContextExpired(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		s, err := sebtopic.New(log, backingStorage, "topic", cache)
 		require.NoError(t, err)
 
@@ -448,7 +448,7 @@ func TestTopicOffsetCondContextExpired(t *testing.T) {
 // TestTopicReadRecords verifies that ReadRecords() returns the expected records
 // with the given offset, max number of records, and soft max bytes.
 func TestTopicReadRecords(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
 		topic, err := sebtopic.New(log, storage, "topic", cache)
 		require.NoError(t, err)
 
@@ -505,7 +505,7 @@ func TestTopicReadRecords(t *testing.T) {
 // TestTopicReadRecordsOutOfBounds verifies that seb.ErrOutOfBounds is returned
 // when requesting an offset larger than the existing max offset.
 func TestTopicReadRecordsOutOfBounds(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
 		topic, err := sebtopic.New(log, storage, "topic", cache)
 		require.NoError(t, err)
 
@@ -525,7 +525,7 @@ func TestTopicReadRecordsOutOfBounds(t *testing.T) {
 // returns the context error when the context expires before returning all of
 // the requested records.
 func TestTopicReadRecordsContextExpired(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
 		topic, err := sebtopic.New(log, storage, "topic", cache)
 		require.NoError(t, err)
 
@@ -546,7 +546,7 @@ func TestTopicReadRecordsContextExpired(t *testing.T) {
 
 // TestTopicMetadata verifies that Metadata() returns the most recent metadata.
 func TestTopicMetadata(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
 		top, err := sebtopic.New(log, storage, "topicName", cache)
 		require.NoError(t, err)
 
@@ -571,7 +571,7 @@ func TestTopicMetadata(t *testing.T) {
 // TestTopicMetadataEmptyTopic verifies that Metadata() returns the expected
 // data when the topic is empty.
 func TestTopicMetadataEmptyTopic(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *cache.Cache) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
 		top, err := sebtopic.New(log, storage, "topicName", cache)
 		require.NoError(t, err)
 
@@ -614,10 +614,10 @@ func BenchmarkTopicReadBatchUsingReadRecords(b *testing.B) {
 }
 
 func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *sebtopic.Topic, offset uint64, numRecords int) ([]sebrecords.Record, error)) {
-	diskCache, err := cache.NewDiskStorage(log, b.TempDir())
+	diskCache, err := sebcache.NewDiskStorage(log, b.TempDir())
 	require.NoError(b, err)
 
-	cache, err := cache.New(log, diskCache)
+	cache, err := sebcache.New(log, diskCache)
 	require.NoError(b, err)
 
 	topicStorage := sebtopic.NewDiskStorage(log, b.TempDir())
@@ -669,10 +669,10 @@ func BenchmarkTopicReadRecordUsingReadRecords(b *testing.B) {
 }
 
 func benchmarkTopicReadRecord(b *testing.B, readRecord func(t *sebtopic.Topic, offset uint64) (sebrecords.Record, error)) {
-	diskCache, err := cache.NewDiskStorage(log, b.TempDir())
+	diskCache, err := sebcache.NewDiskStorage(log, b.TempDir())
 	require.NoError(b, err)
 
-	cache, err := cache.New(log, diskCache)
+	cache, err := sebcache.New(log, diskCache)
 	require.NoError(b, err)
 
 	topicStorage := sebtopic.NewDiskStorage(log, b.TempDir())

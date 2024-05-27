@@ -1,4 +1,4 @@
-package cache_test
+package sebcache_test
 
 import (
 	"context"
@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/micvbang/go-helpy/mapy"
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,11 +30,11 @@ func TestCacheWriterWritesToDisk(t *testing.T) {
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
-	c, err := cache.NewDiskStorage(log, tempDir)
+	cache, err := sebcache.NewDiskStorage(log, tempDir)
 	require.NoError(t, err)
 
 	// Act
-	f, err := c.Writer(key)
+	f, err := cache.Writer(key)
 	require.NoError(t, err)
 
 	n, err := f.Write(expectedBytes)
@@ -66,16 +66,16 @@ func TestDiskCacheReaderReadsFromDisk(t *testing.T) {
 
 	expectedBytes := tester.RandomBytes(t, 4096)
 
-	c, err := cache.NewDiskStorage(log, t.TempDir())
+	cache, err := sebcache.NewDiskStorage(log, t.TempDir())
 	require.NoError(t, err)
 
-	w, err := c.Writer(key)
+	w, err := cache.Writer(key)
 	require.NoError(t, err)
 
 	tester.WriteAndClose(t, w, expectedBytes)
 
 	// Act
-	reader, err := c.Reader(key)
+	reader, err := cache.Reader(key)
 	require.NoError(t, err)
 
 	// Assert
@@ -87,7 +87,7 @@ func TestDiskCacheReaderReadsFromDisk(t *testing.T) {
 // TestDiskCacheListFromDisk verifies that List() returns the expected keys,
 // without any rootDir prefix.
 func TestDiskCacheListFromDisk(t *testing.T) {
-	c, err := cache.NewDiskStorage(log, t.TempDir())
+	cache, err := sebcache.NewDiskStorage(log, t.TempDir())
 	require.NoError(t, err)
 
 	expectedKeys := []string{
@@ -97,17 +97,17 @@ func TestDiskCacheListFromDisk(t *testing.T) {
 		"topic2/file2",
 	}
 	for _, key := range expectedKeys {
-		w, err := c.Writer(key)
+		w, err := cache.Writer(key)
 		require.NoError(t, err)
 
 		tester.WriteAndClose(t, w, tester.RandomBytes(t, 16))
 	}
 
 	// Act
-	items, err := c.List()
+	items, err := cache.List()
 	require.NoError(t, err)
 
-	gotKeys := mapy.Map(items, func(_ string, item cache.CacheItem) string {
+	gotKeys := mapy.Map(items, func(_ string, item sebcache.CacheItem) string {
 		return item.Key
 	})
 
@@ -120,14 +120,14 @@ func TestDiskCacheListFromDisk(t *testing.T) {
 // TestDiskCacheListFromDiskEmpty verifies that List() returns an empty list of
 // keys when the cache is empty.
 func TestDiskCacheListFromDiskEmpty(t *testing.T) {
-	c, err := cache.NewDiskStorage(log, t.TempDir())
+	cache, err := sebcache.NewDiskStorage(log, t.TempDir())
 	require.NoError(t, err)
 
 	// Act
-	items, err := c.List()
+	items, err := cache.List()
 	require.NoError(t, err)
 
-	gotKeys := mapy.Map(items, func(_ string, item cache.CacheItem) string {
+	gotKeys := mapy.Map(items, func(_ string, item sebcache.CacheItem) string {
 		return item.Key
 	})
 
@@ -142,16 +142,16 @@ func TestDiskCacheListFromDiskEmpty(t *testing.T) {
 // by the caller.
 func TestDiskCacheListExistingCache(t *testing.T) {
 	rootDir := t.TempDir()
-	c, err := cache.NewDiskStorage(log, rootDir)
+	cache, err := sebcache.NewDiskStorage(log, rootDir)
 	require.NoError(t, err)
 
 	const theKey = "Vrvirksomhed/000000000000.record_batch"
-	w, err := c.Writer(theKey)
+	w, err := cache.Writer(theKey)
 	require.NoError(t, err)
 
 	tester.WriteAndClose(t, w, tester.RandomBytes(t, 16))
 
-	c2, err := cache.NewDiskStorage(log, rootDir)
+	c2, err := sebcache.NewDiskStorage(log, rootDir)
 	require.NoError(t, err)
 
 	// Act

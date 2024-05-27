@@ -6,10 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/micvbang/simple-event-broker/internal/cache"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
+	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +21,7 @@ type HTTPTestServer struct {
 	Server *httptest.Server
 
 	Mux    *http.ServeMux
-	Cache  *cache.Cache
+	Cache  *sebcache.Cache
 	Broker *sebbroker.Broker
 }
 
@@ -62,12 +62,12 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 
 	log := logger.NewDefault(context.Background())
 
-	var c *cache.Cache
+	var c *sebcache.Cache
 	var broker *sebbroker.Broker
 	var err error
 
 	if opts.Dependencies == nil {
-		c, err = cache.New(log, cache.NewMemoryStorage(log))
+		c, err = sebcache.New(log, sebcache.NewMemoryStorage(log))
 		require.NoError(t, err)
 
 		topicFactory := func(log logger.Logger, topicName string) (*sebtopic.Topic, error) {
