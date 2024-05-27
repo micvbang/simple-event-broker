@@ -22,7 +22,7 @@ type HTTPTestServer struct {
 
 	Mux     *http.ServeMux
 	Cache   *cache.Cache
-	Storage *storage.Storage
+	Storage *storage.Broker
 }
 
 // Close closes all of the underlying resources
@@ -63,7 +63,7 @@ func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
 	log := logger.NewDefault(context.Background())
 
 	var c *cache.Cache
-	var s *storage.Storage
+	var s *storage.Broker
 	var err error
 
 	if opts.Dependencies == nil {

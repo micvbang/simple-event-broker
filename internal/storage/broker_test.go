@@ -30,7 +30,7 @@ var (
 // limits.
 func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 	const autoCreateTopic = true
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Storage) {
+	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Broker) {
 		const topicName = "topic-name"
 		ctx := context.Background()
 
@@ -176,7 +176,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 // (does not yet exist).
 func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 	const autoCreateTopic = true
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Storage) {
+	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Broker) {
 		const topicName = "topic-name"
 
 		// add record so that we know there's _something_ in the topic
@@ -200,7 +200,7 @@ func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 // respects that the given context has been called.
 func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 	autoCreateTopic := true
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Storage) {
+	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Broker) {
 		const topicName = "topic-name"
 
 		allRecords := tester.MakeRandomRecords(5)
@@ -226,7 +226,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 // created.
 func TestCreateTopicHappyPath(t *testing.T) {
 	const autoCreateTopic = false
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Storage) {
+	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Broker) {
 		const topicName = "topic-name"
 
 		_, err := s.GetRecord(topicName, 0)
@@ -300,7 +300,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 // was already created.
 func TestCreateTopicAlreadyExists(t *testing.T) {
 	const autoCreateTopic = false
-	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Storage) {
+	tester.TestStorage(t, autoCreateTopic, func(t *testing.T, s *storage.Broker) {
 		const topicName = "topic-name"
 
 		// Act
@@ -317,7 +317,7 @@ func TestCreateTopicAlreadyExists(t *testing.T) {
 // data for a topic that exists.
 func TestStorageMetadataHappyPath(t *testing.T) {
 	const autoCreate = true
-	tester.TestStorage(t, autoCreate, func(t *testing.T, s *storage.Storage) {
+	tester.TestStorage(t, autoCreate, func(t *testing.T, s *storage.Broker) {
 		const topicName = "topic-name"
 
 		for numRecords := 1; numRecords <= 10; numRecords++ {
@@ -348,7 +348,7 @@ func TestStorageMetadataTopicNotFound(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			tester.TestStorage(t, test.autoCreate, func(t *testing.T, s *storage.Storage) {
+			tester.TestStorage(t, test.autoCreate, func(t *testing.T, s *storage.Broker) {
 				_, err := s.Metadata("does-not-exist")
 				require.ErrorIs(t, err, test.expectedErr)
 			})
@@ -410,7 +410,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 // concurrently.
 func TestStorageConcurrency(t *testing.T) {
 	const autoCreate = true
-	tester.TestStorage(t, autoCreate, func(t *testing.T, s *storage.Storage) {
+	tester.TestStorage(t, autoCreate, func(t *testing.T, s *storage.Broker) {
 		ctx := context.Background()
 
 		recordsBatches := make([][]recordbatch.Record, 50)

@@ -24,7 +24,7 @@ type topicBatcher struct {
 	topic   *topic.Topic
 }
 
-type Storage struct {
+type Broker struct {
 	log logger.Logger
 
 	autoCreateTopics bool
@@ -49,7 +49,7 @@ type Opts struct {
 // exceeds 10MB.
 //
 // If you wish to change the defaults, use the WithXX methods.
-func New(log logger.Logger, topicFactory TopicFactory, optFuncs ...func(*Opts)) *Storage {
+func New(log logger.Logger, topicFactory TopicFactory, optFuncs ...func(*Opts)) *Broker {
 	opts := Opts{
 		AutoCreateTopic: true,
 		BatcherFactory:  NewBlockingBatcherFactory(1*time.Second, 10*sizey.MB),
@@ -59,7 +59,7 @@ func New(log logger.Logger, topicFactory TopicFactory, optFuncs ...func(*Opts)) 
 		optFunc(&opts)
 	}
 
-	return &Storage{
+	return &Broker{
 		log:              log,
 		autoCreateTopics: opts.AutoCreateTopic,
 		topicFactory:     topicFactory,
@@ -71,7 +71,7 @@ func New(log logger.Logger, topicFactory TopicFactory, optFuncs ...func(*Opts)) 
 
 // AddRecord adds record to topicName, using the configured batcher. It returns
 // only once data has been committed to topic storage.
-func (s *Storage) AddRecord(topicName string, record recordbatch.Record) (uint64, error) {
+func (s *Broker) AddRecord(topicName string, record recordbatch.Record) (uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return 0, err
@@ -86,7 +86,7 @@ func (s *Storage) AddRecord(topicName string, record recordbatch.Record) (uint64
 
 // AddRecords adds record to topicName, using the configured batcher. It returns
 // only once data has been committed to topic storage.
-func (s *Storage) AddRecords(topicName string, records []recordbatch.Record) ([]uint64, error) {
+func (s *Broker) AddRecords(topicName string, records []recordbatch.Record) ([]uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
@@ -101,7 +101,7 @@ func (s *Storage) AddRecords(topicName string, records []recordbatch.Record) ([]
 
 // GetRecord returns the record at offset in topicName. It will only return offsets
 // that have been committed to topic storage.
-func (s *Storage) GetRecord(topicName string, offset uint64) (recordbatch.Record, error) {
+func (s *Broker) GetRecord(topicName string, offset uint64) (recordbatch.Record, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func (s *Storage) GetRecord(topicName string, offset uint64) (recordbatch.Record
 }
 
 // CreateTopic creates a topic with the given name and default configuration.
-func (s *Storage) CreateTopic(topicName string) error {
+func (s *Broker) CreateTopic(topicName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -154,7 +154,7 @@ func (s *Storage) CreateTopic(topicName string) error {
 // NOTE: GetRecordBatch will always return all of the records that it managed to
 // fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
-func (s *Storage) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]recordbatch.Record, error) {
+func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]recordbatch.Record, error) {
 	if maxRecords == 0 {
 		maxRecords = 10
 	}
@@ -181,7 +181,7 @@ func (s *Storage) GetRecords(ctx context.Context, topicName string, offset uint6
 }
 
 // Metadata returns metadata about the topic.
-func (s *Storage) Metadata(topicName string) (topic.Metadata, error) {
+func (s *Broker) Metadata(topicName string) (topic.Metadata, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return topic.Metadata{}, err
@@ -192,7 +192,7 @@ func (s *Storage) Metadata(topicName string) (topic.Metadata, error) {
 
 // makeTopicBatcher initializes a new topicBatcher, but does not put it into
 // s.topicBatchers.
-func (s *Storage) makeTopicBatcher(topicName string) (topicBatcher, error) {
+func (s *Broker) makeTopicBatcher(topicName string) (topicBatcher, error) {
 	// NOTE: this could block for a long time. We're holding the lock, so
 	// this is terrible.
 	topicLogger := s.log.Name(fmt.Sprintf("topic storage (%s)", topicName))
@@ -212,7 +212,7 @@ func (s *Storage) makeTopicBatcher(topicName string) (topicBatcher, error) {
 	return tb, nil
 }
 
-func (s *Storage) getTopicBatcher(topicName string) (topicBatcher, error) {
+func (s *Broker) getTopicBatcher(topicName string) (topicBatcher, error) {
 	var err error
 	log := s.log.WithField("topicName", topicName)
 
