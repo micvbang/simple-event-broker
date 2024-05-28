@@ -22,7 +22,7 @@ func main() {
 	ctx := context.Background()
 	log := logger.NewWithLevel(ctx, logger.LevelInfo)
 
-	client, err := seb.NewRecordClient("http://localhost:8080", "api-key")
+	client, err := seb.NewRecordClient(flags.sebHost, flags.sebAPIKey)
 	if err != nil {
 		log.Fatalf("creating RecordClient: %s", err)
 	}
@@ -157,7 +157,7 @@ func parseFlags() flags {
 	fs.StringVar(&f.topicName, "topic-name", "local-test-delete-me", "Name of topic to use for test")
 	fs.IntVar(&f.numRequests, "requests", 1_000_000, "Number of requests to send")
 
-	fs.StringVar(&f.sebHost, "seb-host", "http://localhost:8080", "Name of topic to use for test")
+	fs.StringVar(&f.sebHost, "seb-host", "http://localhost:51313", "Name of topic to use for test")
 	fs.StringVar(&f.sebAPIKey, "seb-api-key", "api-key", "Name of topic to use for test")
 
 	err := fs.Parse(os.Args[1:])
