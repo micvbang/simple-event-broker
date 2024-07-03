@@ -16,7 +16,7 @@ def main() -> None:
     asyncio.run(
         add_records_async(
             async_limit=500,
-            base_url="http://127.0.0.1:8080",
+            base_url="http://127.0.0.1:51313",
             topic_name="haps",
             records=[
                 json.dumps({"payload": i}).encode("utf8") for i in range(payload_num)
