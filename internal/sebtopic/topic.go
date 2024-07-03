@@ -121,11 +121,17 @@ func (s *Topic) AddRecords(records []sebrecords.Record) ([]uint64, error) {
 	}
 
 	if s.compression != nil {
-		w.Close()
+		err = w.Close()
+		if err != nil {
+			return nil, fmt.Errorf("closing compression writer: %w", err)
+		}
 	}
 	// once Close() returns, the data has been committed and can be retrieved by
 	// ReadRecord.
-	backingWriter.Close()
+	err = backingWriter.Close()
+	if err != nil {
+		return nil, fmt.Errorf("closing backing writer: %w", err)
+	}
 
 	nextOffset := recordBatchID + uint64(len(records))
 

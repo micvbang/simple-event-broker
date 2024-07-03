@@ -2,6 +2,8 @@ package sebtopic_test
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -65,6 +67,79 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 
 		_, err = s.ReadRecord(uint64(len(records) + 5))
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+	})
+}
+
+// TestStorageWriteRecordsBackingStorageWriteFails verifies that an error is
+// propagated when a backing storage Writer's Write() fails.
+func TestStorageWriteRecordsBackingStorageWriteFails(t *testing.T) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage sebcache.Storage) {
+		expectedErr := fmt.Errorf("failed to write to file")
+
+		backingStorage := &tester.MockTopicStorage{}
+		backingStorage.ListFilesMock = func(topicName, extension string) ([]sebtopic.File, error) {
+			return nil, nil
+		}
+		backingStorage.WriterMock = func(recordBatchPath string) (io.WriteCloser, error) {
+			return &tester.MockWriteCloser{
+				WriteMock: func(p []byte) (n int, err error) {
+					return 0, expectedErr
+				},
+			}, nil
+		}
+
+		cache, err := sebcache.New(log, cacheStorage)
+		require.NoError(t, err)
+
+		s, err := sebtopic.New(log, backingStorage, "mytopic", cache, sebtopic.WithCompress(nil))
+		require.NoError(t, err)
+
+		records := tester.MakeRandomRecords(5)
+
+		// Act
+		offsets, err := s.AddRecords(records)
+
+		// Assert
+		require.ErrorIs(t, err, expectedErr)
+		require.Equal(t, 0, len(offsets))
+	})
+}
+
+// TestStorageWriteRecordsBackingStorageCloseFails verifies that an error is
+// propagated when a backing storage Writer's Close() fails.
+func TestStorageWriteRecordsBackingStorageCloseFails(t *testing.T) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage sebcache.Storage) {
+		expectedErr := fmt.Errorf("failed to close file")
+
+		backingStorage := &tester.MockTopicStorage{}
+		backingStorage.ListFilesMock = func(topicName, extension string) ([]sebtopic.File, error) {
+			return nil, nil
+		}
+		backingStorage.WriterMock = func(recordBatchPath string) (io.WriteCloser, error) {
+			return &tester.MockWriteCloser{
+				WriteMock: func(p []byte) (n int, err error) {
+					return len(p), nil
+				},
+				CloseMock: func() error {
+					return expectedErr
+				},
+			}, nil
+		}
+
+		cache, err := sebcache.New(log, cacheStorage)
+		require.NoError(t, err)
+
+		s, err := sebtopic.New(log, backingStorage, "mytopic", cache, sebtopic.WithCompress(nil))
+		require.NoError(t, err)
+
+		records := tester.MakeRandomRecords(5)
+
+		// Act
+		offsets, err := s.AddRecords(records)
+
+		// Assert
+		require.ErrorIs(t, err, expectedErr)
+		require.Equal(t, 0, len(offsets))
 	})
 }
 

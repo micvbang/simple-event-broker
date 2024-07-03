@@ -60,6 +60,35 @@ func TestS3WriteToS3(t *testing.T) {
 	require.True(t, s3Mock.PutObjectCalled)
 }
 
+// TestS3WriteToS3WithError verifies that an error is returned when uploading to
+// S3 fails.
+func TestS3WriteToS3WithError(t *testing.T) {
+	bucketName := "mybucket"
+	recordBatchPath := "topicName/000123.record_batch"
+	randomBytes := []byte(stringy.RandomN(500))
+
+	expectedErr := fmt.Errorf("PutObject failed")
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockPutObject = func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+		return nil, expectedErr
+	}
+
+	s3Storage := sebtopic.NewS3Storage(log, s3Mock, bucketName, "")
+
+	// Act
+	rbWriter, err := s3Storage.Writer(recordBatchPath)
+	require.NoError(t, err)
+
+	n, err := rbWriter.Write(randomBytes)
+	require.NoError(t, err)
+	require.Equal(t, len(randomBytes), n)
+
+	// file should be written to s3 when it's closed
+	err = rbWriter.Close()
+	require.ErrorIs(t, err, expectedErr)
+	require.True(t, s3Mock.PutObjectCalled)
+}
+
 // TestS3WriteWithPrefix verifies that the given prefix is used when calling
 // S3's PutObject.
 func TestS3WriteWithPrefix(t *testing.T) {
