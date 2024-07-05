@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.53.2
 	github.com/aws/smithy-go v1.20.2
 	github.com/klauspost/compress v1.17.8
-	github.com/micvbang/go-helpy v0.1.20
+	github.com/micvbang/go-helpy v0.1.24
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.8.4
