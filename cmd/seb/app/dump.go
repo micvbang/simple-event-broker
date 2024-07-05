@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/micvbang/go-helpy"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -22,7 +23,7 @@ func init() {
 	fs := dumpCmd.Flags()
 
 	fs.StringVarP(&dumpFlags.path, "path", "p", "", "Path to a .record_batch file")
-	fs.BoolVarP(&dumpFlags.dumpRecords, "dump-records", "a", true, "Whether to also dump record data")
+	fs.BoolVarP(&dumpFlags.dumpRecords, "dump-records", "a", false, "Whether to also dump record data")
 	fs.IntVarP(&dumpFlags.dumpRecordBytes, "dump-record-bytes", "b", 64, "Number of bytes to dump for each record, 0 for all of them")
 }
 
@@ -101,9 +102,9 @@ var dumpCmd = &cobra.Command{
 		if dumpFlags.dumpRecords {
 			fmt.Printf("Records:\n")
 			for i, record := range records {
-				dumpBytes := len(record)
-				if dumpFlags.dumpRecordBytes > 0 && dumpFlags.dumpRecordBytes < len(record) {
-					dumpBytes = dumpFlags.dumpRecordBytes
+				dumpBytes := helpy.Clamp(dumpFlags.dumpRecordBytes, 1, len(record))
+				if dumpFlags.dumpRecordBytes == 0 {
+					dumpBytes = len(record)
 				}
 
 				var tail string
