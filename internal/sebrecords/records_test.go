@@ -124,6 +124,185 @@ func TestReadRecordOutOfBounds(t *testing.T) {
 	require.ErrorIs(t, err, seb.ErrOutOfBounds)
 }
 
+// TestReadRecords verifies that Records() returns the expected records when
+// called with valid record start and end indexes.
+func TestReadRecords(t *testing.T) {
+	records := tester.MakeRandomRecords(5)
+
+	buf := bytes.NewBuffer(nil)
+	err := sebrecords.Write(buf, records)
+	require.NoError(t, err)
+
+	rdr := bytey.NewBuffer(buf.Bytes())
+	parser, err := sebrecords.Parse(rdr)
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		rdr              io.ReadSeeker
+		recordIndexStart uint32
+		recordIndexEnd   uint32
+		expected         []sebrecords.Record
+	}{
+		"first": {
+			recordIndexStart: 0,
+			recordIndexEnd:   1,
+			expected:         records[0:1],
+		},
+		"last": {
+			recordIndexStart: 4,
+			recordIndexEnd:   5,
+			expected:         records[4:5],
+		},
+		"first two": {
+			recordIndexStart: 0,
+			recordIndexEnd:   2,
+			expected:         records[0:2],
+		},
+		"first three": {
+			recordIndexStart: 0,
+			recordIndexEnd:   3,
+			expected:         records[0:3],
+		},
+		"middle three": {
+			recordIndexStart: 1,
+			recordIndexEnd:   4,
+			expected:         records[1:4],
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.NoError(t, err)
+
+			// Test
+			got, err := parser.Records(test.recordIndexStart, test.recordIndexEnd)
+
+			// Verify
+			require.NoError(t, err)
+			require.Equal(t, test.expected, got)
+		})
+	}
+}
+
+// TestReadRecordsSingleByteRecords verifies that Records() returns the expected
+// records when called with valid record start and end indexes, with single-byte
+// payloads.
+func TestReadRecordsSingleByteRecords(t *testing.T) {
+	records := []sebrecords.Record{{1}, {2}, {3}}
+
+	buf := bytes.NewBuffer(nil)
+	err := sebrecords.Write(buf, records)
+	require.NoError(t, err)
+
+	rdr := bytey.NewBuffer(buf.Bytes())
+	parser, err := sebrecords.Parse(rdr)
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		rdr              io.ReadSeeker
+		recordIndexStart uint32
+		recordIndexEnd   uint32
+		expected         []sebrecords.Record
+	}{
+		"first": {
+			recordIndexStart: 0,
+			recordIndexEnd:   1,
+			expected:         records[0:1],
+		},
+		"last": {
+			recordIndexStart: 2,
+			recordIndexEnd:   3,
+			expected:         records[2:3],
+		},
+		"first two": {
+			recordIndexStart: 0,
+			recordIndexEnd:   2,
+			expected:         records[0:2],
+		},
+		"first three": {
+			recordIndexStart: 0,
+			recordIndexEnd:   3,
+			expected:         records[0:3],
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.NoError(t, err)
+
+			// Test
+			got, err := parser.Records(test.recordIndexStart, test.recordIndexEnd)
+
+			// Verify
+			require.NoError(t, err)
+			require.Equal(t, test.expected, got)
+		})
+	}
+}
+
+// TestReadRecordsOutOfBounds verifies that ErrOutOfBounds is returned when attempting
+// to read a record that does not exist.
+func TestReadRecordsOutOfBounds(t *testing.T) {
+	const numRecords = 5
+	records := tester.MakeRandomRecords(numRecords)
+
+	buf := bytes.NewBuffer(nil)
+	err := sebrecords.Write(buf, records)
+	require.NoError(t, err)
+
+	rdr := bytey.NewBuffer(buf.Bytes())
+	parser, err := sebrecords.Parse(rdr)
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		indexStart uint32
+		indexEnd   uint32
+	}{
+		"start out of bounds": {
+			indexStart: numRecords,
+			indexEnd:   3,
+		},
+		"end out of bounds": {
+			indexStart: 0,
+			indexEnd:   numRecords + 1,
+		},
+		"both out of bounds": {
+			indexStart: numRecords,
+			indexEnd:   numRecords + 1,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Test
+			_, err = parser.Records(test.indexStart, test.indexEnd)
+
+			// Verify
+			require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		})
+	}
+}
+
+// TestReadRecordsStartIndexLargerThanEnd verifies that an error is returned
+// when the given start index is larger than the end index.
+func TestReadRecordsStartIndexLargerThanEnd(t *testing.T) {
+	const numRecords = 5
+	records := tester.MakeRandomRecords(numRecords)
+
+	buf := bytes.NewBuffer(nil)
+	err := sebrecords.Write(buf, records)
+	require.NoError(t, err)
+
+	rdr := bytey.NewBuffer(buf.Bytes())
+	parser, err := sebrecords.Parse(rdr)
+	require.NoError(t, err)
+	// Test
+	_, err = parser.Records(3, 1)
+
+	// Verify
+	require.Error(t, err)
+}
+
 // BenchmarkWrite evaluates how fast sebrecords.Write can serialzie and write a
 // recordbatch to an in-memory buffer.
 func BenchmarkWrite(b *testing.B) {
