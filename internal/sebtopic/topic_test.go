@@ -534,8 +534,9 @@ func TestTopicReadRecords(t *testing.T) {
 			"max bytes, 20":                  {offset: 10, maxRecords: 50, softMaxBytes: 20 * recordSize, expectedRecords: records[10:30]},
 			"max bytes, at least one record": {offset: 10, maxRecords: 50, softMaxBytes: 1, expectedRecords: records[10:11]},
 			"max bytes before max records":   {offset: 10, maxRecords: 4, softMaxBytes: 5 * recordSize, expectedRecords: records[10:14]},
-			"max records, offset into middle of batch": {offset: 13, maxRecords: 13, expectedRecords: records[13:26]},
-			"max bytes, offset into middle of batch":   {offset: 13, maxRecords: totalRecords, softMaxBytes: recordSize * 13, expectedRecords: records[13:26]},
+			"max records, offset into middle of batch":      {offset: 13, maxRecords: 13, expectedRecords: records[13:26]},
+			"max bytes, offset into middle of batch":        {offset: 13, maxRecords: totalRecords, softMaxBytes: recordSize * 13, expectedRecords: records[13:26]},
+			"last record of batch, not first of next batch": {offset: 9, maxRecords: 10, softMaxBytes: recordSize + 1, expectedRecords: records[9:10]},
 		}
 
 		for name, test := range tests {

@@ -137,7 +137,7 @@ func (rb *Parser) Records(recordIndexStart uint32, recordIndexEnd uint32) ([]Rec
 		return nil, fmt.Errorf("%d records available, end record index %d does not exist: %w", rb.Header.NumRecords, recordIndexEnd, seb.ErrOutOfBounds)
 	}
 	if recordIndexStart >= recordIndexEnd {
-		return nil, fmt.Errorf("recordIndexStart must be lower than recordIndexEnd")
+		return nil, fmt.Errorf("recordIndexStart (%d) must be lower than recordIndexEnd (%d)", recordIndexStart, recordIndexEnd)
 	}
 
 	recordOffsetStart := rb.recordIndex[recordIndexStart]

@@ -266,6 +266,11 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 			}
 		}
 
+		// we read enough records to satisfy the request
+		if numRecords == 0 {
+			break
+		}
+
 		newRecords, err := rb.Records(batchRecordIndex, batchRecordIndex+numRecords)
 		if err != nil {
 			return records, fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
