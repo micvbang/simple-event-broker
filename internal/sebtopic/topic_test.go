@@ -561,6 +561,72 @@ func TestTopicReadRecords(t *testing.T) {
 			"max bytes, 20":                  {offset: 10, maxRecords: 50, softMaxBytes: 20 * recordSize, expectedRecords: records[10:30]},
 			"max bytes, at least one record": {offset: 10, maxRecords: 50, softMaxBytes: 1, expectedRecords: records[10:11]},
 			"max bytes before max records":   {offset: 10, maxRecords: 4, softMaxBytes: 5 * recordSize, expectedRecords: records[10:14]},
+			"max records, offset into middle of batch": {offset: 13, maxRecords: 13, expectedRecords: records[13:26]},
+			"max bytes, offset into middle of batch":   {offset: 13, maxRecords: totalRecords, softMaxBytes: recordSize * 13, expectedRecords: records[13:26]},
+		}
+
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				// Act
+				gotRecords, err := topic.ReadRecords(context.Background(), test.offset, test.maxRecords, test.softMaxBytes)
+
+				// Assert
+				require.NoError(t, err)
+				require.Equal(t, test.expectedRecords, gotRecords)
+				require.ErrorIs(t, err, test.expectedErr)
+			})
+		}
+	})
+}
+
+// TestTopicReadRecordsRandomRecordSizes verifies that ReadRecords() returns the
+// expected records with the given offset, max number of records, and soft max
+// bytes, when the input record batches are randomly sized.
+func TestTopicReadRecordsRandomRecordSizes(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
+		topic, err := sebtopic.New(log, storage, "topic", cache)
+		require.NoError(t, err)
+
+		const (
+			recordsPerBatch = 10
+			batches         = 20
+			totalRecords    = recordsPerBatch * batches
+		)
+
+		records := []sebrecords.Record{}
+		recordSizes := []int{}
+		for i := 0; i < batches; i++ {
+			expectedRecordBatch := tester.MakeRandomRecords(recordsPerBatch)
+			_, err := topic.AddRecords(expectedRecordBatch)
+			require.NoError(t, err)
+
+			records = append(records, expectedRecordBatch...)
+		}
+
+		for _, record := range records {
+			recordSizes = append(recordSizes, len(record))
+		}
+
+		tests := map[string]struct {
+			offset          uint64
+			maxRecords      int
+			softMaxBytes    int
+			expectedRecords []sebrecords.Record
+			expectedErr     error
+		}{
+			"all":                            {offset: 0, maxRecords: totalRecords, expectedRecords: records},
+			"offset, first":                  {offset: 0, maxRecords: 1, expectedRecords: records[:1]},
+			"offset, last":                   {offset: totalRecords - 1, maxRecords: 1, expectedRecords: records[totalRecords-1:]},
+			"offset, mid":                    {offset: totalRecords / 2, maxRecords: 1, expectedRecords: records[totalRecords/2 : totalRecords/2+1]},
+			"max records, default":           {offset: 0, maxRecords: 0, expectedRecords: records[:10]},
+			"max records, 100":               {offset: 0, maxRecords: totalRecords + 100, expectedRecords: records},
+			"max records, 5000":              {offset: 20, maxRecords: 5000, expectedRecords: records[20:]},
+			"max records, 20":                {offset: 10, maxRecords: 20, expectedRecords: records[10:30]},
+			"max bytes, 20":                  {offset: 10, maxRecords: 50, softMaxBytes: slicey.Sum(recordSizes[10:30]), expectedRecords: records[10:30]},
+			"max bytes, at least one record": {offset: 10, maxRecords: 50, softMaxBytes: 1, expectedRecords: records[10:11]},
+			"max bytes before max records":   {offset: 10, maxRecords: 4, softMaxBytes: slicey.Sum(recordSizes[10:14]), expectedRecords: records[10:14]},
+			"max records, offset into middle of batch": {offset: 13, maxRecords: totalRecords, expectedRecords: records[13:]},
+			"max bytes, offset into middle of batch":   {offset: 13, maxRecords: totalRecords, softMaxBytes: slicey.Sum(recordSizes[13:30]), expectedRecords: records[13:30]},
 		}
 
 		for name, test := range tests {
@@ -701,8 +767,8 @@ func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *sebtopic.To
 	require.NoError(b, err)
 
 	const (
-		recordsPerBatch = 10
-		batches         = 5
+		recordsPerBatch = 100
+		batches         = 50
 		recordsTotal    = recordsPerBatch * batches
 	)
 
