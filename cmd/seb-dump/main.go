@@ -42,7 +42,7 @@ func main() {
 	}
 
 	for i := flags.startFromOffset; i < flags.startFromOffset+flags.numRecords; i++ {
-		record, err := topic.ReadRecord(uint64(i))
+		record, err := topic.ReadRecords(context.Background(), uint64(i), 1, 0)
 		if err != nil {
 			if errors.Is(err, seb.ErrOutOfBounds) {
 				fmt.Printf("out of bounds\n")

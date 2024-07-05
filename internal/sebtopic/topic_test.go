@@ -31,7 +31,7 @@ func TestStorageEmpty(t *testing.T) {
 		require.NoError(t, err)
 
 		// Test
-		_, err = s.ReadRecord(0)
+		_, err = s.ReadRecords(context.Background(), 0, 0, 0)
 
 		// Verify
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
@@ -55,17 +55,16 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 		tester.RequireOffsets(t, 0, numRecords, offsets)
 
 		// Verify
-		for offset, record := range records {
-			got, err := s.ReadRecord(uint64(offset))
-			require.NoError(t, err)
-			require.Equal(t, record, got)
-		}
+		gotRecords, err := s.ReadRecords(context.Background(), offsets[0], len(records), 0)
+		require.NoError(t, err)
+		require.Equal(t, records, gotRecords)
 
 		// Out of bounds reads
-		_, err = s.ReadRecord(uint64(len(records)))
+		outOfBoundsIndex := uint64(len(records))
+		_, err = s.ReadRecords(context.Background(), outOfBoundsIndex, 0, 0)
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
-		_, err = s.ReadRecord(uint64(len(records) + 5))
+		_, err = s.ReadRecords(context.Background(), outOfBoundsIndex+5, 0, 0)
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 	})
 }
@@ -165,14 +164,13 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 		tester.RequireOffsets(t, 5, 8, b2Offsets)
 
 		// Verify
-		for offset, record := range append(records1, records2...) {
-			got, err := s.ReadRecord(uint64(offset))
-			require.NoError(t, err)
-			require.Equal(t, record, got)
-		}
+		expectedRecords := append(records1, records2...)
+		gotRecords, err := s.ReadRecords(context.Background(), b1Offsets[0], len(expectedRecords), 0)
+		require.NoError(t, err)
+		require.Equal(t, expectedRecords, gotRecords)
 
 		// Out of bounds reads
-		_, err = s.ReadRecord(uint64(len(records1) + len(records2)))
+		_, err = s.ReadRecords(context.Background(), uint64(len(records1)+len(records2)), 0, 0)
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 	})
 }
@@ -217,19 +215,16 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify
-		offset := 0
+		offset := uint64(0)
 		for _, records := range recordsBatch {
-			for _, expected := range records {
-				got, err := s2.ReadRecord(uint64(offset))
-				require.NoError(t, err)
-				require.Equal(t, expected, got)
-
-				offset += 1
-			}
+			gotRecords, err := s2.ReadRecords(context.Background(), offset, len(records), 0)
+			require.NoError(t, err)
+			require.Equal(t, records, gotRecords)
+			offset += uint64(len(records))
 		}
 
 		// Out of bounds reads
-		_, err = s2.ReadRecord(uint64(totalRecords + 1))
+		_, err = s2.ReadRecords(context.Background(), uint64(totalRecords+1), 0, 0)
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 	})
 }
@@ -268,18 +263,13 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 		tester.RequireOffsets(t, 1, 2, offsets)
 
 		// Verify
-		offset := 0
-		allRecords := append(records1, records2...)
-		for _, record := range allRecords {
-			got, err := s2.ReadRecord(uint64(offset))
-			require.NoError(t, err)
-			require.Equal(t, record, got)
-
-			offset += 1
-		}
+		expectedRecords := append(records1, records2...)
+		gotRecords, err := s2.ReadRecords(context.Background(), 0, 0, 0)
+		require.NoError(t, err)
+		require.Equal(t, expectedRecords, gotRecords)
 
 		// Out of bounds reads
-		_, err = s2.ReadRecord(uint64(len(allRecords)))
+		_, err = s2.ReadRecords(context.Background(), uint64(len(expectedRecords)), 0, 0)
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 	})
 }
@@ -311,11 +301,9 @@ func TestStorageCacheWrite(t *testing.T) {
 		_, err = backingStorage.Reader(batchKey)
 		require.NoError(t, err)
 
-		for offset, expected := range expectedRecordBatch {
-			got, err := s.ReadRecord(uint64(offset))
-			require.NoError(t, err)
-			require.Equal(t, expected, got)
-		}
+		gotRecords, err := s.ReadRecords(context.Background(), offsets[0], 0, 0)
+		require.NoError(t, err)
+		require.Equal(t, expectedRecordBatch, gotRecords)
 	})
 }
 
@@ -341,14 +329,9 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 		require.NoError(t, err)
 		tester.WriteAndClose(t, wtr, []byte{})
 
-		for offset, expected := range expectedRecordBatch {
-			// Act
-			got, err := s.ReadRecord(uint64(offset))
-
-			// Assert
-			require.NoError(t, err)
-			require.Equal(t, expected, got)
-		}
+		gotRecords, err := s.ReadRecords(context.Background(), offsets[0], 0, 0)
+		require.NoError(t, err)
+		require.Equal(t, expectedRecordBatch, gotRecords)
 	})
 }
 
@@ -376,14 +359,9 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 		err = cacheStorage.Remove(sebtopic.RecordBatchKey(topicName, 0))
 		require.NoError(t, err)
 
-		for offset, expected := range expectedRecordBatch {
-			// Act
-			got, err := s.ReadRecord(uint64(offset))
-
-			// Assert
-			require.NoError(t, err)
-			require.Equal(t, expected, got)
-		}
+		gotRecords, err := s.ReadRecords(context.Background(), offsets[0], 0, 0)
+		require.NoError(t, err)
+		require.Equal(t, expectedRecordBatch, gotRecords)
 	})
 }
 
@@ -417,14 +395,9 @@ func TestStorageCompressFiles(t *testing.T) {
 		require.Equal(t, uint32(len(expectedRecordBatch)), parser.Header.NumRecords)
 
 		// can read records from compressed data
-		for offset, expected := range expectedRecordBatch {
-			// Act
-			got, err := s.ReadRecord(uint64(offset))
-
-			// Assert
-			require.NoError(t, err)
-			require.Equal(t, expected, got)
-		}
+		gotRecords, err := s.ReadRecords(context.Background(), offsets[0], 0, 0)
+		require.NoError(t, err)
+		require.Equal(t, expectedRecordBatch, gotRecords)
 	})
 }
 
@@ -726,28 +699,8 @@ func TestTopicMetadataEmptyTopic(t *testing.T) {
 	})
 }
 
-// BenchmarkTopicReadBatchUsingReadRecordRepeatedly benchmarks reading a record
-// batch using repeated calls to Topic.ReadRecord(). It's here to compare
-// against getting the same result doing a single call to Topic.ReadRecords().
-func BenchmarkTopicReadBatchUsingReadRecordRepeatedly(b *testing.B) {
-	benchmarkTopicReadRecordBatch(b, func(topic *sebtopic.Topic, offset uint64, numRecords int) ([]sebrecords.Record, error) {
-		records := make([]sebrecords.Record, numRecords)
-		for offset := uint64(0); offset < uint64(numRecords); offset++ {
-			record, err := topic.ReadRecord(offset)
-			if err != nil {
-				return records, err
-			}
-
-			records[int(offset)] = record
-		}
-
-		return records, nil
-	})
-}
-
 // BenchmarkTopicReadBatchUsingReadRecords benchmarks reading a record batch
-// using Topic.ReadRecords(). It's here to compare against getting the same
-// result doing repeated calls to Topic.ReadRecord().
+// using Topic.ReadRecords().
 func BenchmarkTopicReadBatchUsingReadRecords(b *testing.B) {
 	benchmarkTopicReadRecordBatch(b, func(topic *sebtopic.Topic, offset uint64, numRecords int) ([]sebrecords.Record, error) {
 		return topic.ReadRecords(context.Background(), offset, numRecords, 0)
@@ -790,26 +743,16 @@ func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *sebtopic.To
 	}
 }
 
-// BenchmarkTopicReadRecordUsingReadRecord benchmarks reading a single record
-// using Topic.ReadRecord(). It's here to compare against doing the same using
-// Topic.ReadRecords().
-func BenchmarkTopicReadRecordUsingReadRecord(b *testing.B) {
-	benchmarkTopicReadRecord(b, func(topic *sebtopic.Topic, offset uint64) (sebrecords.Record, error) {
-		return topic.ReadRecord(offset)
-	})
-}
-
 // BenchmarkTopicReadRecordUsingReadRecords benchmarks reading a single record
-// using Topic.ReadRecords(). It's here to compare against doing the same using
-// Topic.ReadRecord()
+// using Topic.ReadRecords().
 func BenchmarkTopicReadRecordUsingReadRecords(b *testing.B) {
-	benchmarkTopicReadRecord(b, func(topic *sebtopic.Topic, offset uint64) (sebrecords.Record, error) {
+	benchmarkTopicReadRecords(b, func(topic *sebtopic.Topic, offset uint64) (sebrecords.Record, error) {
 		records, err := topic.ReadRecords(context.Background(), offset, 1, 0)
 		return records[0], err
 	})
 }
 
-func benchmarkTopicReadRecord(b *testing.B, readRecord func(t *sebtopic.Topic, offset uint64) (sebrecords.Record, error)) {
+func benchmarkTopicReadRecords(b *testing.B, readRecord func(t *sebtopic.Topic, offset uint64) (sebrecords.Record, error)) {
 	diskCache, err := sebcache.NewDiskStorage(log, b.TempDir())
 	require.NoError(b, err)
 

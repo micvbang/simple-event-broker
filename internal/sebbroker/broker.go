@@ -107,7 +107,14 @@ func (s *Broker) GetRecord(topicName string, offset uint64) (sebrecords.Record, 
 		return nil, err
 	}
 
-	return tb.topic.ReadRecord(offset)
+	records, err := tb.topic.ReadRecords(context.Background(), offset, 1, 0)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
+	}
+	return records[0], nil
 }
 
 // CreateTopic creates a topic with the given name and default configuration.

@@ -147,7 +147,7 @@ func (s *Topic) AddRecords(records []sebrecords.Record) ([]uint64, error) {
 	}
 
 	// once Store() returns, the newly added records are visible in
-	// ReadRecord(). NOTE: recordBatchIDs must also have been updated before
+	// ReadRecords(). NOTE: recordBatchIDs must also have been updated before
 	// this is true.
 	s.mu.Lock()
 	s.recordBatchOffsets = append(s.recordBatchOffsets, recordBatchID)
@@ -182,27 +182,6 @@ func (s *Topic) AddRecords(records []sebrecords.Record) ([]uint64, error) {
 	}
 
 	return offsets, nil
-}
-
-func (s *Topic) ReadRecord(offset uint64) (sebrecords.Record, error) {
-	if offset >= s.nextOffset.Load() {
-		return nil, fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
-	}
-
-	recordBatchID := s.offsetGetRecordBatchID(offset)
-
-	rb, err := s.parseRecordBatch(recordBatchID)
-	if err != nil {
-		return nil, fmt.Errorf("parsing record batch: %w", err)
-	}
-	defer rb.Close()
-
-	batchOffset := uint32(offset - recordBatchID)
-	records, err := rb.Records(batchOffset, batchOffset+1)
-	if err != nil {
-		return nil, fmt.Errorf("record batch '%s': %w", s.recordBatchPath(recordBatchID), err)
-	}
-	return records[0], nil
 }
 
 // ReadRecords returns records starting from startOffset and until either:

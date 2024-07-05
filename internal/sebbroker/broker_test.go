@@ -245,6 +245,11 @@ func TestCreateTopicHappyPath(t *testing.T) {
 
 		_, err = s.AddRecord(topicName, sebrecords.Record("this is a record"))
 		require.NoError(t, err)
+
+		// ensure that GetRecord does not block waiting for record to become
+		// available
+		_, err = s.GetRecord(topicName, 2)
+		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 	})
 }
 
