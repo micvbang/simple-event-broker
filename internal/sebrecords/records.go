@@ -129,39 +129,6 @@ func Parse(rdr io.ReadSeekCloser) (*Parser, error) {
 	}, nil
 }
 
-func (rb *Parser) Record(recordIndex uint32) (Record, error) {
-	if recordIndex >= rb.Header.NumRecords {
-		return nil, fmt.Errorf("%d records available, record index %d does not exist: %w", rb.Header.NumRecords, recordIndex, seb.ErrOutOfBounds)
-	}
-
-	recordOffset := rb.recordIndex[recordIndex]
-
-	fileOffset := headerBytes + rb.Header.NumRecords*recordIndexSize + recordOffset
-	_, err := rb.rdr.Seek(int64(fileOffset), io.SeekStart)
-	if err != nil {
-		return nil, fmt.Errorf("seeking for record %d/%d: %w", recordIndex, len(rb.recordIndex), err)
-	}
-
-	// last record, read the remainder of the file
-	if recordIndex == uint32(len(rb.recordIndex)-1) {
-		return io.ReadAll(rb.rdr)
-	}
-
-	// read record bytes
-	size := rb.recordIndex[recordIndex+1] - recordOffset
-	record := make(Record, size)
-	n, err := io.ReadFull(rb.rdr, record)
-	if err != nil {
-		return nil, fmt.Errorf("reading record: %w", err)
-	}
-
-	if n != int(size) {
-		return nil, fmt.Errorf("reading record index %d: expected to read %d, read %d", recordIndex, size, n)
-	}
-
-	return record, nil
-}
-
 func (rb *Parser) Records(recordIndexStart uint32, recordIndexEnd uint32) ([]Record, error) {
 	if recordIndexStart >= rb.Header.NumRecords {
 		return nil, fmt.Errorf("%d records available, start record index %d does not exist: %w", rb.Header.NumRecords, recordIndexStart, seb.ErrOutOfBounds)

@@ -197,11 +197,12 @@ func (s *Topic) ReadRecord(offset uint64) (sebrecords.Record, error) {
 	}
 	defer rb.Close()
 
-	record, err := rb.Record(uint32(offset - recordBatchID))
+	batchOffset := uint32(offset - recordBatchID)
+	records, err := rb.Records(batchOffset, batchOffset+1)
 	if err != nil {
 		return nil, fmt.Errorf("record batch '%s': %w", s.recordBatchPath(recordBatchID), err)
 	}
-	return record, nil
+	return records[0], nil
 }
 
 // ReadRecords returns records starting from startOffset and until either:
