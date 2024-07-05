@@ -29,6 +29,11 @@ type Header struct {
 	Reserved    [14]byte
 }
 
+// Size returns the size of the header in bytes
+func (h Header) Size() uint32 {
+	return headerBytes + h.NumRecords*recordIndexSize
+}
+
 var UnixEpochUs = func() int64 {
 	return time.Now().UnixMicro()
 }
@@ -113,7 +118,7 @@ func Parse(rdr io.ReadSeekCloser) (*Parser, error) {
 		return nil, fmt.Errorf("seeking to end of file: %w", err)
 	}
 
-	recordIndex = append(recordIndex, uint32(fileSize)-(headerBytes+header.NumRecords*recordIndexSize))
+	recordIndex = append(recordIndex, uint32(fileSize)-header.Size())
 
 	recordSizes := make([]uint32, 0, len(recordIndex)-1)
 	for i := 0; i < len(recordIndex)-1; i++ {
@@ -143,7 +148,7 @@ func (rb *Parser) Records(recordIndexStart uint32, recordIndexEnd uint32) ([]Rec
 	recordOffsetStart := rb.recordIndex[recordIndexStart]
 	recordOffsetEnd := rb.recordIndex[recordIndexEnd]
 
-	fileOffsetStart := headerBytes + rb.Header.NumRecords*recordIndexSize + recordOffsetStart
+	fileOffsetStart := rb.Header.Size() + recordOffsetStart
 	_, err := rb.rdr.Seek(int64(fileOffsetStart), io.SeekStart)
 	if err != nil {
 		return nil, fmt.Errorf("seeking for record %d/%d: %w", recordIndexStart, len(rb.recordIndex), err)
