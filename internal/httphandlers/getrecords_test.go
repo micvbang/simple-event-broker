@@ -1,6 +1,7 @@
 package httphandlers_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -10,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/micvbang/go-helpy/uint64y"
+	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
@@ -287,6 +290,63 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 				require.Equal(t, expectedRecord, sebrecords.Record(gotRecord))
 				localOffset += 1
 			}
+		})
+	}
+}
+
+// TestGetRecordsErrors verifies that the expected status codes are returned
+// when GetRecords() returns certain errors.
+func TestGetRecordsErrors(t *testing.T) {
+	deps := &httphandlers.MockDependencies{}
+
+	server := tester.HTTPServer(t, tester.HTTPDependencies(deps))
+	defer server.Close()
+
+	tests := map[string]struct {
+		getRecordsErr error
+		statusCode    int
+	}{
+		"deadline exceeded": {
+			getRecordsErr: context.DeadlineExceeded,
+			statusCode:    http.StatusPartialContent,
+		},
+		"deadline cancelled": {
+			getRecordsErr: context.DeadlineExceeded,
+			statusCode:    http.StatusPartialContent,
+		},
+		"topic not found": {
+			getRecordsErr: seb.ErrTopicNotFound,
+			statusCode:    http.StatusNotFound,
+		},
+		"out of bounds": {
+			getRecordsErr: seb.ErrOutOfBounds,
+			statusCode:    http.StatusNotFound,
+		},
+		"nil": {
+			getRecordsErr: nil,
+			statusCode:    http.StatusOK,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			deps.GetRecordsMock = func(ctx context.Context, topicName string, offset uint64, maxRecords, softMaxBytes int) ([]sebrecords.Record, error) {
+				return nil, test.getRecordsErr
+			}
+
+			r := httptest.NewRequest("GET", "/records", nil)
+			r.Header.Add("Accept", "multipart/form-data")
+			httphelpers.AddQueryParams(r, map[string]string{
+				"topic-name": "some-topic",
+				"offset":     "0",
+				"timeout":    "5s",
+			})
+
+			// Act
+			response := server.DoWithAuth(r)
+
+			// Assert
+			require.Equal(t, test.statusCode, response.StatusCode)
 		})
 	}
 }

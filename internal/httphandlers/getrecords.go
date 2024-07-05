@@ -68,6 +68,7 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			WithField("max-records", maxRecords).
 			WithField("timeout", timeout)
 
+		var errIsContext bool
 		records, err := s.GetRecords(ctx, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
 			if errors.Is(err, seb.ErrTopicNotFound) {
@@ -84,23 +85,26 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 				return
 			}
 
-			if errors.Is(err, context.DeadlineExceeded) {
-				// there was no error, there is just no content
-				w.Header().Add("Content-Type", multipartFormData)
-
-				log.Debugf("deadline exceeded: %s", err)
-				w.WriteHeader(http.StatusPartialContent)
-				fmt.Fprintf(w, "deadline exceeded")
+			errIsContext = errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+			if !errIsContext {
+				log.Errorf("reading record: %s", err.Error())
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
 				return
 			}
 
-			log.Errorf("reading record: %s", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
+			// NOTE: continues from here!
 		}
 
 		mw := multipart.NewWriter(w)
 		w.Header().Set("Content-Type", mw.FormDataContentType())
+
+		if errIsContext {
+			log.Debugf("context ended: %s", err)
+			w.WriteHeader(http.StatusPartialContent)
+			return
+		}
+
 		for localOffset, record := range records {
 			fw, err := mw.CreateFormField(fmt.Sprintf("%d", offset+uint64(localOffset)))
 			if err != nil {
