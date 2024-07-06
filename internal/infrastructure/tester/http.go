@@ -17,7 +17,7 @@ import (
 const DefaultAPIKey = "api-key"
 
 type HTTPTestServer struct {
-	t      *testing.T
+	t      testing.TB
 	Server *httptest.Server
 
 	Mux    *http.ServeMux
@@ -50,7 +50,7 @@ func (s *HTTPTestServer) do(r *http.Request, addDefaultAuth bool) *http.Response
 }
 
 // HTTPServer starts an HTTP test server using the given config.
-func HTTPServer(t *testing.T, OptFns ...func(*Opts)) *HTTPTestServer {
+func HTTPServer(t testing.TB, OptFns ...func(*Opts)) *HTTPTestServer {
 	t.Helper()
 	opts := Opts{
 		APIKey:                DefaultAPIKey,

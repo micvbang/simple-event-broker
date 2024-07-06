@@ -12,7 +12,7 @@ type MockDependencies struct {
 	AddRecordMock  func(topicName string, record sebrecords.Record) (uint64, error)
 	AddRecordCalls []dependenciesAddRecordCall
 
-	AddRecordsMock  func(topicName string, records []sebrecords.Record) ([]uint64, error)
+	AddRecordsMock  func(topicName string, recordSizes []uint32, records []byte) ([]uint64, error)
 	AddRecordsCalls []dependenciesAddRecordsCall
 
 	GetRecordMock  func(topicName string, offset uint64) (sebrecords.Record, error)
@@ -50,24 +50,26 @@ func (_v *MockDependencies) AddRecord(topicName string, record sebrecords.Record
 }
 
 type dependenciesAddRecordsCall struct {
-	TopicName string
-	Records   []sebrecords.Record
+	TopicName   string
+	RecordSizes []uint32
+	Records     []byte
 
 	Out0 []uint64
 	Out1 error
 }
 
-func (_v *MockDependencies) AddRecords(topicName string, records []sebrecords.Record) ([]uint64, error) {
+func (_v *MockDependencies) AddRecords(topicName string, recordSizes []uint32, records []byte) ([]uint64, error) {
 	if _v.AddRecordsMock == nil {
 		msg := fmt.Sprintf("call to %T.AddRecords, but MockAddRecords is not set", _v)
 		panic(msg)
 	}
 
 	_v.AddRecordsCalls = append(_v.AddRecordsCalls, dependenciesAddRecordsCall{
-		TopicName: topicName,
-		Records:   records,
+		TopicName:   topicName,
+		RecordSizes: recordSizes,
+		Records:     records,
 	})
-	out0, out1 := _v.AddRecordsMock(topicName, records)
+	out0, out1 := _v.AddRecordsMock(topicName, recordSizes, records)
 	_v.AddRecordsCalls[len(_v.AddRecordsCalls)-1].Out0 = out0
 	_v.AddRecordsCalls[len(_v.AddRecordsCalls)-1].Out1 = out1
 	return out0, out1

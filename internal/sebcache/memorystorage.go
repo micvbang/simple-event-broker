@@ -56,7 +56,7 @@ func (mc *MemoryCache) Writer(key string) (io.WriteCloser, error) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
 
-	buf := bytey.NewBuffer(nil)
+	buf := bytey.NewBuffer(make([]byte, 0, 4096))
 	mc.items[key] = memoryCacheItem{
 		buf:        buf,
 		accessedAt: mc.now(),

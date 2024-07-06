@@ -119,8 +119,10 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 
 				// AddRecords
 				{
+					records := tester.MakeRandomRecords(5)
+					recordSizes, recordsRaw := tester.RecordsConcat(records)
 					// Act
-					_, err := broker.AddRecords("second", tester.MakeRandomRecords(5))
+					_, err := broker.AddRecords("second", recordSizes, recordsRaw)
 
 					// Assert
 					require.ErrorIs(t, err, test.err)
@@ -373,8 +375,10 @@ func TestAddRecordsHappyPath(t *testing.T) {
 		const topicName = "topic"
 		expectedRecords := tester.MakeRandomRecords(5)
 
+		recordSizes, recordsRaw := tester.RecordsConcat(expectedRecords)
+
 		// Act
-		_, err := broker.AddRecords(topicName, expectedRecords)
+		_, err := broker.AddRecords(topicName, recordSizes, recordsRaw)
 		require.NoError(t, err)
 
 		// Assert
@@ -467,8 +471,10 @@ func TestBrokerConcurrency(t *testing.T) {
 					expectedRecords := slicey.Random(recordsBatches)
 					topicName := slicey.Random(topicNames)
 
+					recordSizes, recordsRaw := tester.RecordsConcat(expectedRecords)
+
 					// Act
-					offsets, err := s.AddRecords(topicName, expectedRecords)
+					offsets, err := s.AddRecords(topicName, recordSizes, recordsRaw)
 					require.NoError(t, err)
 
 					// Assert

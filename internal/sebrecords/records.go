@@ -40,14 +40,12 @@ var UnixEpochUs = func() int64 {
 
 type Record []byte
 
-// Write writes a RecordBatch file to wtr, consisting of a header, a record
-// index, and the given records.
-func Write(wtr io.Writer, rb []Record) error {
+func Write(wtr io.Writer, recordSizes []uint32, allRecords []byte) error {
 	header := Header{
 		MagicBytes:  FileFormatMagicBytes,
 		UnixEpochUs: UnixEpochUs(),
 		Version:     FileFormatVersion,
-		NumRecords:  uint32(len(rb)),
+		NumRecords:  uint32(len(recordSizes)),
 	}
 
 	err := binary.Write(wtr, byteOrder, header)
@@ -55,12 +53,12 @@ func Write(wtr io.Writer, rb []Record) error {
 		return fmt.Errorf("writing header: %w", err)
 	}
 
-	recordIndexes := make([]uint32, len(rb))
+	recordIndexes := make([]uint32, len(recordSizes))
 
 	var recordIndex uint32
-	for i, record := range rb {
+	for i, recordSize := range recordSizes {
 		recordIndexes[i] = recordIndex
-		recordIndex += uint32(len(record))
+		recordIndex += recordSize
 	}
 
 	err = binary.Write(wtr, byteOrder, recordIndexes)
@@ -68,18 +66,11 @@ func Write(wtr io.Writer, rb []Record) error {
 		return fmt.Errorf("writing record indexes %d: %w", recordIndex, err)
 	}
 
-	// pack records into a single byte slice so that we can write them with
-	// a single call to binary.Write(). This is much faster even if the number
-	// if records is low (benchmarks with 8 rows were still ~2x speed-up!)
-	records := make([]byte, 0, recordIndex)
-	for _, record := range rb {
-		records = append(records, record...)
+	err = binary.Write(wtr, byteOrder, allRecords)
+	if err != nil {
+		return fmt.Errorf("writing records length %s: %w", sizey.FormatBytes(len(recordSizes)), err)
 	}
 
-	err = binary.Write(wtr, byteOrder, records)
-	if err != nil {
-		return fmt.Errorf("writing records length %s: %w", sizey.FormatBytes(len(rb)), err)
-	}
 	return nil
 }
 

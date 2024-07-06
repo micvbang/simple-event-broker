@@ -19,7 +19,7 @@ import (
 // io.Writer.
 func TestWrite(t *testing.T) {
 	const numRecords = 5
-	records := tester.MakeRandomRecords(numRecords)
+	recordSizes, records := tester.MakeRandomRecordsRaw(numRecords)
 
 	unixEpochUs := time.Now().UTC().UnixMicro()
 
@@ -31,12 +31,12 @@ func TestWrite(t *testing.T) {
 		MagicBytes:  sebrecords.FileFormatMagicBytes,
 		Version:     sebrecords.FileFormatVersion,
 		UnixEpochUs: unixEpochUs,
-		NumRecords:  uint32(len(records)),
+		NumRecords:  uint32(len(recordSizes)),
 	}
 	buf := bytes.NewBuffer(nil)
 
 	// Test
-	err := sebrecords.Write(buf, records)
+	err := sebrecords.Write(buf, recordSizes, records)
 	require.NoError(t, err)
 
 	// Verify
@@ -50,10 +50,10 @@ func TestWrite(t *testing.T) {
 	err = binary.Read(buf, binary.LittleEndian, &recordIndices)
 	require.NoError(t, err)
 
-	expectedLength := 0
-	for i := 0; i < numRecords; i++ {
-		require.EqualValues(t, int32(expectedLength), recordIndices[i])
-		expectedLength += len(records[i])
+	expectedLength := int32(0)
+	for i, recordSize := range recordSizes {
+		require.EqualValues(t, expectedLength, recordIndices[i])
+		expectedLength += int32(recordSize)
 	}
 }
 
@@ -61,9 +61,10 @@ func TestWrite(t *testing.T) {
 // called with valid record start and end indexes.
 func TestReadRecords(t *testing.T) {
 	records := tester.MakeRandomRecords(5)
+	recordSizes, rawRecords := tester.RecordsConcat(records)
 
 	buf := bytes.NewBuffer(nil)
-	err := sebrecords.Write(buf, records)
+	err := sebrecords.Write(buf, recordSizes, rawRecords)
 	require.NoError(t, err)
 
 	rdr := bytey.NewBuffer(buf.Bytes())
@@ -122,9 +123,10 @@ func TestReadRecords(t *testing.T) {
 // payloads.
 func TestReadRecordsSingleByteRecords(t *testing.T) {
 	records := []sebrecords.Record{{1}, {2}, {3}}
+	recordSizes, rawRecords := tester.RecordsConcat(records)
 
 	buf := bytes.NewBuffer(nil)
-	err := sebrecords.Write(buf, records)
+	err := sebrecords.Write(buf, recordSizes, rawRecords)
 	require.NoError(t, err)
 
 	rdr := bytey.NewBuffer(buf.Bytes())
@@ -178,9 +180,11 @@ func TestReadRecordsSingleByteRecords(t *testing.T) {
 func TestReadRecordsOutOfBounds(t *testing.T) {
 	const numRecords = 5
 	records := tester.MakeRandomRecords(numRecords)
+	recordSizes, rawRecords := tester.RecordsConcat(records)
 
 	buf := bytes.NewBuffer(nil)
-	err := sebrecords.Write(buf, records)
+	err := sebrecords.Write(buf, recordSizes, rawRecords)
+
 	require.NoError(t, err)
 
 	rdr := bytey.NewBuffer(buf.Bytes())
@@ -220,10 +224,10 @@ func TestReadRecordsOutOfBounds(t *testing.T) {
 // when the given start index is larger than the end index.
 func TestReadRecordsStartIndexLargerThanEnd(t *testing.T) {
 	const numRecords = 5
-	records := tester.MakeRandomRecords(numRecords)
+	recordSizes, records := tester.MakeRandomRecordsRaw(numRecords)
 
 	buf := bytes.NewBuffer(nil)
-	err := sebrecords.Write(buf, records)
+	err := sebrecords.Write(buf, recordSizes, records)
 	require.NoError(t, err)
 
 	rdr := bytey.NewBuffer(buf.Bytes())
@@ -236,10 +240,46 @@ func TestReadRecordsStartIndexLargerThanEnd(t *testing.T) {
 	require.Error(t, err)
 }
 
-// BenchmarkWrite evaluates how fast sebrecords.Write can serialzie and write a
-// recordbatch to an in-memory buffer.
-func BenchmarkWrite(b *testing.B) {
-	benchmarkWrite(b, sebrecords.Write)
+func BenchmarkWriteRaw(b *testing.B) {
+	benchmarkWriteRaw(b, sebrecords.Write)
+}
+
+func benchmarkWriteRaw(b *testing.B, f func(io.Writer, []uint32, []byte) error) {
+	type testCase struct {
+		recordSize int
+		records    int
+	}
+	tests := map[string]testCase{}
+	for records := 128; records < 512; records *= 2 {
+		for recordSize := 512; recordSize < 1024; recordSize *= 2 {
+			tests[fmt.Sprintf("%d, %d bytes", records, recordSize)] = testCase{
+				recordSize: recordSize, records: records,
+			}
+		}
+	}
+
+	for name, test := range tests {
+		b.Run(name, func(b *testing.B) {
+			genRecords := tester.MakeRandomRecordsSize(test.records, test.recordSize)
+			buf := bytes.NewBuffer(make([]byte, len(genRecords)*test.recordSize))
+
+			recordSizes := make([]uint32, len(genRecords))
+			records := make([]byte, 0, len(genRecords)*test.recordSize)
+			for i, record := range genRecords {
+				recordSizes[i] = uint32(len(record))
+				records = append(records, record...)
+			}
+
+			b.ResetTimer()
+			for range b.N {
+				err := f(buf, recordSizes, records)
+				if err != nil {
+					b.Fatalf("unexpected error: %s", err)
+				}
+			}
+		})
+
+	}
 }
 
 func benchmarkWrite(b *testing.B, f func(io.Writer, []sebrecords.Record) error) {
@@ -248,8 +288,8 @@ func benchmarkWrite(b *testing.B, f func(io.Writer, []sebrecords.Record) error) 
 		records    int
 	}
 	tests := map[string]testCase{}
-	for records := 8; records < 1024; records *= 2 {
-		for recordSize := 32; recordSize < 1024; recordSize *= 2 {
+	for records := 128; records < 512; records *= 2 {
+		for recordSize := 512; recordSize < 1024; recordSize *= 2 {
 			tests[fmt.Sprintf("%d, %d bytes", records, recordSize)] = testCase{
 				recordSize: recordSize, records: records,
 			}
@@ -270,5 +310,53 @@ func benchmarkWrite(b *testing.B, f func(io.Writer, []sebrecords.Record) error) 
 			}
 		})
 
+	}
+}
+
+func TestWriteRaw(t *testing.T) {
+	const numRecords = 5
+	records := tester.MakeRandomRecords(numRecords)
+
+	unixEpochUs := time.Now().UTC().UnixMicro()
+
+	sebrecords.UnixEpochUs = func() int64 {
+		return unixEpochUs
+	}
+
+	expectedHeader := sebrecords.Header{
+		MagicBytes:  sebrecords.FileFormatMagicBytes,
+		Version:     sebrecords.FileFormatVersion,
+		UnixEpochUs: unixEpochUs,
+		NumRecords:  uint32(len(records)),
+	}
+	buf := bytes.NewBuffer(nil)
+
+	allRecords := []byte{}
+	recordSizes := make([]uint32, len(records))
+
+	for i, record := range records {
+		allRecords = append(allRecords, record...)
+		recordSizes[i] = uint32(len(record))
+	}
+
+	// Test
+	err := sebrecords.Write(buf, recordSizes, allRecords)
+	require.NoError(t, err)
+
+	// Verify
+	gotHeader := sebrecords.Header{}
+	err = binary.Read(buf, binary.LittleEndian, &gotHeader)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, gotHeader)
+
+	recordIndices := [numRecords]int32{}
+	err = binary.Read(buf, binary.LittleEndian, &recordIndices)
+	require.NoError(t, err)
+
+	expectedLength := 0
+	for i := 0; i < numRecords; i++ {
+		require.EqualValues(t, int32(expectedLength), recordIndices[i])
+		expectedLength += len(records[i])
 	}
 }

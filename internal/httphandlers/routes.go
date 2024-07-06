@@ -12,6 +12,7 @@ import (
 //go:generate mocky -i Dependencies
 type Dependencies interface {
 	RecordAdder
+	// RecordsAdder
 	RecordsAdder
 	RecordGetter
 	RecordsGetter

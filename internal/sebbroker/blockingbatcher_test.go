@@ -34,12 +34,12 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 		return ctx
 	}
 
-	persistRecordBatch := func(rb []sebrecords.Record) ([]uint64, error) {
+	persistRecordBatch := func(recordSizes []uint32, records []byte) ([]uint64, error) {
 		if returnedErr != nil {
 			return nil, returnedErr
 		}
 
-		return make([]uint64, len(rb)), returnedErr
+		return make([]uint64, len(recordSizes)), returnedErr
 	}
 
 	tests := map[string]struct {
@@ -81,7 +81,7 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 
 	blockPersistRecordBatch := make(chan struct{})
 	returnedErr := fmt.Errorf("all is on fire!")
-	persistRecordBatch := func(rb []sebrecords.Record) ([]uint64, error) {
+	persistRecordBatch := func(recordSizes []uint32, records []byte) ([]uint64, error) {
 		<-blockPersistRecordBatch
 		return nil, returnedErr
 	}
@@ -141,8 +141,8 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 		return ctx
 	}
 
-	persistRecordBatch := func(rb []sebrecords.Record) ([]uint64, error) {
-		return make([]uint64, len(rb)), nil
+	persistRecordBatch := func(recordSizes []uint32, records []byte) ([]uint64, error) {
+		return make([]uint64, len(recordSizes)), nil
 	}
 
 	const bytesSoftMax = 10
@@ -189,8 +189,8 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 // soft max bytes. Additionally, it verifies that a _single_ record with size
 // larger than the payload is allowed.
 func TestBlockingBatcherSoftMaxSingleRecord(t *testing.T) {
-	persistRecordBatch := func(rb []sebrecords.Record) ([]uint64, error) {
-		return make([]uint64, len(rb)), nil
+	persistRecordBatch := func(recordSizes []uint32, records []byte) ([]uint64, error) {
+		return make([]uint64, len(recordSizes)), nil
 	}
 
 	const bytesSoftMax = 32
@@ -207,7 +207,8 @@ func TestBlockingBatcherSoftMaxSingleRecord(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			records := tester.MakeRandomRecordsSize(test.records, test.recordSize)
-			_, err := batcher.AddRecords(records)
+			recordSizes, recordsRaw := tester.RecordsConcat(records)
+			_, err := batcher.AddRecords(recordSizes, recordsRaw)
 			require.ErrorIs(t, err, test.expectedErr)
 		})
 	}
@@ -259,9 +260,10 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatche
 				}
 
 				expectedRecords := slicey.Random(recordsBatches)
+				recordSizes, recordsRaw := tester.RecordsConcat(expectedRecords)
 
 				// Act
-				offsets, err := batcher.AddRecords(expectedRecords)
+				offsets, err := batcher.AddRecords(recordSizes, recordsRaw)
 				require.NoError(t, err)
 
 				// Assert

@@ -48,14 +48,15 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 
 		const numRecords = 5
 		records := tester.MakeRandomRecords(numRecords)
+		recordSizes, rawRecords := tester.RecordsConcat(records)
 
 		// Test
-		offsets, err := s.AddRecords(records)
+		offsets, err := s.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 0, numRecords, offsets)
 
 		// Verify
-		gotRecords, err := s.ReadRecords(context.Background(), offsets[0], len(records), 0)
+		gotRecords, err := s.ReadRecords(context.Background(), offsets[0], len(recordSizes), 0)
 		require.NoError(t, err)
 		require.Equal(t, records, gotRecords)
 
@@ -93,10 +94,10 @@ func TestStorageWriteRecordsBackingStorageWriteFails(t *testing.T) {
 		s, err := sebtopic.New(log, backingStorage, "mytopic", cache, sebtopic.WithCompress(nil))
 		require.NoError(t, err)
 
-		records := tester.MakeRandomRecords(5)
+		recordSizes, records := tester.MakeRandomRecordsRaw(5)
 
 		// Act
-		offsets, err := s.AddRecords(records)
+		offsets, err := s.AddRecords(recordSizes, records)
 
 		// Assert
 		require.ErrorIs(t, err, expectedErr)
@@ -131,10 +132,10 @@ func TestStorageWriteRecordsBackingStorageCloseFails(t *testing.T) {
 		s, err := sebtopic.New(log, backingStorage, "mytopic", cache, sebtopic.WithCompress(nil))
 		require.NoError(t, err)
 
-		records := tester.MakeRandomRecords(5)
+		recordSizes, records := tester.MakeRandomRecordsRaw(5)
 
 		// Act
-		offsets, err := s.AddRecords(records)
+		offsets, err := s.AddRecords(recordSizes, records)
 
 		// Assert
 		require.ErrorIs(t, err, expectedErr)
@@ -152,14 +153,16 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 		require.NoError(t, err)
 
 		records1 := tester.MakeRandomRecords(5)
+		recordSizes1, rawRecords1 := tester.RecordsConcat(records1)
 		records2 := tester.MakeRandomRecords(3)
+		recordSizes2, rawRecords2 := tester.RecordsConcat(records2)
 
 		// Test
-		b1Offsets, err := s.AddRecords(records1)
+		b1Offsets, err := s.AddRecords(recordSizes1, rawRecords1)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 0, 5, b1Offsets)
 
-		b2Offsets, err := s.AddRecords(records2)
+		b2Offsets, err := s.AddRecords(recordSizes2, rawRecords2)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 5, 8, b2Offsets)
 
@@ -198,8 +201,9 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 			batchStartID := uint64(0)
 			for _, records := range recordsBatch {
 				batchEndID := batchStartID + uint64(len(records))
+				recordSizes, rawRecords := tester.RecordsConcat(records)
 
-				offsets, err := s1.AddRecords(records)
+				offsets, err := s1.AddRecords(recordSizes, rawRecords)
 				require.NoError(t, err)
 				tester.RequireOffsets(t, batchStartID, batchEndID, offsets)
 
@@ -245,7 +249,8 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 			s1, err := sebtopic.New(log, topicStorage, topicName, cache)
 			require.NoError(t, err)
 
-			offsets, err := s1.AddRecords(records1)
+			recordSizes, rawRecords := tester.RecordsConcat(records1)
+			offsets, err := s1.AddRecords(recordSizes, rawRecords)
 			require.NoError(t, err)
 			tester.RequireOffsets(t, 0, 1, offsets)
 		}
@@ -258,7 +263,8 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 
 		// Test
 		records2 := tester.MakeRandomRecords(1)
-		offsets, err := s2.AddRecords(records2)
+		recordSizes, rawRecords := tester.RecordsConcat(records2)
+		offsets, err := s2.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 1, 2, offsets)
 
@@ -286,9 +292,10 @@ func TestStorageCacheWrite(t *testing.T) {
 		batchKey := sebtopic.RecordBatchKey(topicName, 0)
 		const numRecords = 5
 		expectedRecordBatch := tester.MakeRandomRecords(numRecords)
+		recordSizes, rawRecords := tester.RecordsConcat(expectedRecordBatch)
 
 		// Act
-		offsets, err := s.AddRecords(expectedRecordBatch)
+		offsets, err := s.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 0, numRecords, offsets)
 
@@ -318,7 +325,8 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 
 		const numRecords = 5
 		expectedRecordBatch := tester.MakeRandomRecords(numRecords)
-		offsets, err := s.AddRecords(expectedRecordBatch)
+		recordSizes, rawRecords := tester.RecordsConcat(expectedRecordBatch)
+		offsets, err := s.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 0, numRecords, offsets)
 
@@ -350,7 +358,8 @@ func TestStorageCacheReadFileNotInCache(t *testing.T) {
 
 		const numRecords = 5
 		expectedRecordBatch := tester.MakeRandomRecords(numRecords)
-		offsets, err := s.AddRecords(expectedRecordBatch)
+		recordSizes, rawRecords := tester.RecordsConcat(expectedRecordBatch)
+		offsets, err := s.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 0, numRecords, offsets)
 
@@ -377,7 +386,8 @@ func TestStorageCompressFiles(t *testing.T) {
 
 		const numRecords = 5
 		expectedRecordBatch := tester.MakeRandomRecords(numRecords)
-		offsets, err := s.AddRecords(expectedRecordBatch)
+		recordSizes, rawRecords := tester.RecordsConcat(expectedRecordBatch)
+		offsets, err := s.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 0, numRecords, offsets)
 
@@ -414,12 +424,12 @@ func TestTopicEndOffset(t *testing.T) {
 
 		nextOffset := uint64(0)
 		for range 10 {
-			records := tester.MakeRandomRecords(1 + inty.RandomN(10))
-			offsets, err := s.AddRecords(records)
+			recordSizes, rawRecords := tester.MakeRandomRecordsRaw(1 + inty.RandomN(10))
+			offsets, err := s.AddRecords(recordSizes, rawRecords)
 			require.NoError(t, err)
-			tester.RequireOffsets(t, nextOffset, nextOffset+uint64(len(records)), offsets)
+			tester.RequireOffsets(t, nextOffset, nextOffset+uint64(len(recordSizes)), offsets)
 
-			nextOffset += uint64(len(records))
+			nextOffset += uint64(len(recordSizes))
 
 			// Act, Assert
 			offset := s.NextOffset()
@@ -443,7 +453,8 @@ func TestTopicOffsetCond(t *testing.T) {
 		}()
 
 		// Wait() is waiting for offset 100, this will add offset 0
-		_, err = s.AddRecords(tester.MakeRandomRecords(1))
+		recordSizes, rawRecords := tester.MakeRandomRecordsRaw(1)
+		_, err = s.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 
 		time.Sleep(25 * time.Millisecond)
@@ -454,7 +465,8 @@ func TestTopicOffsetCond(t *testing.T) {
 		}
 
 		// Act
-		_, err = s.AddRecords(tester.MakeRandomRecords(100))
+		recordSizes, rawRecords = tester.MakeRandomRecordsRaw(100)
+		_, err = s.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 
 		// Assert
@@ -510,7 +522,8 @@ func TestTopicReadRecords(t *testing.T) {
 		records := []sebrecords.Record{}
 		for i := 0; i < batches; i++ {
 			expectedRecordBatch := tester.MakeRandomRecordsSize(recordsPerBatch, recordSize)
-			_, err := topic.AddRecords(expectedRecordBatch)
+			recordSizes, rawRecords := tester.RecordsConcat(expectedRecordBatch)
+			_, err := topic.AddRecords(recordSizes, rawRecords)
 			require.NoError(t, err)
 
 			records = append(records, expectedRecordBatch...)
@@ -571,7 +584,8 @@ func TestTopicReadRecordsRandomRecordSizes(t *testing.T) {
 		recordSizes := []int{}
 		for i := 0; i < batches; i++ {
 			expectedRecordBatch := tester.MakeRandomRecords(recordsPerBatch)
-			_, err := topic.AddRecords(expectedRecordBatch)
+			recordSizes, recordsRaw := tester.RecordsConcat(expectedRecordBatch)
+			_, err := topic.AddRecords(recordSizes, recordsRaw)
 			require.NoError(t, err)
 
 			records = append(records, expectedRecordBatch...)
@@ -624,8 +638,8 @@ func TestTopicReadRecordsOutOfBounds(t *testing.T) {
 		topic, err := sebtopic.New(log, storage, "topic", cache)
 		require.NoError(t, err)
 
-		expectedRecordBatch := tester.MakeRandomRecords(10)
-		_, err = topic.AddRecords(expectedRecordBatch)
+		recordSizes, rawRecords := tester.MakeRandomRecordsRaw(10)
+		_, err = topic.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 
 		// Act
@@ -644,15 +658,15 @@ func TestTopicReadRecordsContextExpired(t *testing.T) {
 		topic, err := sebtopic.New(log, storage, "topic", cache)
 		require.NoError(t, err)
 
-		expectedRecordBatch := tester.MakeRandomRecords(10)
-		_, err = topic.AddRecords(expectedRecordBatch)
+		recordSizes, rawRecords := tester.MakeRandomRecordsRaw(10)
+		_, err = topic.AddRecords(recordSizes, rawRecords)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // NOTE: canceled immediately
 
 		// Act
-		_, err = topic.ReadRecords(ctx, 0, len(expectedRecordBatch), 0)
+		_, err = topic.ReadRecords(ctx, 0, len(recordSizes), 0)
 
 		// Assert
 		require.ErrorIs(t, err, context.Canceled)
@@ -666,8 +680,8 @@ func TestTopicMetadata(t *testing.T) {
 		require.NoError(t, err)
 
 		for i := 1; i <= 5; i++ {
-			records := tester.MakeRandomRecords(32)
-			_, err = topic.AddRecords(records)
+			recordSizes, rawRecords := tester.MakeRandomRecordsRaw(32)
+			_, err = topic.AddRecords(recordSizes, rawRecords)
 			require.NoError(t, err)
 
 			// Act
@@ -676,7 +690,7 @@ func TestTopicMetadata(t *testing.T) {
 			t0 := time.Now()
 
 			// Assert
-			expectedNextOffset := uint64(i * len(records))
+			expectedNextOffset := uint64(i * len(recordSizes))
 			require.Equal(t, expectedNextOffset, gotMetadata.NextOffset)
 			require.True(t, timey.DiffEqual(5*time.Millisecond, t0, gotMetadata.LatestCommitAt))
 		}
@@ -727,8 +741,8 @@ func benchmarkTopicReadRecordBatch(b *testing.B, readRecords func(t *sebtopic.To
 	)
 
 	for i := 0; i < batches; i++ {
-		expectedRecordBatch := tester.MakeRandomRecords(recordsPerBatch)
-		_, err := topic.AddRecords(expectedRecordBatch)
+		recordSizes, rawRecords := tester.MakeRandomRecordsRaw(recordsPerBatch)
+		_, err := topic.AddRecords(recordSizes, rawRecords)
 		require.NoError(b, err)
 	}
 
@@ -766,7 +780,8 @@ func benchmarkTopicReadRecords(b *testing.B, readRecord func(t *sebtopic.Topic, 
 	require.NoError(b, err)
 
 	expectedRecordBatch := tester.MakeRandomRecords(10)
-	topic.AddRecords(expectedRecordBatch)
+	recordSizes, records := tester.RecordsConcat(expectedRecordBatch)
+	topic.AddRecords(recordSizes, records)
 
 	const offset = 5
 

@@ -16,7 +16,7 @@ import (
 
 type RecordBatcher interface {
 	AddRecord(sebrecords.Record) (uint64, error)
-	AddRecords([]sebrecords.Record) ([]uint64, error)
+	AddRecords(recordSizes []uint32, records []byte) ([]uint64, error)
 }
 
 type topicBatcher struct {
@@ -86,13 +86,13 @@ func (s *Broker) AddRecord(topicName string, record sebrecords.Record) (uint64, 
 
 // AddRecords adds record to topicName, using the configured batcher. It returns
 // only once data has been committed to topic storage.
-func (s *Broker) AddRecords(topicName string, records []sebrecords.Record) ([]uint64, error) {
+func (s *Broker) AddRecords(topicName string, recordSizes []uint32, records []byte) ([]uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
 	}
 
-	offsets, err := tb.batcher.AddRecords(records)
+	offsets, err := tb.batcher.AddRecords(recordSizes, records)
 	if err != nil {
 		return nil, fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
 	}
@@ -221,14 +221,14 @@ func (s *Broker) makeTopicBatcher(topicName string) (topicBatcher, error) {
 
 func (s *Broker) getTopicBatcher(topicName string) (topicBatcher, error) {
 	var err error
-	log := s.log.WithField("topicName", topicName)
+	// log := s.log.WithField("topicName", topicName)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	tb, ok := s.topicBatchers[topicName]
 	if !ok {
-		log.Debugf("creating new topic batcher")
+		// log.Debugf("creating new topic batcher")
 		if !s.autoCreateTopics {
 			return topicBatcher{}, fmt.Errorf("%w: '%s'", seb.ErrTopicNotFound, topicName)
 		}

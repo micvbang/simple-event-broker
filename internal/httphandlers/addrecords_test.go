@@ -3,9 +3,6 @@ package httphandlers_test
 import (
 	"bytes"
 	"context"
-	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +11,6 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,6 +23,11 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	defer server.Close()
 
 	expectedRecords := tester.MakeRandomRecords(32)
+	sendRecords := [][]byte{}
+	for _, record := range expectedRecords {
+		sendRecords = append(sendRecords, record)
+	}
+
 	expectedOffsets := make([]uint64, 32)
 	for i := 0; i < 32; i++ {
 		expectedOffsets[i] = uint64(i)
@@ -34,7 +35,8 @@ func TestAddRecordsHappyPath(t *testing.T) {
 
 	buf := bytes.NewBuffer(nil)
 	r := httptest.NewRequest("POST", "/records", buf)
-	contentType := writeMultipartFormDataPayload(t, buf, expectedRecords)
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, sendRecords)
+	require.NoError(t, err)
 
 	r.Header.Add("Content-Type", contentType)
 	httphelpers.AddQueryParams(r, map[string]string{
@@ -49,7 +51,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	require.Equal(t, "application/json", response.Header.Get("Content-Type"))
 
 	output := httphandlers.AddRecordsOutput{}
-	err := httphelpers.ParseJSONAndClose(response.Body, &output)
+	err = httphelpers.ParseJSONAndClose(response.Body, &output)
 	require.NoError(t, err)
 	require.Equal(t, expectedOffsets, output.Offsets)
 
@@ -64,19 +66,21 @@ func TestAddRecordsHappyPath(t *testing.T) {
 // dependency.
 func TestAddRecordsPayloadTooLarge(t *testing.T) {
 	deps := &httphandlers.MockDependencies{}
-	deps.AddRecordsMock = func(topicName string, records []sebrecords.Record) ([]uint64, error) {
+	deps.AddRecordsMock = func(topicName string, recordSizes []uint32, records []byte) ([]uint64, error) {
 		return nil, seb.ErrPayloadTooLarge
 	}
 
 	server := tester.HTTPServer(t, tester.HTTPDependencies(deps))
 	defer server.Close()
 
-	records := tester.MakeRandomRecords(1)
+	records := [][]byte{{1}}
 
 	buf := bytes.NewBuffer(nil)
 	r := httptest.NewRequest("POST", "/records", buf)
 
-	contentType := writeMultipartFormDataPayload(t, buf, records)
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, records)
+	require.NoError(t, err)
+
 	r.Header.Add("Content-Type", contentType)
 	httphelpers.AddQueryParams(r, map[string]string{
 		"topic-name": "topic",
@@ -104,17 +108,33 @@ func TestAddRecordsMissingTopic(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, response.StatusCode)
 }
 
-func writeMultipartFormDataPayload(t *testing.T, w io.Writer, records []sebrecords.Record) string {
-	mw := multipart.NewWriter(w)
-	for i, record := range records {
-		fw, err := mw.CreateFormField(fmt.Sprintf("some-name-%d", i))
-		require.NoError(t, err)
+func BenchmarkAddRecords(b *testing.B) {
+	const topicName = "topic"
 
-		_, err = fw.Write(record)
-		require.NoError(t, err)
+	server := tester.HTTPServer(b)
+	defer server.Close()
+
+	records := [][]byte{}
+	for _, record := range tester.MakeRandomRecords(32) {
+		records = append(records, record)
 	}
-	err := mw.Close()
-	require.NoError(t, err)
 
-	return mw.FormDataContentType()
+	buf := bytes.NewBuffer(nil)
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, records)
+	require.NoError(b, err)
+
+	bs := buf.Bytes()
+
+	b.ResetTimer()
+
+	for range b.N {
+		r := httptest.NewRequest("POST", "/records", bytes.NewBuffer(bs))
+		r.Header.Add("Content-Type", contentType)
+		httphelpers.AddQueryParams(r, map[string]string{
+			"topic-name": topicName,
+		})
+
+		server.DoWithAuth(r)
+	}
+
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
@@ -35,9 +34,9 @@ func NewBlockingBatcherFactory(blockTime time.Duration, batchBytesMax int) batch
 	return func(log logger.Logger, t *sebtopic.Topic) RecordBatcher {
 		log = log.Name("blocking batcher")
 
-		persist := func(b []sebrecords.Record) ([]uint64, error) {
+		persist := func(recordSizes []uint32, records []byte) ([]uint64, error) {
 			t0 := time.Now()
-			offsets, err := t.AddRecords(b)
+			offsets, err := t.AddRecords(recordSizes, records)
 			log.Infof("persisting to storage: %v", time.Since(t0))
 			return offsets, err
 		}

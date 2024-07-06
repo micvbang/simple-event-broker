@@ -1,6 +1,8 @@
 package httphandlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -8,19 +10,24 @@ import (
 	"mime/multipart"
 	"net/http"
 
+	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/syncy"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 type RecordsAdder interface {
-	AddRecords(topicName string, records []sebrecords.Record) ([]uint64, error)
+	AddRecords(topicName string, recordSizes []uint32, records []byte) ([]uint64, error)
 }
 
 type AddRecordsOutput struct {
 	Offsets []uint64 `json:"offsets"`
 }
+
+var bufPool = syncy.NewPool(func() *bytes.Buffer {
+	return bytes.NewBuffer(make([]byte, 5*sizey.MB))
+})
 
 func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -42,21 +49,45 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 			return
 		}
 
-		records := make([]sebrecords.Record, 0, 256)
+		var fileSizes []uint32
+		var records []byte
 
 		mr := multipart.NewReader(r.Body, mediaParams["boundary"])
 		for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
-			record, err := io.ReadAll(part)
+			buf := bufPool.Get()
+			buf.Reset()
+			defer bufPool.Put(buf)
+
+			_, err = io.Copy(buf, part)
 			if err != nil {
 				log.Errorf("reading parts of multipart/form-data: %s", err)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 			part.Close()
-			records = append(records, record)
+
+			switch part.FormName() {
+			case httphelpers.RecordsMultipartSizesKey:
+				err = json.Unmarshal(buf.Bytes(), &fileSizes)
+				if err != nil {
+					log.Errorf("reading sizes: %v", err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+
+			case httphelpers.RecordsMultipartRecordsKey:
+				records = buf.Bytes()
+
+			default:
+				log.Errorf("unexpected form field %s", part.FormName())
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 		}
 
-		offsets, err := s.AddRecords(topicName, records)
+		// TODO: we must verify that both sizes and records have been given
+
+		offsets, err := s.AddRecords(topicName, fileSizes, records)
 		if err != nil {
 			if errors.Is(err, seb.ErrPayloadTooLarge) {
 				w.WriteHeader(http.StatusRequestEntityTooLarge)

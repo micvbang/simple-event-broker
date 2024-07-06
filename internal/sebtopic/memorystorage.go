@@ -29,7 +29,7 @@ func (ms *MemoryTopicStorage) Writer(key string) (io.WriteCloser, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	buf := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(make([]byte, 0, 4096))
 	ms.storage[key] = buf
 
 	return nops.NopWriteCloser(buf), nil
