@@ -106,6 +106,19 @@ var benchmarkCmd = &cobra.Command{
 			fmt.Printf("%s\n\n", runs[runID].String())
 		}
 
+		fmt.Printf("Config:\n")
+		fmt.Printf("Num workers:\t\t%d\n", flags.numWorkers)
+		fmt.Printf("Num batches:\t\t%d\n", flags.numBatches)
+		fmt.Printf("Num records/batch:\t%d\n", flags.numRecordsPerBatch)
+		fmt.Printf("Record size:\t\t%s (%dB)\n", sizey.FormatBytes(flags.recordSize), flags.recordSize)
+		fmt.Printf("Total bytes:\t\t%s (%dB)\n", sizey.FormatBytes(totalBytes), totalBytes)
+
+		if flags.localBroker {
+			fmt.Printf("Batch block time:\t%s\n", flags.batchBlockTime)
+			fmt.Printf("Batch bytes max:\t%s (%d)\n", sizey.FormatBytes(flags.batchBytesMax), flags.batchBytesMax)
+		}
+		fmt.Printf("\n")
+
 		fmt.Println("Stats:")
 		runtimes := slicey.Map(runs, func(v benchmarkStats) float64 {
 			return v.elapsed.Seconds()
