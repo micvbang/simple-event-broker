@@ -36,6 +36,7 @@ func NewRecordClient(baseURL string, apiKey string) (*RecordClient, error) {
 		client: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     time.Second,
 			},
 		},
 		baseURL: bURL,
