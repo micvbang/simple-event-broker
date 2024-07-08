@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path"
+	"runtime"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -16,6 +18,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/spf13/cobra"
+	"golang.org/x/net/netutil"
 )
 
 var serveFlags ServeFlags
@@ -29,6 +32,7 @@ func init() {
 	fs.StringVar(&serveFlags.httpListenAddress, "http-address", "127.0.0.1", "Address to listen for HTTP traffic")
 	fs.IntVar(&serveFlags.httpListenPort, "http-port", 51313, "Port to listen for HTTP traffic")
 	fs.StringVar(&serveFlags.httpAPIKey, "http-api-key", "api-key", "API key for authorizing HTTP requests (this is not safe and needs to be changed)")
+	fs.IntVar(&serveFlags.httpConnectionsMax, "http-connections", runtime.NumCPU()*64, "Maximum number of concurrent incoming HTTP connections to be handled")
 
 	// http debug
 	fs.BoolVar(&serveFlags.httpEnableDebug, "http-debug-enable", false, "Whether to enable DEBUG endpoints")
@@ -82,7 +86,15 @@ var serveCmd = &cobra.Command{
 		go func() {
 			addr := fmt.Sprintf("%s:%d", flags.httpListenAddress, flags.httpListenPort)
 			log.Infof("Listening on %s", addr)
-			errs <- http.ListenAndServe(addr, mux)
+
+			l, err := net.Listen("tcp", addr)
+			if err != nil {
+				errs <- fmt.Errorf("listening on %s: %w", addr, err)
+			}
+			defer l.Close()
+
+			l = netutil.LimitListener(l, flags.httpConnectionsMax)
+			errs <- http.Serve(l, mux)
 		}()
 
 		if flags.httpEnableDebug {
@@ -120,9 +132,10 @@ type ServeFlags struct {
 
 	s3BucketName string
 
-	httpListenAddress string
-	httpListenPort    int
-	httpAPIKey        string
+	httpListenAddress  string
+	httpListenPort     int
+	httpConnectionsMax int
+	httpAPIKey         string
 
 	httpEnableDebug        bool
 	httpDebugListenAddress string
