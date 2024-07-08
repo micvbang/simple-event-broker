@@ -203,6 +203,12 @@ func (c *RecordClient) GetRecords(topicName string, offset uint64, input GetReco
 	return records, nil
 }
 
+// CloseIdleConnections closes unused, idle connections on the underlying
+// http.Client.
+func (c *RecordClient) CloseIdleConnections() {
+	c.client.CloseIdleConnections()
+}
+
 func (c *RecordClient) statusCode(res *http.Response) error {
 	if res.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrNotAuthorized)
