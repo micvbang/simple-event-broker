@@ -51,6 +51,7 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			part.Close()
 			records = append(records, record)
 		}
 
