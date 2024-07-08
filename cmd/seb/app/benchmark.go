@@ -31,7 +31,9 @@ func init() {
 
 	fs.IntVarP(&benchmarkFlags.numRuns, "runs", "r", 1, "Number of times to run the benchmark")
 	fs.IntVarP(&benchmarkFlags.numWorkers, "workers", "w", runtime.NumCPU()*2, "Number of workers to add data")
-	fs.BoolVar(&benchmarkFlags.localBroker, "local-broker", true, "Whether to benchmark against a dedicated broker being started for this benchmark")
+	fs.BoolVarP(&benchmarkFlags.localBroker, "local-broker", "l", true, "Whether to start a broker only for these benchmarks")
+	fs.StringVar(&benchmarkFlags.remoteBrokerAddress, "remote-broker-address", "http://localhost:51313", "Address of remote broker to connect to instead of starting local broker")
+	fs.StringVar(&benchmarkFlags.remoteBrokerAPIKey, "remote-broker-api-key", "api-key", "API key to use for remote broker")
 
 	fs.IntVar(&benchmarkFlags.numBatches, "batches", 4096, "Number of records to generate")
 	fs.IntVar(&benchmarkFlags.recordSize, "record-size", 1024, "Size of records in bytes")
@@ -68,7 +70,10 @@ var benchmarkCmd = &cobra.Command{
 		totalBytes := numRecords * flags.recordSize
 		fmt.Printf("Generating %d batches of size %s (%d records), totalling %s\n", flags.numBatches, sizey.FormatBytes(bytesPerBatch), numRecords, sizey.FormatBytes(totalBytes))
 
-		var broker broker = &remoteBroker{}
+		var broker broker = &remoteBroker{
+			remoteBrokerAddress: flags.remoteBrokerAddress,
+			remoteBrokerAPIKey:  flags.remoteBrokerAPIKey,
+		}
 		if flags.localBroker {
 			broker = newLocalBroker(log, flags.batchBlockTime, flags.batchBytesMax)
 		}
@@ -153,14 +158,21 @@ type broker interface {
 	Stop() error
 }
 
-type remoteBroker struct{}
+type remoteBroker struct {
+	remoteBrokerAddress string
+	remoteBrokerAPIKey  string
 
-func (rb remoteBroker) Start() (*seb.RecordClient, error) {
-	// TODO: take these as arguments
-	return seb.NewRecordClient("http://localhost:51313", "api-key")
+	client *seb.RecordClient
 }
 
-func (rb remoteBroker) Stop() error {
+func (rb *remoteBroker) Start() (*seb.RecordClient, error) {
+	var err error
+	rb.client, err = seb.NewRecordClient(rb.remoteBrokerAddress, rb.remoteBrokerAPIKey)
+	return rb.client, err
+}
+
+func (rb *remoteBroker) Stop() error {
+	rb.client.CloseIdleConnections()
 	return nil
 }
 
@@ -332,9 +344,12 @@ func batchToRecords(recordSizes []uint32, batch []byte) [][]byte {
 }
 
 type BenchmarkFlags struct {
-	numRuns     int
-	numWorkers  int
-	localBroker bool
+	numRuns    int
+	numWorkers int
+
+	localBroker         bool
+	remoteBrokerAddress string
+	remoteBrokerAPIKey  string
 
 	numBatches         int
 	recordSize         int
