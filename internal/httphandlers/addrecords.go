@@ -31,6 +31,7 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, err.Error())
+			return
 		}
 		topicName := params[topicNameKey].(string)
 
