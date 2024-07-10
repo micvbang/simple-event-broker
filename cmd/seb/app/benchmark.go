@@ -268,22 +268,22 @@ func generateBatches(log logger.Logger, batches chan<- recordBatch, numBatches i
 	randSource := rand.New(rand.NewSource(1))
 	batchSize := recordsPerBatch * recordSize
 
+	records := make([]byte, batchSize)
+	n, err := randSource.Read(records)
+	if err != nil {
+		log.Fatalf("failed to generate random data: %s", err)
+	}
+
+	if n != len(records) {
+		log.Fatalf("expected to generate %d bytes, got %d", len(records), n)
+	}
+
+	recordSizes := make([]uint32, recordsPerBatch)
+	for i := range recordsPerBatch {
+		recordSizes[i] = uint32(recordSize)
+	}
+
 	for range numBatches {
-		records := make([]byte, batchSize)
-		n, err := randSource.Read(records)
-		if err != nil {
-			log.Fatalf("failed to generate random data: %s", err)
-		}
-
-		if n != len(records) {
-			log.Fatalf("expected to generate %d bytes, got %d", len(records), n)
-		}
-
-		recordSizes := make([]uint32, recordsPerBatch)
-		for i := range recordsPerBatch {
-			recordSizes[i] = uint32(recordSize)
-		}
-
 		batches <- recordBatch{
 			recordSizes: recordSizes,
 			records:     records,
