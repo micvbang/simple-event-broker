@@ -38,8 +38,6 @@ var UnixEpochUs = func() int64 {
 	return time.Now().UnixMicro()
 }
 
-type Record []byte
-
 func Write(wtr io.Writer, batch Batch) error {
 	header := Header{
 		MagicBytes:  FileFormatMagicBytes,
