@@ -65,7 +65,12 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			part.Close()
+			err = part.Close()
+			if err != nil {
+				log.Errorf("failed to close part: %s", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 
 			switch part.FormName() {
 			case httphelpers.RecordsMultipartSizesKey:
@@ -84,6 +89,7 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
+
 		}
 
 		batch := sebrecords.NewBatch(recordSizes, recordData)

@@ -26,14 +26,14 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	batch := tester.MakeRandomRecordBatch(32)
 	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
 
-	expectedOffsets := make([]uint64, 32)
-	for i := 0; i < 32; i++ {
+	expectedOffsets := make([]uint64, batch.Len())
+	for i := range expectedOffsets {
 		expectedOffsets[i] = uint64(i)
 	}
 
 	buf := bytes.NewBuffer(nil)
 	r := httptest.NewRequest("POST", "/records", buf)
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, expectedRecords)
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes(), batch.Data())
 	require.NoError(t, err)
 
 	r.Header.Add("Content-Type", contentType)
@@ -71,12 +71,12 @@ func TestAddRecordsPayloadTooLarge(t *testing.T) {
 	server := tester.HTTPServer(t, tester.HTTPDependencies(deps))
 	defer server.Close()
 
-	records := [][]byte{{1}}
+	batch := tester.MakeRandomRecordBatch(0)
 
 	buf := bytes.NewBuffer(nil)
 	r := httptest.NewRequest("POST", "/records", buf)
 
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, records)
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes(), batch.Data())
 	require.NoError(t, err)
 
 	r.Header.Add("Content-Type", contentType)
@@ -115,7 +115,7 @@ func BenchmarkAddRecords(b *testing.B) {
 	batch := tester.MakeRandomRecordBatch(32)
 
 	buf := bytes.NewBuffer(nil)
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, tester.BatchIndividualRecords(b, batch, 0, batch.Len()))
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes(), batch.Data())
 	require.NoError(b, err)
 
 	bs := buf.Bytes()

@@ -14,19 +14,7 @@ const (
 
 // RecordsToMultipartFormData formats a slice of records as according to the
 // format expected by Seb's HTTP handlers
-func RecordsToMultipartFormData(w io.Writer, records [][]byte) (string, error) {
-	recordSizes := make([]uint32, len(records))
-	totalSize := 0
-	for i, record := range records {
-		recordSizes[i] = uint32(len(record))
-		totalSize += len(record)
-	}
-
-	recordsRaw := make([]byte, 0, totalSize)
-	for _, record := range records {
-		recordsRaw = append(recordsRaw, record...)
-	}
-
+func RecordsToMultipartFormData(w io.Writer, recordSizes []uint32, recordsData []byte) (string, error) {
 	mw := multipart.NewWriter(w)
 
 	// record metadata
@@ -55,12 +43,12 @@ func RecordsToMultipartFormData(w io.Writer, records [][]byte) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("creating form field: %w", err)
 		}
-		n, err := fw.Write(recordsRaw)
+		n, err := fw.Write(recordsData)
 		if err != nil {
 			return "", fmt.Errorf("failed to write records: %w", err)
 		}
-		if n != len(recordsRaw) {
-			return "", fmt.Errorf("records: expected to write %d bytes, wrote %d", len(recordsRaw), n)
+		if n != len(recordsData) {
+			return "", fmt.Errorf("records: expected to write %d bytes, wrote %d", len(recordsData), n)
 		}
 	}
 

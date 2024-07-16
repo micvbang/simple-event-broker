@@ -27,7 +27,6 @@ func RegisterRoutes(log logger.Logger, mux *http.ServeMux, deps Dependencies, ap
 		return apiKeyIsValid, nil
 	})
 
-	mux.HandleFunc("POST /record", requireAPIKey(AddRecord(log, deps)))
 	mux.HandleFunc("POST /records", requireAPIKey(AddRecords(log, deps)))
 	mux.HandleFunc("GET /record", requireAPIKey(GetRecord(log, deps)))
 	mux.HandleFunc("GET /records", requireAPIKey(GetRecords(log, deps)))

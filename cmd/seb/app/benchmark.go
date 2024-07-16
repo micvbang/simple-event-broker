@@ -300,8 +300,7 @@ func httpAddRecords(log logger.Logger, wg *sync.WaitGroup, client *seb.RecordCli
 			defer wg.Done()
 
 			for batch := range batches {
-				records := batchToRecords(batch.recordSizes, batch.records)
-				err := client.AddRecords(topicName, records)
+				err := client.AddRecords(topicName, batch.recordSizes, batch.records)
 				if err != nil {
 					log.Fatalf("failed to add records: %s", err)
 				}
