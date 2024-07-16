@@ -10,4 +10,5 @@ var (
 	ErrNotInStorage       = fmt.Errorf("not in storage")
 	ErrUnauthorized       = fmt.Errorf("unauthorized")
 	ErrPayloadTooLarge    = fmt.Errorf("payload too large")
+	ErrBadInput           = fmt.Errorf("bad input")
 )

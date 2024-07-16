@@ -115,7 +115,8 @@ func (s *Topic) AddRecords(recordSizes []uint32, recordsRaw []byte) ([]uint64, e
 	}
 
 	t0 := time.Now()
-	err = sebrecords.Write(w, recordSizes, recordsRaw)
+	batch := sebrecords.NewBatch(recordSizes, recordsRaw)
+	err = sebrecords.Write(w, batch)
 	if err != nil {
 		return nil, fmt.Errorf("writing record batch: %w", err)
 	}
@@ -160,7 +161,7 @@ func (s *Topic) AddRecords(recordSizes []uint32, recordsRaw []byte) ([]uint64, e
 			return offsets, nil
 		}
 
-		err = sebrecords.Write(cacheWtr, recordSizes, recordsRaw)
+		err = sebrecords.Write(cacheWtr, batch)
 		if err != nil {
 			s.log.Errorf("writing to cache (%s): %w", rbPath, err)
 		}
@@ -266,12 +267,18 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 			break
 		}
 
-		newRecords, err := rb.Records(batchRecordIndex, batchRecordIndex+numRecords)
+		batch, err := rb.Records(batchRecordIndex, batchRecordIndex+numRecords)
 		if err != nil {
 			return records, fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
 		}
 
-		records = append(records, newRecords...)
+		newRecords, err := batch.IndividualRecords(0, int(numRecords))
+		if err != nil {
+			return records, fmt.Errorf("parsing batch individual records: %w", err)
+		}
+		for _, record := range newRecords {
+			records = append(records, record)
+		}
 
 		// no more relevant records in batch -> prepare to check next batch
 		rb.Close()
@@ -279,6 +286,7 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 		batchRecordIndex = 0
 	}
 
+	// TODO: make and return new batch
 	return records, nil
 }
 
