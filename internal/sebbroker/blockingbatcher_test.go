@@ -61,7 +61,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 			returnedErr = test.expected
 
 			// Test
-			_, got := batcher.AddRecord(sebrecords.Record{})
+			_, got := batcher.AddRecord([]byte{})
 
 			// Verify
 			require.ErrorIs(t, got, test.expected)

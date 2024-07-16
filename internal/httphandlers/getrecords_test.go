@@ -15,7 +15,6 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/stretchr/testify/require"
 )
 
@@ -88,7 +87,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 	err := server.Broker.CreateTopic(topicName)
 	require.NoError(t, err)
 
-	_, err = server.Broker.AddRecord(topicName, sebrecords.Record("record"))
+	_, err = server.Broker.AddRecord(topicName, []byte("record"))
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -212,7 +211,7 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 		recordSize = 32
 	)
 
-	expectedRecords := make([]sebrecords.Record, 16)
+	expectedRecords := make([][]byte, 16)
 	for i := range len(expectedRecords) {
 		expectedRecords[i] = tester.RandomBytes(t, recordSize)
 		_, err := server.Broker.AddRecord(topicName, expectedRecords[i])
@@ -223,7 +222,7 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 		offset          uint64
 		maxRecords      int
 		maxBytes        int
-		expectedRecords []sebrecords.Record
+		expectedRecords [][]byte
 	}{
 		"all records": {
 			offset:          0,
@@ -287,7 +286,7 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 				gotRecord, err := io.ReadAll(part)
 				require.NoError(t, err)
 
-				require.Equal(t, expectedRecord, sebrecords.Record(gotRecord))
+				require.Equal(t, expectedRecord, []byte(gotRecord))
 				localOffset += 1
 			}
 		})

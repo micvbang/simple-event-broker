@@ -9,7 +9,6 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +21,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 	defer server.Close()
 
 	// add record s.t. returned offset in HTTP response is not 0 (default value)
-	_, err := server.Broker.AddRecord(topicName, sebrecords.Record("haps"))
+	_, err := server.Broker.AddRecord(topicName, []byte("haps"))
 	require.NoError(t, err)
 
 	expectedRecord := tester.RandomBytes(t, 64)

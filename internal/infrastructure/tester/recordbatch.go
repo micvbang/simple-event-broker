@@ -19,22 +19,22 @@ func MakeRandomRecords(size int) [][]byte {
 }
 
 func MakeRandomRecordsRaw(size int) ([]uint32, []byte) {
-	records := make([]sebrecords.Record, size)
+	records := make([][]byte, size)
 	for i := 0; i < len(records); i++ {
-		records[i] = sebrecords.Record(stringy.RandomN(1 + inty.RandomN(50)))
+		records[i] = []byte(stringy.RandomN(1 + inty.RandomN(50)))
 	}
 	return RecordsConcat(records)
 }
 
-func MakeRandomRecordsSize(records int, recordSize int) []sebrecords.Record {
-	expectedRecordBatch := make([]sebrecords.Record, records)
+func MakeRandomRecordsSize(records int, recordSize int) [][]byte {
+	expectedRecordBatch := make([][]byte, records)
 	for i := 0; i < len(expectedRecordBatch); i++ {
-		expectedRecordBatch[i] = sebrecords.Record(stringy.RandomN(recordSize))
+		expectedRecordBatch[i] = []byte(stringy.RandomN(recordSize))
 	}
 	return expectedRecordBatch
 }
 
-func RecordsConcat(records []sebrecords.Record) ([]uint32, []byte) {
+func RecordsConcat(records [][]byte) ([]uint32, []byte) {
 	recordsRaw := make([]byte, 0, 4096)
 	recordSizes := make([]uint32, len(records))
 	for i, record := range records {
@@ -78,8 +78,8 @@ func RecordsToBatch(records [][]byte) sebrecords.Batch {
 	return sebrecords.NewBatch(recordSizes, data)
 }
 
-func RecordsAsBytes(records []sebrecords.Record) [][]byte {
-	return slicey.Map(records, func(r sebrecords.Record) []byte {
+func RecordsAsBytes(records [][]byte) [][]byte {
+	return slicey.Map(records, func(r []byte) []byte {
 		return r
 	})
 }
