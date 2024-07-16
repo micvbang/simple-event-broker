@@ -39,7 +39,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			maxRecordsDefault = 10
 		)
 
-		allRecords := make([]sebrecords.Record, 32)
+		allRecords := make([][]byte, 32)
 		for i := range len(allRecords) {
 			allRecords[i] = tester.RandomBytes(t, recordSize)
 
@@ -51,7 +51,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			offset       uint64
 			maxRecords   int
 			softMaxBytes int
-			expected     []sebrecords.Record
+			expected     [][]byte
 			err          error
 		}{
 			"max records zero":          {offset: 0, maxRecords: 0, expected: allRecords[:maxRecordsDefault]},
@@ -119,10 +119,9 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 
 				// AddRecords
 				{
-					records := tester.MakeRandomRecords(5)
-					recordSizes, recordsRaw := tester.RecordsConcat(records)
+					batch := tester.MakeRandomRecordBatch(5)
 					// Act
-					_, err := broker.AddRecords("second", recordSizes, recordsRaw)
+					_, err := broker.AddRecords("second", batch.Sizes(), batch.Data())
 
 					// Assert
 					require.ErrorIs(t, err, test.err)
@@ -166,7 +165,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 				require.ErrorIs(t, err, test.getErr)
 
 				// Assert
-				var expected []sebrecords.Record
+				var expected [][]byte
 				require.Equal(t, expected, got)
 			})
 		}
@@ -219,7 +218,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 
 		// Assert
 		require.ErrorIs(t, err, context.Canceled)
-		require.Equal(t, []sebrecords.Record{}, got)
+		require.Equal(t, [][]byte(nil), got)
 	})
 }
 
@@ -373,12 +372,11 @@ func TestAddRecordsHappyPath(t *testing.T) {
 		)
 
 		const topicName = "topic"
-		expectedRecords := tester.MakeRandomRecords(5)
-
-		recordSizes, recordsRaw := tester.RecordsConcat(expectedRecords)
+		batch := tester.MakeRandomRecordBatch(5)
+		expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
 
 		// Act
-		_, err := broker.AddRecords(topicName, recordSizes, recordsRaw)
+		_, err := broker.AddRecords(topicName, batch.Sizes(), batch.Data())
 		require.NoError(t, err)
 
 		// Assert
@@ -422,9 +420,9 @@ func TestBrokerConcurrency(t *testing.T) {
 	tester.TestBroker(t, autoCreate, func(t *testing.T, s *sebbroker.Broker) {
 		ctx := context.Background()
 
-		recordsBatches := make([][]sebrecords.Record, 50)
-		for i := 0; i < len(recordsBatches); i++ {
-			recordsBatches[i] = tester.MakeRandomRecordsSize(inty.RandomN(32)+1, 64*sizey.B)
+		batches := make([]sebrecords.Batch, 50)
+		for i := 0; i < len(batches); i++ {
+			batches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
 		}
 
 		topicNames := []string{
@@ -444,7 +442,7 @@ func TestBrokerConcurrency(t *testing.T) {
 		type verification struct {
 			topicName string
 			offset    uint64
-			records   []sebrecords.Record
+			records   [][]byte
 		}
 		verifications := make(chan verification, (batchAdders+singleAdders)*2)
 
@@ -468,25 +466,23 @@ func TestBrokerConcurrency(t *testing.T) {
 					default:
 					}
 
-					expectedRecords := slicey.Random(recordsBatches)
+					batch := slicey.Random(batches)
 					topicName := slicey.Random(topicNames)
 
-					recordSizes, recordsRaw := tester.RecordsConcat(expectedRecords)
-
 					// Act
-					offsets, err := s.AddRecords(topicName, recordSizes, recordsRaw)
+					offsets, err := s.AddRecords(topicName, batch.Sizes(), batch.Data())
 					require.NoError(t, err)
 
 					// Assert
-					require.Equal(t, len(expectedRecords), len(offsets))
+					require.Equal(t, batch.Len(), len(offsets))
 
 					verifications <- verification{
 						topicName: topicName,
 						offset:    offsets[0],
-						records:   expectedRecords,
+						records:   tester.BatchIndividualRecords(t, batch, 0, batch.Len()),
 					}
 
-					added += len(expectedRecords)
+					added += batch.Len()
 				}
 			}()
 		}
@@ -505,7 +501,8 @@ func TestBrokerConcurrency(t *testing.T) {
 					default:
 					}
 
-					expectedRecord := slicey.Random(recordsBatches)[0]
+					expectedRecord := tester.BatchIndividualRecords(t, slicey.Random(batches), 0, 1)[0]
+
 					topicName := slicey.Random(topicNames)
 
 					// Act
@@ -516,7 +513,7 @@ func TestBrokerConcurrency(t *testing.T) {
 					verifications <- verification{
 						topicName: topicName,
 						offset:    offset,
-						records:   []sebrecords.Record{expectedRecord},
+						records:   [][]byte{expectedRecord},
 					}
 
 					added += len(expectedRecord)

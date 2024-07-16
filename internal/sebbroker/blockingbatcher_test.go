@@ -229,9 +229,9 @@ func TestBlockingBatcherConcurrency(t *testing.T) {
 func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatcher, topic *sebtopic.Topic) {
 	ctx := context.Background()
 
-	recordsBatches := make([][]sebrecords.Record, 50)
-	for i := 0; i < len(recordsBatches); i++ {
-		recordsBatches[i] = tester.MakeRandomRecordsSize(inty.RandomN(32)+1, 64*sizey.B)
+	batches := make([]sebrecords.Batch, 50)
+	for i := 0; i < len(batches); i++ {
+		batches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
 	}
 
 	const (
@@ -259,26 +259,22 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatche
 				default:
 				}
 
-				expectedRecords := slicey.Random(recordsBatches)
-				recordSizes, recordsRaw := tester.RecordsConcat(expectedRecords)
+				expectedBatch := slicey.Random(batches)
 
 				// Act
-				offsets, err := batcher.AddRecords(recordSizes, recordsRaw)
+				offsets, err := batcher.AddRecords(expectedBatch.Sizes(), expectedBatch.Data())
 				require.NoError(t, err)
 
 				// Assert
-				require.Equal(t, len(expectedRecords), len(offsets))
+				require.Equal(t, expectedBatch.Len(), len(offsets))
 
-				gotRecords, err := topic.ReadRecords(ctx, offsets[0], len(offsets), 0)
+				gotBatch, err := topic.ReadRecords(ctx, offsets[0], len(offsets), 0)
 				require.NoError(t, err)
 
-				require.Equal(t, len(expectedRecords), len(gotRecords))
-				for i, expected := range expectedRecords {
-					got := gotRecords[i]
-					require.Equal(t, expected, got)
-				}
+				require.Equal(t, expectedBatch.Len(), gotBatch.Len())
+				require.Equal(t, expectedBatch.Data(), gotBatch.Data())
 
-				added += len(expectedRecords)
+				added += expectedBatch.Len()
 			}
 		}()
 	}
@@ -297,17 +293,25 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatche
 				default:
 				}
 
-				expectedRecord := slicey.Random(recordsBatches)[0]
+				expectedRecord, err := slicey.Random(batches).Records(0, 1)
+				if err != nil {
+					t.Fatalf(err.Error())
+				}
 
 				// Act
 				offset, err := batcher.AddRecord(expectedRecord)
 				require.NoError(t, err)
 
 				// Assert
-				gotRecords, err := topic.ReadRecords(context.Background(), offset, 1, 0)
+				gotBatch, err := topic.ReadRecords(context.Background(), offset, 1, 0)
 				require.NoError(t, err)
 
-				require.Equal(t, expectedRecord, gotRecords[0])
+				gotRecord, err := gotBatch.Records(0, 1)
+				if err != nil {
+					t.Fatalf(err.Error())
+				}
+
+				require.Equal(t, expectedRecord, gotRecord)
 
 				added += len(expectedRecord)
 			}

@@ -22,11 +22,8 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	server := tester.HTTPServer(t)
 	defer server.Close()
 
-	expectedRecords := tester.MakeRandomRecords(32)
-	sendRecords := [][]byte{}
-	for _, record := range expectedRecords {
-		sendRecords = append(sendRecords, record)
-	}
+	batch := tester.MakeRandomRecordBatch(32)
+	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
 
 	expectedOffsets := make([]uint64, 32)
 	for i := 0; i < 32; i++ {
@@ -35,7 +32,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 
 	buf := bytes.NewBuffer(nil)
 	r := httptest.NewRequest("POST", "/records", buf)
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, sendRecords)
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, expectedRecords)
 	require.NoError(t, err)
 
 	r.Header.Add("Content-Type", contentType)
@@ -55,7 +52,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedOffsets, output.Offsets)
 
-	gotRecords, err := server.Broker.GetRecords(context.Background(), topicName, 0, len(expectedRecords), 0)
+	gotRecords, err := server.Broker.GetRecords(context.Background(), topicName, 0, batch.Len(), 0)
 	require.NoError(t, err)
 
 	require.Equal(t, expectedRecords, gotRecords)

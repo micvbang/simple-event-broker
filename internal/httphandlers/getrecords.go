@@ -11,11 +11,10 @@ import (
 
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 type RecordsGetter interface {
-	GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]sebrecords.Record, error)
+	GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([][]byte, error)
 }
 
 const multipartFormData = "multipart/form-data"

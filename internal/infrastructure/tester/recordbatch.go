@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func MakeRandomRecords(size int) []sebrecords.Record {
-	expectedRecordBatch := make([]sebrecords.Record, size)
+func MakeRandomRecords(size int) [][]byte {
+	expectedRecordBatch := make([][]byte, size)
 	for i := 0; i < len(expectedRecordBatch); i++ {
-		expectedRecordBatch[i] = sebrecords.Record(stringy.RandomN(1 + inty.RandomN(50)))
+		expectedRecordBatch[i] = []byte(stringy.RandomN(1 + inty.RandomN(50)))
 	}
 	return expectedRecordBatch
 }

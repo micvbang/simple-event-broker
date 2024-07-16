@@ -107,14 +107,15 @@ func (s *Broker) GetRecord(topicName string, offset uint64) (sebrecords.Record, 
 		return nil, err
 	}
 
-	records, err := tb.topic.ReadRecords(context.Background(), offset, 1, 0)
+	batch, err := tb.topic.ReadRecords(context.Background(), offset, 1, 0)
 	if err != nil {
 		return nil, err
 	}
-	if len(records) == 0 {
-		return nil, fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
+	record, err := batch.Records(0, 1)
+	if err != nil {
+		return nil, fmt.Errorf("records: %w", err)
 	}
-	return records[0], nil
+	return record, nil
 }
 
 // CreateTopic creates a topic with the given name and default configuration.
@@ -161,7 +162,7 @@ func (s *Broker) CreateTopic(topicName string) error {
 // NOTE: GetRecordBatch will always return all of the records that it managed to
 // fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
-func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([]sebrecords.Record, error) {
+func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([][]byte, error) {
 	if maxRecords == 0 {
 		maxRecords = 10
 	}
@@ -184,7 +185,12 @@ func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64
 		return nil, fmt.Errorf("unexpected when waiting for offset %d to be reached: %w", offset, err)
 	}
 
-	return tb.topic.ReadRecords(ctx, offset, maxRecords, softMaxBytes)
+	batch, err := tb.topic.ReadRecords(ctx, offset, maxRecords, softMaxBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return batch.IndividualRecords(0, batch.Len())
 }
 
 // Metadata returns metadata about the topic.

@@ -330,7 +330,7 @@ func TestGetRecordsErrors(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			deps.GetRecordsMock = func(ctx context.Context, topicName string, offset uint64, maxRecords, softMaxBytes int) ([]sebrecords.Record, error) {
+			deps.GetRecordsMock = func(ctx context.Context, topicName string, offset uint64, maxRecords, softMaxBytes int) ([][]byte, error) {
 				return nil, test.getRecordsErr
 			}
 
