@@ -101,3 +101,12 @@ func BatchIndividualRecords(t testing.TB, batch sebrecords.Batch, start int, end
 
 	return records
 }
+
+func BatchIndividualRecordsAsBatch(t testing.TB, batch sebrecords.Batch, start int, end int) sebrecords.Batch {
+	records, err := batch.IndividualRecords(start, end)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	return RecordsToBatch(records)
+}

@@ -7,11 +7,10 @@ import (
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 type RecordAdder interface {
-	AddRecord(topicName string, record sebrecords.Record) (uint64, error)
+	AddRecord(topicName string, record []byte) (uint64, error)
 }
 
 type AddRecordOutput struct {

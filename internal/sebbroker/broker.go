@@ -15,7 +15,7 @@ import (
 )
 
 type RecordBatcher interface {
-	AddRecord(sebrecords.Record) (uint64, error)
+	AddRecord([]byte) (uint64, error)
 	AddRecords(sebrecords.Batch) ([]uint64, error)
 }
 
@@ -71,7 +71,7 @@ func New(log logger.Logger, topicFactory TopicFactory, optFuncs ...func(*Opts)) 
 
 // AddRecord adds record to topicName, using the configured batcher. It returns
 // only once data has been committed to topic storage.
-func (s *Broker) AddRecord(topicName string, record sebrecords.Record) (uint64, error) {
+func (s *Broker) AddRecord(topicName string, record []byte) (uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return 0, err

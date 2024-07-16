@@ -95,7 +95,7 @@ func (b *BlockingBatcher) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 // AddRecord adds record to the batch that is currently being built and blocks
 // until persistRecordBatch() has been called and completed; when AddRecord returns,
 // the given record has either been persisted to topic storage or failed.
-func (b *BlockingBatcher) AddRecord(record sebrecords.Record) (uint64, error) {
+func (b *BlockingBatcher) AddRecord(record []byte) (uint64, error) {
 	offsets, err := b.AddRecords(sebrecords.NewBatch([]uint32{uint32(len(record))}, record))
 	if err != nil {
 		return 0, err

@@ -37,7 +37,7 @@ func (b *nullBatcher) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	return offsets, nil
 }
 
-func (b *nullBatcher) AddRecord(record sebrecords.Record) (uint64, error) {
+func (b *nullBatcher) AddRecord(record []byte) (uint64, error) {
 	offsets, err := b.AddRecords(sebrecords.NewBatch([]uint32{uint32(len(record))}, record))
 	if err != nil {
 		return 0, err

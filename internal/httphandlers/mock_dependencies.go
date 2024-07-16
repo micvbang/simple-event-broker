@@ -9,7 +9,7 @@ import (
 )
 
 type MockDependencies struct {
-	AddRecordMock  func(topicName string, record sebrecords.Record) (uint64, error)
+	AddRecordMock  func(topicName string, record []byte) (uint64, error)
 	AddRecordCalls []dependenciesAddRecordCall
 
 	AddRecordsMock  func(topicName string, recordSizes []uint32, records []byte) ([]uint64, error)
@@ -27,13 +27,13 @@ type MockDependencies struct {
 
 type dependenciesAddRecordCall struct {
 	TopicName string
-	Record    sebrecords.Record
+	Record    []byte
 
 	Out0 uint64
 	Out1 error
 }
 
-func (_v *MockDependencies) AddRecord(topicName string, record sebrecords.Record) (uint64, error) {
+func (_v *MockDependencies) AddRecord(topicName string, record []byte) (uint64, error) {
 	if _v.AddRecordMock == nil {
 		msg := fmt.Sprintf("call to %T.AddRecord, but MockAddRecord is not set", _v)
 		panic(msg)

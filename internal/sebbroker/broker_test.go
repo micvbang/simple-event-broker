@@ -111,7 +111,7 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 				// AddRecord
 				{
 					// Act
-					_, err := broker.AddRecord("first", sebrecords.Record("this is a record"))
+					_, err := broker.AddRecord("first", []byte("this is a record"))
 
 					// Assert
 					require.ErrorIs(t, err, test.err)
@@ -233,7 +233,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		_, err := s.GetRecord(topicName, 0)
 		require.ErrorIs(t, err, seb.ErrTopicNotFound)
 
-		_, err = s.AddRecord(topicName, sebrecords.Record("this is a record"))
+		_, err = s.AddRecord(topicName, []byte("this is a record"))
 		require.ErrorIs(t, err, seb.ErrTopicNotFound)
 
 		// Act
@@ -244,7 +244,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		_, err = s.GetRecord(topicName, 0)
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
-		_, err = s.AddRecord(topicName, sebrecords.Record("this is a record"))
+		_, err = s.AddRecord(topicName, []byte("this is a record"))
 		require.NoError(t, err)
 
 		// ensure that GetRecord does not block waiting for record to become
@@ -277,7 +277,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 			// NOTE: the test relies on there being a created at least one
 			// record in topic storage, since that's the only (current) way to
 			// persist information about a topic's existence.
-			_, err = s1.AddRecord(topicName, sebrecords.Record("this is a record"))
+			_, err = s1.AddRecord(topicName, []byte("this is a record"))
 			require.NoError(t, err)
 		}
 
