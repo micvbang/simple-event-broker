@@ -83,18 +83,18 @@ var dumpCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Seb file '%s'\n", absInputPath)
-		fmt.Printf("Version: %v\n", p.Header.Version)
-		fmt.Printf("Magic bytes: %v\n", sebrecords.FileFormatMagicBytes == p.Header.MagicBytes)
-		fmt.Printf("NumRecords: %d\n", p.Header.NumRecords)
-		fmt.Printf("Timestamp: %s\n", time.UnixMicro(p.Header.UnixEpochUs))
+		fmt.Printf("Version:\t\t%v\n", p.Header.Version)
+		fmt.Printf("Magic bytes:\t\t%v\n", sebrecords.FileFormatMagicBytes == p.Header.MagicBytes)
+		fmt.Printf("NumRecords:\t\t%d\n", p.Header.NumRecords)
+		fmt.Printf("Timestamp:\t\t%s\n", time.UnixMicro(p.Header.UnixEpochUs))
 
 		fileSize := fi.Size()
 		headerSize := p.Header.Size()
 		dataSize := fileSize - int64(headerSize)
-		fmt.Printf("Total file size: %v (%v B)\n", sizey.FormatBytes(fileSize), fileSize)
-		fmt.Printf("Header size: %v (%d B)\n", sizey.FormatBytes(headerSize), headerSize)
-		fmt.Printf("Data size: %v (%d B)\n", sizey.FormatBytes(dataSize), dataSize)
-		records, err := p.Records(0, p.Header.NumRecords)
+		fmt.Printf("Total file size:\t%v (%v B)\n", sizey.FormatBytes(fileSize), fileSize)
+		fmt.Printf("Header size:\t\t%v (%d B)\n", sizey.FormatBytes(headerSize), headerSize)
+		fmt.Printf("Data size: %v\t(%d B)\n", sizey.FormatBytes(dataSize), dataSize)
+		batch, err := p.Records(0, p.Header.NumRecords)
 		if err != nil {
 			return fmt.Errorf("reading records: %w", err)
 		}
