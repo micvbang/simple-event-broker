@@ -58,7 +58,7 @@ func Write(wtr io.Writer, batch Batch) error {
 
 	err = binary.Write(wtr, byteOrder, indexes)
 	if err != nil {
-		return fmt.Errorf("writing record indexes %v: %w", batch.indexes, err)
+		return fmt.Errorf("writing record indexes %v: %w", indexes, err)
 	}
 
 	err = binary.Write(wtr, byteOrder, batch.Data())
