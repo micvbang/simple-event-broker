@@ -11,7 +11,7 @@ import (
 )
 
 // TestNullBatcherConcurrency verifies that concurrent calls to AddRecords() and
-// AddRecord() block and returns the correct offsets to all callers.
+// AddRecords() block and returns the correct offsets to all callers.
 func TestNullBatcherConcurrency(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, s sebtopic.Storage, c *sebcache.Cache) {
 		topic, err := sebtopic.New(log, s, "topicName", c, sebtopic.WithCompress(nil))

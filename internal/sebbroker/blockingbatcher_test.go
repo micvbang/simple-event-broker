@@ -22,7 +22,7 @@ import (
 
 // TestBlockingBatcherAddReturnValue verifies that the error returned by
 // persistRecordBatch() is returned all the way back up to callers of
-// batcher.AddRecord().
+// batcher.AddRecords().
 func TestBlockingBatcherAddReturnValue(t *testing.T) {
 	var (
 		ctx         context.Context
@@ -61,7 +61,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 			returnedErr = test.expected
 
 			// Test
-			_, got := batcher.AddRecord([]byte{})
+			_, got := batcher.AddRecords(tester.MakeRandomRecordBatch(0))
 
 			// Verify
 			require.ErrorIs(t, got, test.expected)
@@ -69,7 +69,7 @@ func TestBlockingBatcherAddReturnValue(t *testing.T) {
 	}
 }
 
-// TestBlockingBatcherAddBlocks verifies that calls to AddRecord() block until
+// TestBlockingBatcherAddBlocks verifies that calls to AddRecords() block until
 // persistRecordBatch has returned. This ensures that data has been persisted
 // before giving control back to the caller.
 func TestBlockingBatcherAddBlocks(t *testing.T) {
@@ -110,29 +110,29 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 		}()
 	}
 
-	// wait for all above go-routines to be scheduled and block on AddRecord()
+	// wait for all above goroutines to be scheduled and block on AddRecords()
 	time.Sleep(5 * time.Millisecond)
 
 	// expire ctx to make Batcher persist data (call persistRecordBatch())
 	cancel()
 
-	// wait a long time before verifying that none of the AddRecord() callers have returned
+	// wait a long time before verifying that none of the AddRecords() callers have returned
 	time.Sleep(10 * time.Millisecond)
 	require.False(t, addReturned.Load())
 
 	// allow persistRecordBatch to return
 	close(blockPersistRecordBatch)
 
-	// wait for persistRecordBatch() return value to propagate to AddRecord() callers
+	// wait for persistRecordBatch() return value to propagate to AddRecords() callers
 	time.Sleep(10 * time.Millisecond)
 
 	require.True(t, addReturned.Load())
 
-	// ensure that all AddRecord()ers return
+	// ensure that all AddRecords()ers return
 	wg.Wait()
 }
 
-// TestBlockingBatcherSoftMax verifies that calls to AddRecord() will block
+// TestBlockingBatcherSoftMax verifies that calls to AddRecords() will block
 // until the configured soft max bytes limit is hit, after which it unblocks and
 // persists all waiting records.
 func TestBlockingBatcherSoftMax(t *testing.T) {
@@ -159,29 +159,29 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			_, err := batcher.AddRecord([]byte("1"))
+			_, err := batcher.AddRecords(tester.MakeRandomRecordBatchSize(1, 1))
 			require.NoError(t, err)
 
 			addReturned.Store(true)
 		}()
 	}
 
-	// wait for all above go-routines to be scheduled and block on AddRecord()
-	// and ensure that none of the AddRecord() callers have returned
+	// wait for all above go-routines to be scheduled and block on AddRecords()
+	// and ensure that none of the AddRecords() callers have returned
 	time.Sleep(5 * time.Millisecond)
 
 	require.False(t, addReturned.Load())
 
 	// add a record hitting the soft max, expecting it to be persisted
-	_, err := batcher.AddRecord([]byte("1"))
+	_, err := batcher.AddRecords(tester.MakeRandomRecordBatchSize(1, 1))
 	require.NoError(t, err)
 
-	// wait for persistRecordBatch() return value to propagate to AddRecord() callers
+	// wait for persistRecordBatch() return value to propagate to AddRecords() callers
 	time.Sleep(1 * time.Millisecond)
 
 	require.True(t, addReturned.Load())
 
-	// ensure that all AddRecord()ers return
+	// ensure that all AddRecords()ers return
 	wg.Wait()
 }
 
@@ -215,7 +215,7 @@ func TestBlockingBatcherSoftMaxSingleRecord(t *testing.T) {
 }
 
 // TestBlockingBatcherConcurrency verifies that concurrent calls to AddRecords()
-// and AddRecord() block and returns the correct offsets to all callers.
+// and AddRecords() block and returns the correct offsets to all callers.
 func TestBlockingBatcherConcurrency(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, s sebtopic.Storage, c *sebcache.Cache) {
 		topic, err := sebtopic.New(log, s, "topicName", c, sebtopic.WithCompress(nil))
@@ -234,27 +234,22 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatche
 		batches[i] = tester.MakeRandomRecordBatchSize(inty.RandomN(32)+1, 64*sizey.B)
 	}
 
-	const (
-		batchAdders  = 50
-		singleAdders = 100
-	)
+	const adders = 25
 
 	var recordsAdded atomic.Int32
 	stop := make(chan struct{})
 
 	wg := sync.WaitGroup{}
-	wg.Add(batchAdders + singleAdders)
+	wg.Add(adders)
 
 	// concurrently add records using AddRecords()
-	for range batchAdders {
+	for range adders {
 		go func() {
 			defer wg.Done()
 
-			added := 0
 			for {
 				select {
 				case <-stop:
-					recordsAdded.Add(int32(added))
 					return
 				default:
 				}
@@ -274,57 +269,16 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatche
 				require.Equal(t, expectedBatch.Len(), gotBatch.Len())
 				require.Equal(t, expectedBatch.Data(), gotBatch.Data())
 
-				added += expectedBatch.Len()
-			}
-		}()
-	}
-
-	// concurrently add records using AddRecord()
-	for range singleAdders {
-		go func() {
-			defer wg.Done()
-
-			added := 0
-			for {
-				select {
-				case <-stop:
-					recordsAdded.Add(int32(added))
-					return
-				default:
-				}
-
-				expectedRecord, err := slicey.Random(batches).Records(0, 1)
-				if err != nil {
-					t.Fatalf(err.Error())
-				}
-
-				// Act
-				offset, err := batcher.AddRecord(expectedRecord)
-				require.NoError(t, err)
-
-				// Assert
-				gotBatch, err := topic.ReadRecords(context.Background(), offset, 1, 0)
-				require.NoError(t, err)
-
-				gotRecord, err := gotBatch.Records(0, 1)
-				if err != nil {
-					t.Fatalf(err.Error())
-				}
-
-				require.Equal(t, expectedRecord, gotRecord)
-
-				added += len(expectedRecord)
+				recordsAdded.Add(int32(expectedBatch.Len()))
 			}
 		}()
 	}
 
 	// Run workers concurrently for a while
-	time.Sleep(250 * time.Millisecond)
+	for recordsAdded.Load() < 10_000 {
+		time.Sleep(50 * time.Millisecond)
+	}
+
 	close(stop)
-
 	wg.Wait()
-
-	// assert that some minimum amount of records were added concurrently
-	added := int(recordsAdded.Load())
-	require.True(t, added >= 10_000)
 }

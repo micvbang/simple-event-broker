@@ -92,23 +92,6 @@ func (b *BlockingBatcher) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 
 }
 
-// AddRecord adds record to the batch that is currently being built and blocks
-// until persistRecordBatch() has been called and completed; when AddRecord returns,
-// the given record has either been persisted to topic storage or failed.
-func (b *BlockingBatcher) AddRecord(record []byte) (uint64, error) {
-	offsets, err := b.AddRecords(sebrecords.NewBatch([]uint32{uint32(len(record))}, record))
-	if err != nil {
-		return 0, err
-	}
-
-	if len(offsets) != 1 {
-		// This is not supposed to happen; if it does, we can't trust b.persist().
-		panic(fmt.Sprintf("unexpected number of offsets returned %d, expected 1", len(offsets)))
-	}
-
-	return offsets[0], nil
-}
-
 func (b *BlockingBatcher) collectBatches() {
 	for {
 		blockedCallers := make([]blockedAdd, 0, 64)

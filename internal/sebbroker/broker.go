@@ -15,7 +15,6 @@ import (
 )
 
 type RecordBatcher interface {
-	AddRecord([]byte) (uint64, error)
 	AddRecords(sebrecords.Batch) ([]uint64, error)
 }
 

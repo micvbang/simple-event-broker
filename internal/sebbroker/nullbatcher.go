@@ -36,18 +36,3 @@ func (b *nullBatcher) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 
 	return offsets, nil
 }
-
-func (b *nullBatcher) AddRecord(record []byte) (uint64, error) {
-	offsets, err := b.AddRecords(sebrecords.NewBatch([]uint32{uint32(len(record))}, record))
-	if err != nil {
-		return 0, err
-	}
-
-	if len(offsets) != 1 {
-		// This is not supposed to happen; if it does, we can't trust b.persist()
-		panic(fmt.Sprintf("unexpected number of offsets returned: %d", len(offsets)))
-	}
-
-	return offsets[0], nil
-
-}
