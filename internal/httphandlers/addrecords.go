@@ -15,10 +15,11 @@ import (
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 type RecordsAdder interface {
-	AddRecords(topicName string, recordSizes []uint32, records []byte) ([]uint64, error)
+	AddRecords(topicName string, batch sebrecords.Batch) ([]uint64, error)
 }
 
 type AddRecordsOutput struct {
@@ -49,8 +50,8 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 			return
 		}
 
-		var fileSizes []uint32
-		var records []byte
+		var recordSizes []uint32
+		var recordData []byte
 
 		mr := multipart.NewReader(r.Body, mediaParams["boundary"])
 		for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
@@ -68,7 +69,7 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 
 			switch part.FormName() {
 			case httphelpers.RecordsMultipartSizesKey:
-				err = json.Unmarshal(buf.Bytes(), &fileSizes)
+				err = json.Unmarshal(buf.Bytes(), &recordSizes)
 				if err != nil {
 					log.Errorf("reading sizes: %v", err)
 					w.WriteHeader(http.StatusBadRequest)
@@ -76,7 +77,7 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 				}
 
 			case httphelpers.RecordsMultipartRecordsKey:
-				records = buf.Bytes()
+				recordData = buf.Bytes()
 
 			default:
 				log.Errorf("unexpected form field %s", part.FormName())
@@ -85,9 +86,11 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 			}
 		}
 
+		batch := sebrecords.NewBatch(recordSizes, recordData)
+
 		// TODO: we must verify that both sizes and records have been given
 
-		offsets, err := s.AddRecords(topicName, fileSizes, records)
+		offsets, err := s.AddRecords(topicName, batch)
 		if err != nil {
 			if errors.Is(err, seb.ErrPayloadTooLarge) {
 				w.WriteHeader(http.StatusRequestEntityTooLarge)

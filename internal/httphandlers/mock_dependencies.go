@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
@@ -11,7 +12,7 @@ type MockDependencies struct {
 	AddRecordMock  func(topicName string, record []byte) (uint64, error)
 	AddRecordCalls []dependenciesAddRecordCall
 
-	AddRecordsMock  func(topicName string, recordSizes []uint32, records []byte) ([]uint64, error)
+	AddRecordsMock  func(topicName string, batch sebrecords.Batch) ([]uint64, error)
 	AddRecordsCalls []dependenciesAddRecordsCall
 
 	GetRecordMock  func(topicName string, offset uint64) ([]byte, error)
@@ -49,26 +50,24 @@ func (_v *MockDependencies) AddRecord(topicName string, record []byte) (uint64, 
 }
 
 type dependenciesAddRecordsCall struct {
-	TopicName   string
-	RecordSizes []uint32
-	Records     []byte
+	TopicName string
+	Batch     sebrecords.Batch
 
 	Out0 []uint64
 	Out1 error
 }
 
-func (_v *MockDependencies) AddRecords(topicName string, recordSizes []uint32, records []byte) ([]uint64, error) {
+func (_v *MockDependencies) AddRecords(topicName string, batch sebrecords.Batch) ([]uint64, error) {
 	if _v.AddRecordsMock == nil {
 		msg := fmt.Sprintf("call to %T.AddRecords, but MockAddRecords is not set", _v)
 		panic(msg)
 	}
 
 	_v.AddRecordsCalls = append(_v.AddRecordsCalls, dependenciesAddRecordsCall{
-		TopicName:   topicName,
-		RecordSizes: recordSizes,
-		Records:     records,
+		TopicName: topicName,
+		Batch:     batch,
 	})
-	out0, out1 := _v.AddRecordsMock(topicName, recordSizes, records)
+	out0, out1 := _v.AddRecordsMock(topicName, batch)
 	_v.AddRecordsCalls[len(_v.AddRecordsCalls)-1].Out0 = out0
 	_v.AddRecordsCalls[len(_v.AddRecordsCalls)-1].Out1 = out1
 	return out0, out1

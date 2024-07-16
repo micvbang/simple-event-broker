@@ -86,13 +86,13 @@ func (s *Broker) AddRecord(topicName string, record []byte) (uint64, error) {
 
 // AddRecords adds record to topicName, using the configured batcher. It returns
 // only once data has been committed to topic storage.
-func (s *Broker) AddRecords(topicName string, recordSizes []uint32, records []byte) ([]uint64, error) {
+func (s *Broker) AddRecords(topicName string, batch sebrecords.Batch) ([]uint64, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
 	}
 
-	offsets, err := tb.batcher.AddRecords(sebrecords.NewBatch(recordSizes, records))
+	offsets, err := tb.batcher.AddRecords(batch)
 	if err != nil {
 		return nil, fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
 	}

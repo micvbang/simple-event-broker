@@ -30,7 +30,7 @@ func TestGetRecordsExistence(t *testing.T) {
 	require.NoError(t, err)
 
 	batch := tester.MakeRandomRecordBatch(16)
-	_, err = server.Broker.AddRecords(topicName, batch.Sizes(), batch.Data())
+	_, err = server.Broker.AddRecords(topicName, batch)
 	require.NoError(t, err)
 
 	tests := map[string]struct {

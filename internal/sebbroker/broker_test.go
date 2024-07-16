@@ -121,7 +121,7 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 				{
 					batch := tester.MakeRandomRecordBatch(5)
 					// Act
-					_, err := broker.AddRecords("second", batch.Sizes(), batch.Data())
+					_, err := broker.AddRecords("second", batch)
 
 					// Assert
 					require.ErrorIs(t, err, test.err)
@@ -205,7 +205,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 		const topicName = "topic-name"
 
 		batch := tester.MakeRandomRecordBatch(5)
-		_, err := s.AddRecords(topicName, batch.Sizes(), batch.Data())
+		_, err := s.AddRecords(topicName, batch)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -374,7 +374,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 		expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
 
 		// Act
-		_, err := broker.AddRecords(topicName, batch.Sizes(), batch.Data())
+		_, err := broker.AddRecords(topicName, batch)
 		require.NoError(t, err)
 
 		// Assert
@@ -469,7 +469,7 @@ func TestBrokerConcurrency(t *testing.T) {
 					topicName := slicey.Random(topicNames)
 
 					// Act
-					offsets, err := s.AddRecords(topicName, batch.Sizes(), batch.Data())
+					offsets, err := s.AddRecords(topicName, batch)
 					require.NoError(t, err)
 
 					// Assert
