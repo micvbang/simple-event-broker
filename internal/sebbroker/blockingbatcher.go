@@ -10,12 +10,11 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
-type Persist func(recordSizes []uint32, records []byte) ([]uint64, error)
+type Persist func(sebrecords.Batch) ([]uint64, error)
 
 type blockedAdd struct {
-	recordSizes []uint32
-	records     []byte
-	response    chan<- addResponse
+	batch    sebrecords.Batch
+	response chan<- addResponse
 }
 
 type addResponse struct {
@@ -68,27 +67,26 @@ func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persist P
 // AddRecords adds records to the batch that is currently being built and blocks
 // until persistRecordBatch() has been called and completed; when AddRecords returns,
 // the given record has either been persisted to topic storage or failed.
-func (b *BlockingBatcher) AddRecords(recordSizes []uint32, records []byte) ([]uint64, error) {
+func (b *BlockingBatcher) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	// NOTE: allows single records larger than bytesSoftMax; this is done to
 	// avoid making it impossible to add records of unexpectedly large size.
-	if len(records) > b.bytesSoftMax && len(recordSizes) > 1 {
-		return nil, fmt.Errorf("%w (%d bytes), bytes max is %d", seb.ErrPayloadTooLarge, len(records), b.bytesSoftMax)
+	if len(batch.Data()) > b.bytesSoftMax && batch.Len() > 1 {
+		return nil, fmt.Errorf("%w (%d bytes), bytes max is %d", seb.ErrPayloadTooLarge, len(batch.Data()), b.bytesSoftMax)
 	}
 
 	responses := make(chan addResponse)
 
 	b.callers <- blockedAdd{
-		recordSizes: recordSizes,
-		response:    responses,
-		records:     records,
+		response: responses,
+		batch:    batch,
 	}
 
 	// block caller until record has been peristed (or persisting failed)
 	response := <-responses
 
-	if len(response.offsets) != len(recordSizes) {
+	if len(response.offsets) != batch.Len() {
 		// This is not supposed to happen; if it does, we can't trust b.persist().
-		panic(fmt.Sprintf("unexpected number of offsets returned %d, expected %d", len(response.offsets), len(records)))
+		panic(fmt.Sprintf("unexpected number of offsets returned %d, expected %d", len(response.offsets), batch.Len()))
 	}
 	return response.offsets, response.err
 
@@ -98,7 +96,7 @@ func (b *BlockingBatcher) AddRecords(recordSizes []uint32, records []byte) ([]ui
 // until persistRecordBatch() has been called and completed; when AddRecord returns,
 // the given record has either been persisted to topic storage or failed.
 func (b *BlockingBatcher) AddRecord(record sebrecords.Record) (uint64, error) {
-	offsets, err := b.AddRecords([]uint32{uint32(len(record))}, record)
+	offsets, err := b.AddRecords(sebrecords.NewBatch([]uint32{uint32(len(record))}, record))
 	if err != nil {
 		return 0, err
 	}
@@ -119,8 +117,8 @@ func (b *BlockingBatcher) collectBatches() {
 		blockedCaller := <-b.callers
 		blockedCallers = append(blockedCallers, blockedCaller)
 
-		batchBytes := len(blockedCaller.records)
-		batchRecords := len(blockedCaller.recordSizes)
+		batchBytes := len(blockedCaller.batch.Data())
+		batchRecords := blockedCaller.batch.Len()
 
 		ctx, cancel := context.WithCancel(b.contextFactory())
 		defer cancel()
@@ -132,8 +130,8 @@ func (b *BlockingBatcher) collectBatches() {
 
 			case blockedCaller := <-b.callers:
 				blockedCallers = append(blockedCallers, blockedCaller)
-				batchBytes += len(blockedCaller.records)
-				batchRecords += len(blockedCaller.recordSizes)
+				batchBytes += len(blockedCaller.batch.Data())
+				batchRecords += blockedCaller.batch.Len()
 
 				b.log.Debugf("added record to batch (%d)", len(blockedCallers))
 				if batchBytes >= b.bytesSoftMax {
@@ -149,15 +147,15 @@ func (b *BlockingBatcher) collectBatches() {
 			case <-ctx.Done():
 				b.log.Debugf("batch collection time: %v", time.Since(t0))
 
-				records := make([]byte, 0, batchBytes)
+				recordData := make([]byte, 0, batchBytes)
 				recordSizes := make([]uint32, 0, batchRecords)
 				for _, add := range blockedCallers {
-					records = append(records, add.records...)
-					recordSizes = append(recordSizes, add.recordSizes...)
+					recordData = append(recordData, add.batch.Data()...)
+					recordSizes = append(recordSizes, add.batch.Sizes()...)
 				}
 
 				// block until records are persisted or persisting failed
-				offsets, err := b.persist(recordSizes, records)
+				offsets, err := b.persist(sebrecords.NewBatch(recordSizes, recordData))
 				b.log.Debugf("%d records persisted (err: %v)", len(recordSizes), err)
 				if err != nil {
 					b.log.Debugf("reporting error to %d waiting callers", len(recordSizes))
@@ -169,7 +167,7 @@ func (b *BlockingBatcher) collectBatches() {
 				// unblock callers
 				offsetIndex := 0
 				for _, blockedCaller := range blockedCallers {
-					offsetMax := offsetIndex + len(blockedCaller.recordSizes)
+					offsetMax := offsetIndex + blockedCaller.batch.Len()
 					blockedCaller.response <- addResponse{
 						offsets: offsets[offsetIndex:offsetMax],
 						err:     err,

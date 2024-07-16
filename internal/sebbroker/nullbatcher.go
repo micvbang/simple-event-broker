@@ -20,25 +20,25 @@ func NewNullBatcher(persist Persist) *nullBatcher {
 	}
 }
 
-func (b *nullBatcher) AddRecords(recordSizes []uint32, records []byte) ([]uint64, error) {
+func (b *nullBatcher) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	offsets, err := b.persist(recordSizes, records)
+	offsets, err := b.persist(batch)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(offsets) != len(recordSizes) {
+	if len(offsets) != batch.Len() {
 		// This is not supposed to happen; if it does, we can't trust b.persist()
-		panic(fmt.Sprintf("unexpected number of offsets returned %d, expected %d", len(offsets), len(records)))
+		panic(fmt.Sprintf("unexpected number of offsets returned %d, expected %d", len(offsets), batch.Len()))
 	}
 
 	return offsets, nil
 }
 
 func (b *nullBatcher) AddRecord(record sebrecords.Record) (uint64, error) {
-	offsets, err := b.AddRecords([]uint32{uint32(len(record))}, record)
+	offsets, err := b.AddRecords(sebrecords.NewBatch([]uint32{uint32(len(record))}, record))
 	if err != nil {
 		return 0, err
 	}

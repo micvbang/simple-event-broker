@@ -16,7 +16,7 @@ import (
 
 type RecordBatcher interface {
 	AddRecord(sebrecords.Record) (uint64, error)
-	AddRecords(recordSizes []uint32, records []byte) ([]uint64, error)
+	AddRecords(sebrecords.Batch) ([]uint64, error)
 }
 
 type topicBatcher struct {
@@ -92,7 +92,7 @@ func (s *Broker) AddRecords(topicName string, recordSizes []uint32, records []by
 		return nil, err
 	}
 
-	offsets, err := tb.batcher.AddRecords(recordSizes, records)
+	offsets, err := tb.batcher.AddRecords(sebrecords.NewBatch(recordSizes, records))
 	if err != nil {
 		return nil, fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
 	}

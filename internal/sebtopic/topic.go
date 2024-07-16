@@ -97,7 +97,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 // NOTE: AddRecords is NOT thread safe. It's up to the caller to ensure that
 // this is not called concurrently. This is normally the responsibility of a
 // RecordBatcher.
-func (s *Topic) AddRecords(recordSizes []uint32, recordsRaw []byte) ([]uint64, error) {
+func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	recordBatchID := s.nextOffset.Load()
 
 	rbPath := RecordBatchKey(s.topicName, recordBatchID)
@@ -115,7 +115,6 @@ func (s *Topic) AddRecords(recordSizes []uint32, recordsRaw []byte) ([]uint64, e
 	}
 
 	t0 := time.Now()
-	batch := sebrecords.NewBatch(recordSizes, recordsRaw)
 	err = sebrecords.Write(w, batch)
 	if err != nil {
 		return nil, fmt.Errorf("writing record batch: %w", err)
@@ -134,10 +133,10 @@ func (s *Topic) AddRecords(recordSizes []uint32, recordsRaw []byte) ([]uint64, e
 		return nil, fmt.Errorf("closing backing writer: %w", err)
 	}
 
-	s.log.Infof("wrote %d records (%s bytes) to %s (%s)", len(recordSizes), sizey.FormatBytes(len(recordsRaw)), rbPath, time.Since(t0))
+	s.log.Infof("wrote %d records (%s bytes) to %s (%s)", batch.Len(), sizey.FormatBytes(len(batch.Data())), rbPath, time.Since(t0))
 
-	nextOffset := recordBatchID + uint64(len(recordSizes))
-	offsets := make([]uint64, 0, len(recordSizes))
+	nextOffset := recordBatchID + uint64(batch.Len())
+	offsets := make([]uint64, 0, batch.Len())
 	for i := recordBatchID; i < nextOffset; i++ {
 		offsets = append(offsets, i)
 	}
