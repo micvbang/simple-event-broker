@@ -101,7 +101,7 @@ func (s *Broker) AddRecords(topicName string, recordSizes []uint32, records []by
 
 // GetRecord returns the record at offset in topicName. It will only return offsets
 // that have been committed to topic storage.
-func (s *Broker) GetRecord(topicName string, offset uint64) (sebrecords.Record, error) {
+func (s *Broker) GetRecord(topicName string, offset uint64) ([]byte, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err

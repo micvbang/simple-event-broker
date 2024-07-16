@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 )
 
@@ -15,7 +14,7 @@ type MockDependencies struct {
 	AddRecordsMock  func(topicName string, recordSizes []uint32, records []byte) ([]uint64, error)
 	AddRecordsCalls []dependenciesAddRecordsCall
 
-	GetRecordMock  func(topicName string, offset uint64) (sebrecords.Record, error)
+	GetRecordMock  func(topicName string, offset uint64) ([]byte, error)
 	GetRecordCalls []dependenciesGetRecordCall
 
 	GetRecordsMock  func(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([][]byte, error)
@@ -79,11 +78,11 @@ type dependenciesGetRecordCall struct {
 	TopicName string
 	Offset    uint64
 
-	Out0 sebrecords.Record
+	Out0 []byte
 	Out1 error
 }
 
-func (_v *MockDependencies) GetRecord(topicName string, offset uint64) (sebrecords.Record, error) {
+func (_v *MockDependencies) GetRecord(topicName string, offset uint64) ([]byte, error) {
 	if _v.GetRecordMock == nil {
 		msg := fmt.Sprintf("call to %T.GetRecord, but MockGetRecord is not set", _v)
 		panic(msg)

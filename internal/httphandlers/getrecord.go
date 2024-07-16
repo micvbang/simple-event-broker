@@ -7,11 +7,10 @@ import (
 
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
-	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 type RecordGetter interface {
-	GetRecord(topicName string, offset uint64) (sebrecords.Record, error)
+	GetRecord(topicName string, offset uint64) ([]byte, error)
 }
 
 func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {

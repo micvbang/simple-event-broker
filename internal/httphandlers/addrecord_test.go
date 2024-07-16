@@ -25,7 +25,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 	_, err := server.Broker.AddRecord(topicName, sebrecords.Record("haps"))
 	require.NoError(t, err)
 
-	expectedRecord := tester.RandomRecord(t, 64)
+	expectedRecord := tester.RandomBytes(t, 64)
 	expectedOffset := uint64(1)
 
 	r := httptest.NewRequest("POST", "/record", bytes.NewReader(expectedRecord))
