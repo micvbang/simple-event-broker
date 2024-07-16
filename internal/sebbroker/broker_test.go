@@ -204,11 +204,9 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 	tester.TestBroker(t, autoCreateTopic, func(t *testing.T, s *sebbroker.Broker) {
 		const topicName = "topic-name"
 
-		allRecords := tester.MakeRandomRecords(5)
-		for _, record := range allRecords {
-			_, err := s.AddRecord(topicName, record)
-			require.NoError(t, err)
-		}
+		batch := tester.MakeRandomRecordBatch(5)
+		_, err := s.AddRecords(topicName, batch.Sizes(), batch.Data())
+		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -397,7 +395,8 @@ func TestAddRecordHappyPath(t *testing.T) {
 		)
 
 		const topicName = "topic"
-		expectedRecords := tester.MakeRandomRecords(5)
+		batch := tester.MakeRandomRecordBatch(5)
+		expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
 
 		// Act
 		for _, record := range expectedRecords {

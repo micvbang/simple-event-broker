@@ -94,14 +94,15 @@ func TestBlockingBatcherAddBlocks(t *testing.T) {
 	wg.Add(numRecordBatches)
 
 	addReturned := atomic.Bool{}
-	for _, records := range tester.MakeRandomRecords(numRecordBatches) {
-		records := records
+
+	for range numRecordBatches {
+		batch := tester.MakeRandomRecordBatch(10)
 
 		go func() {
 			defer wg.Done()
 
 			// Test
-			_, got := batcher.AddRecord(records)
+			_, got := batcher.AddRecords(batch)
 			addReturned.Store(true)
 
 			// Verify

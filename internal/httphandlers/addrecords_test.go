@@ -111,13 +111,10 @@ func BenchmarkAddRecords(b *testing.B) {
 	server := tester.HTTPServer(b)
 	defer server.Close()
 
-	records := [][]byte{}
-	for _, record := range tester.MakeRandomRecords(32) {
-		records = append(records, record)
-	}
+	batch := tester.MakeRandomRecordBatch(32)
 
 	buf := bytes.NewBuffer(nil)
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, records)
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, tester.BatchIndividualRecords(b, batch, 0, batch.Len()))
 	require.NoError(b, err)
 
 	bs := buf.Bytes()

@@ -29,11 +29,9 @@ func TestGetRecordsExistence(t *testing.T) {
 	err := server.Broker.CreateTopic(topicName)
 	require.NoError(t, err)
 
-	records := tester.MakeRandomRecords(16)
-	for _, record := range records {
-		_, err := server.Broker.AddRecord(topicName, record)
-		require.NoError(t, err)
-	}
+	batch := tester.MakeRandomRecordBatch(16)
+	_, err = server.Broker.AddRecords(topicName, batch.Sizes(), batch.Data())
+	require.NoError(t, err)
 
 	tests := map[string]struct {
 		offset     uint64
