@@ -39,13 +39,11 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 			maxRecordsDefault = 10
 		)
 
-		allRecords := make([][]byte, 32)
-		for i := range len(allRecords) {
-			allRecords[i] = tester.RandomBytes(t, recordSize)
+		batch := tester.MakeRandomRecordBatchSize(32, recordSize)
+		allRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
 
-			_, err := s.AddRecord(topicName, allRecords[i])
-			require.NoError(t, err)
-		}
+		_, err := s.AddRecords(topicName, batch)
+		require.NoError(t, err)
 
 		tests := map[string]struct {
 			offset       uint64
@@ -108,24 +106,12 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 					sebbroker.WithAutoCreateTopic(test.autoCreateTopic),
 				)
 
-				// AddRecord
-				{
-					// Act
-					_, err := broker.AddRecord("first", []byte("this is a record"))
+				batch := tester.MakeRandomRecordBatch(5)
+				// Act
+				_, err := broker.AddRecords("second", batch)
 
-					// Assert
-					require.ErrorIs(t, err, test.err)
-				}
-
-				// AddRecords
-				{
-					batch := tester.MakeRandomRecordBatch(5)
-					// Act
-					_, err := broker.AddRecords("second", batch)
-
-					// Assert
-					require.ErrorIs(t, err, test.err)
-				}
+				// Assert
+				require.ErrorIs(t, err, test.err)
 			})
 		}
 	})
@@ -137,7 +123,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *sebcache.Cache) {
 		const topicName = "topic-name"
 		ctx := context.Background()
-		record := tester.RandomBytes(t, 8)
+		batch := tester.MakeRandomRecordBatch(5)
 
 		tests := map[string]struct {
 			autoCreateTopic bool
@@ -157,7 +143,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 				)
 
 				// will return an error if autoCreateTopic is false
-				_, err := broker.AddRecord(topicName, record)
+				_, err := broker.AddRecords(topicName, batch)
 				require.ErrorIs(t, err, test.addErr)
 
 				// Act
@@ -181,10 +167,10 @@ func TestGetRecordsOffsetOutOfBounds(t *testing.T) {
 		const topicName = "topic-name"
 
 		// add record so that we know there's _something_ in the topic
-		offset, err := s.AddRecord(topicName, tester.RandomBytes(t, 8))
+		offsets, err := s.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 		require.NoError(t, err)
 
-		nonExistingOffset := offset + 5
+		nonExistingOffset := slicey.Last(offsets) + 1
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		defer cancel()
@@ -221,8 +207,7 @@ func TestGetRecordsBulkContextImmediatelyCancelled(t *testing.T) {
 }
 
 // TestCreateTopicHappyPath verifies that CreateTopic creates a topic, and that
-// GetRecord() and AddRecord() are only successful once the topic has been
-// created.
+// GetRecord() is only successful once the topic has been created.
 func TestCreateTopicHappyPath(t *testing.T) {
 	const autoCreateTopic = false
 	tester.TestBroker(t, autoCreateTopic, func(t *testing.T, s *sebbroker.Broker) {
@@ -231,7 +216,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		_, err := s.GetRecord(topicName, 0)
 		require.ErrorIs(t, err, seb.ErrTopicNotFound)
 
-		_, err = s.AddRecord(topicName, []byte("this is a record"))
+		_, err = s.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 		require.ErrorIs(t, err, seb.ErrTopicNotFound)
 
 		// Act
@@ -242,7 +227,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		_, err = s.GetRecord(topicName, 0)
 		require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
-		_, err = s.AddRecord(topicName, []byte("this is a record"))
+		_, err = s.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 		require.NoError(t, err)
 
 		// ensure that GetRecord does not block waiting for record to become
@@ -275,7 +260,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 			// NOTE: the test relies on there being a created at least one
 			// record in topic storage, since that's the only (current) way to
 			// persist information about a topic's existence.
-			_, err = s1.AddRecord(topicName, []byte("this is a record"))
+			_, err = s1.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 			require.NoError(t, err)
 		}
 
@@ -325,7 +310,7 @@ func TestBrokerMetadataHappyPath(t *testing.T) {
 		const topicName = "topic-name"
 
 		for numRecords := 1; numRecords <= 10; numRecords++ {
-			_, err := s.AddRecord(topicName, []byte("this be record"))
+			_, err := s.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 			require.NoError(t, err)
 
 			gotMetadata, err := s.Metadata(topicName)
@@ -385,33 +370,6 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	})
 }
 
-// TestAddRecordHappyPath verifies that AddRecord adds the expected records.
-func TestAddRecordHappyPath(t *testing.T) {
-	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *sebcache.Cache) {
-		broker := sebbroker.New(log,
-			sebbroker.NewTopicFactory(ts, cache),
-			sebbroker.WithNullBatcher(),
-			sebbroker.WithAutoCreateTopic(true),
-		)
-
-		const topicName = "topic"
-		batch := tester.MakeRandomRecordBatch(5)
-		expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
-
-		// Act
-		for _, record := range expectedRecords {
-			_, err := broker.AddRecord(topicName, record)
-			require.NoError(t, err)
-		}
-
-		// Assert
-		gotRecords, err := broker.GetRecords(context.Background(), topicName, 0, 9999, 0)
-		require.NoError(t, err)
-
-		require.Equal(t, expectedRecords, gotRecords)
-	})
-}
-
 // TestBrokerConcurrency exercises thread safety when doing reads and writes
 // concurrently.
 func TestBrokerConcurrency(t *testing.T) {
@@ -433,9 +391,8 @@ func TestBrokerConcurrency(t *testing.T) {
 		}
 
 		const (
-			batchAdders  = 50
-			singleAdders = 100
-			verifiers    = 10
+			batchAdders = 25
+			verifiers   = 10
 		)
 
 		type verification struct {
@@ -443,24 +400,22 @@ func TestBrokerConcurrency(t *testing.T) {
 			offset    uint64
 			records   [][]byte
 		}
-		verifications := make(chan verification, (batchAdders+singleAdders)*2)
+		verifications := make(chan verification, batchAdders*4)
 
 		var recordsAdded atomic.Int32
 		stopWrites := make(chan struct{})
 
 		wg := sync.WaitGroup{}
-		wg.Add(batchAdders + singleAdders)
+		wg.Add(batchAdders)
 
 		// concurrently add records using AddRecords()
 		for range batchAdders {
 			go func() {
 				defer wg.Done()
 
-				added := 0
 				for {
 					select {
 					case <-stopWrites:
-						recordsAdded.Add(int32(added))
 						return
 					default:
 					}
@@ -481,41 +436,7 @@ func TestBrokerConcurrency(t *testing.T) {
 						records:   tester.BatchIndividualRecords(t, batch, 0, batch.Len()),
 					}
 
-					added += batch.Len()
-				}
-			}()
-		}
-
-		// concurrently add records using AddRecord()
-		for range singleAdders {
-			go func() {
-				defer wg.Done()
-
-				added := 0
-				for {
-					select {
-					case <-stopWrites:
-						recordsAdded.Add(int32(added))
-						return
-					default:
-					}
-
-					expectedRecord := tester.BatchIndividualRecords(t, slicey.Random(batches), 0, 1)[0]
-
-					topicName := slicey.Random(topicNames)
-
-					// Act
-					offset, err := s.AddRecord(topicName, expectedRecord)
-					require.NoError(t, err)
-
-					// Assert
-					verifications <- verification{
-						topicName: topicName,
-						offset:    offset,
-						records:   [][]byte{expectedRecord},
-					}
-
-					added += len(expectedRecord)
+					recordsAdded.Add(int32(batch.Len()))
 				}
 			}()
 		}
@@ -539,7 +460,9 @@ func TestBrokerConcurrency(t *testing.T) {
 		}
 
 		// Run workers concurrently for a while
-		time.Sleep(250 * time.Millisecond)
+		for recordsAdded.Load() < 10_000 {
+			time.Sleep(25 * time.Millisecond)
+		}
 
 		// stop writes and wait for all writers to return
 		close(stopWrites)
@@ -547,9 +470,5 @@ func TestBrokerConcurrency(t *testing.T) {
 
 		// stop verifiers once they've verified all writes
 		close(verifications)
-
-		// assert that some minimum amount of records were added concurrently
-		added := int(recordsAdded.Load())
-		require.Greater(t, added, 5_000)
 	})
 }

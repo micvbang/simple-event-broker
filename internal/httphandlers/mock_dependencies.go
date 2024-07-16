@@ -9,9 +9,6 @@ import (
 )
 
 type MockDependencies struct {
-	AddRecordMock  func(topicName string, record []byte) (uint64, error)
-	AddRecordCalls []dependenciesAddRecordCall
-
 	AddRecordsMock  func(topicName string, batch sebrecords.Batch) ([]uint64, error)
 	AddRecordsCalls []dependenciesAddRecordsCall
 
@@ -23,30 +20,6 @@ type MockDependencies struct {
 
 	MetadataMock  func(topicName string) (sebtopic.Metadata, error)
 	MetadataCalls []dependenciesMetadataCall
-}
-
-type dependenciesAddRecordCall struct {
-	TopicName string
-	Record    []byte
-
-	Out0 uint64
-	Out1 error
-}
-
-func (_v *MockDependencies) AddRecord(topicName string, record []byte) (uint64, error) {
-	if _v.AddRecordMock == nil {
-		msg := fmt.Sprintf("call to %T.AddRecord, but MockAddRecord is not set", _v)
-		panic(msg)
-	}
-
-	_v.AddRecordCalls = append(_v.AddRecordCalls, dependenciesAddRecordCall{
-		TopicName: topicName,
-		Record:    record,
-	})
-	out0, out1 := _v.AddRecordMock(topicName, record)
-	_v.AddRecordCalls[len(_v.AddRecordCalls)-1].Out0 = out0
-	_v.AddRecordCalls[len(_v.AddRecordCalls)-1].Out1 = out1
-	return out0, out1
 }
 
 type dependenciesAddRecordsCall struct {

@@ -17,10 +17,9 @@ func TestGetRecordExistence(t *testing.T) {
 	server := tester.HTTPServer(t)
 	defer server.Close()
 
-	expectedPayload := []byte("haps")
 	const topicName = "topicName"
 
-	offset, err := server.Broker.AddRecord(topicName, expectedPayload)
+	offsets, err := server.Broker.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -34,12 +33,12 @@ func TestGetRecordExistence(t *testing.T) {
 			statusCode: http.StatusNotFound,
 		},
 		"topic not found": {
-			offset:     offset,
+			offset:     offsets[0],
 			topicName:  "does-not-exist",
 			statusCode: http.StatusNotFound,
 		},
 		"found": {
-			offset:     offset,
+			offset:     offsets[0],
 			topicName:  topicName,
 			statusCode: http.StatusOK,
 		},

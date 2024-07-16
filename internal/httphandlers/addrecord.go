@@ -7,17 +7,14 @@ import (
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
-
-type RecordAdder interface {
-	AddRecord(topicName string, record []byte) (uint64, error)
-}
 
 type AddRecordOutput struct {
 	Offset uint64 `json:"offset"`
 }
 
-func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
+func AddRecord(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		log.Debugf("hit %s", r.URL)
@@ -37,7 +34,7 @@ func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
 			return
 		}
 
-		offset, err := s.AddRecord(topicName, bs)
+		offsets, err := s.AddRecords(topicName, sebrecords.BatchFromRecords([][]byte{bs}))
 		if err != nil {
 			log.Errorf("failed to add: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
@@ -45,8 +42,14 @@ func AddRecord(log logger.Logger, s RecordAdder) http.HandlerFunc {
 			return
 		}
 
+		if len(offsets) != 1 {
+			log.Errorf("expected 1 offset, got %d: %v", len(offsets), offsets)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
 		err = httphelpers.WriteJSONWithStatusCode(w, http.StatusCreated, AddRecordOutput{
-			Offset: offset,
+			Offset: offsets[0],
 		})
 		if err != nil {
 			log.Errorf("failed to write json: %s", err)

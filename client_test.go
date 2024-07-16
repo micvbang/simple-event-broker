@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/micvbang/go-helpy/slicey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
@@ -172,12 +173,10 @@ func TestRecordClientGetRecordsHappyPath(t *testing.T) {
 	srv := tester.HTTPServer(t)
 	defer srv.Close()
 
-	expectedRecords := make([][]byte, 16)
-	for i := range len(expectedRecords) {
-		expectedRecords[i] = tester.RandomBytes(t, 32)
-		_, err := srv.Broker.AddRecord(topicName, expectedRecords[i])
-		require.NoError(t, err)
-	}
+	batch := tester.MakeRandomRecordBatch(16)
+	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
+	_, err := srv.Broker.AddRecords(topicName, batch)
+	require.NoError(t, err)
 
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
 	require.NoError(t, err)
@@ -220,13 +219,13 @@ func TestRecordClientGetRecordsOffsetOutOfBounds(t *testing.T) {
 	srv := tester.HTTPServer(t)
 	defer srv.Close()
 
-	offset, err := srv.Broker.AddRecord(topicName, []byte("this be record"))
+	offsets, err := srv.Broker.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 	require.NoError(t, err)
 
 	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
 	require.NoError(t, err)
 
-	offsetTooHigh := offset + 1
+	offsetTooHigh := slicey.Last(offsets) + 1
 
 	// Act
 	records, err := client.GetRecords(topicName, offsetTooHigh, seb.GetRecordsInput{

@@ -69,21 +69,6 @@ func New(log logger.Logger, topicFactory TopicFactory, optFuncs ...func(*Opts)) 
 	}
 }
 
-// AddRecord adds record to topicName, using the configured batcher. It returns
-// only once data has been committed to topic storage.
-func (s *Broker) AddRecord(topicName string, record []byte) (uint64, error) {
-	tb, err := s.getTopicBatcher(topicName)
-	if err != nil {
-		return 0, err
-	}
-
-	offset, err := tb.batcher.AddRecord(record)
-	if err != nil {
-		return 0, fmt.Errorf("adding batch to topic '%s': %w", topicName, err)
-	}
-	return offset, nil
-}
-
 // AddRecords adds record to topicName, using the configured batcher. It returns
 // only once data has been committed to topic storage.
 func (s *Broker) AddRecords(topicName string, batch sebrecords.Batch) ([]uint64, error) {

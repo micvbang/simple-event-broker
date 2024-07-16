@@ -85,7 +85,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 	err := server.Broker.CreateTopic(topicName)
 	require.NoError(t, err)
 
-	_, err = server.Broker.AddRecord(topicName, []byte("record"))
+	_, err = server.Broker.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -209,12 +209,10 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 		recordSize = 32
 	)
 
-	expectedRecords := make([][]byte, 16)
-	for i := range len(expectedRecords) {
-		expectedRecords[i] = tester.RandomBytes(t, recordSize)
-		_, err := server.Broker.AddRecord(topicName, expectedRecords[i])
-		require.NoError(t, err)
-	}
+	batch := tester.MakeRandomRecordBatchSize(16, recordSize)
+	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
+	_, err := server.Broker.AddRecords(topicName, batch)
+	require.NoError(t, err)
 
 	tests := map[string]struct {
 		offset          uint64

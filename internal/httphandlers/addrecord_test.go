@@ -21,7 +21,7 @@ func TestAddRecordHappyPath(t *testing.T) {
 	defer server.Close()
 
 	// add record s.t. returned offset in HTTP response is not 0 (default value)
-	_, err := server.Broker.AddRecord(topicName, []byte("haps"))
+	_, err := server.Broker.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 	require.NoError(t, err)
 
 	expectedRecord := tester.RandomBytes(t, 64)
