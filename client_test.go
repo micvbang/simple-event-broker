@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/micvbang/go-helpy"
 	"github.com/micvbang/go-helpy/slicey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
@@ -27,7 +28,7 @@ func TestRecordClientAddRecordsHappyPath(t *testing.T) {
 	)
 
 	// ensure record does not already exist
-	_, err = srv.Broker.GetRecord(topicName, offset)
+	_, err = srv.Broker.GetRecord(helpy.Pointer(tester.NewBatch(1, 256)), topicName, offset)
 	require.ErrorIs(t, err, seb.ErrOutOfBounds)
 
 	expectedBatch := tester.MakeRandomRecordBatch(5)
@@ -38,7 +39,11 @@ func TestRecordClientAddRecordsHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert
-	gotRecords, err := srv.Broker.GetRecords(context.Background(), topicName, offset, 100, 0)
+	gotBatch := tester.NewBatch(expectedBatch.Len(), 4096)
+	err = srv.Broker.GetRecords(context.Background(), &gotBatch, topicName, offset, 100, 0)
+	require.NoError(t, err)
+
+	gotRecords, err := gotBatch.IndividualRecords(0, gotBatch.Len())
 	require.NoError(t, err)
 
 	require.Equal(t, expectedRecords, gotRecords)

@@ -85,13 +85,13 @@ func (s *Broker) AddRecords(topicName string, batch sebrecords.Batch) ([]uint64,
 
 // GetRecord returns the record at offset in topicName. It will only return offsets
 // that have been committed to topic storage.
-func (s *Broker) GetRecord(topicName string, offset uint64) ([]byte, error) {
+func (s *Broker) GetRecord(batch *sebrecords.Batch, topicName string, offset uint64) ([]byte, error) {
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
 		return nil, err
 	}
 
-	batch, err := tb.topic.ReadRecords(context.Background(), offset, 1, 0)
+	err = tb.topic.ReadRecords(context.Background(), batch, offset, 1, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -146,35 +146,37 @@ func (s *Broker) CreateTopic(topicName string) error {
 // NOTE: GetRecordBatch will always return all of the records that it managed to
 // fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
-func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([][]byte, error) {
+func (s *Broker) GetRecords(ctx context.Context, batch *sebrecords.Batch, topicName string, offset uint64, maxRecords int, softMaxBytes int) error {
 	if maxRecords == 0 {
 		maxRecords = 10
 	}
 
 	tb, err := s.getTopicBatcher(topicName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
+	// TODO: make configurable whether to block on this or return
+	// seb.ErrNotFound, which allows us to remove GetRecord()
 	// wait for startOffset to become available. Can only return errors from
 	// the context
 	err = tb.topic.OffsetCond.Wait(ctx, offset)
 	if err != nil {
 		ctxExpiredErr := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 		if ctxExpiredErr {
-			return nil, fmt.Errorf("waiting for offset %d to be reached: %w", offset, err)
+			return fmt.Errorf("waiting for offset %d to be reached: %w", offset, err)
 		}
 
 		s.log.Errorf("unexpected error when waiting for offset %d to be reached: %s", offset, err)
-		return nil, fmt.Errorf("unexpected when waiting for offset %d to be reached: %w", offset, err)
+		return fmt.Errorf("unexpected when waiting for offset %d to be reached: %w", offset, err)
 	}
 
-	batch, err := tb.topic.ReadRecords(ctx, offset, maxRecords, softMaxBytes)
+	err = tb.topic.ReadRecords(ctx, batch, offset, maxRecords, softMaxBytes)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return batch.IndividualRecords(0, batch.Len())
+	return nil
 }
 
 // Metadata returns metadata about the topic.

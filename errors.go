@@ -11,4 +11,5 @@ var (
 	ErrUnauthorized       = fmt.Errorf("unauthorized")
 	ErrPayloadTooLarge    = fmt.Errorf("payload too large")
 	ErrBadInput           = fmt.Errorf("bad input")
+	ErrBufferTooSmall     = fmt.Errorf("buffer too small")
 )

@@ -71,7 +71,6 @@ func TestReadRecords(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := map[string]struct {
-		rdr              io.ReadSeeker
 		recordIndexStart uint32
 		recordIndexEnd   uint32
 		expected         []byte
@@ -105,14 +104,69 @@ func TestReadRecords(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			require.NoError(t, err)
+			got := sebrecords.NewBatch(make([]uint32, 0, 32), make([]byte, 0, 4*1024))
 
 			// Test
-			got, err := parser.Records(test.recordIndexStart, test.recordIndexEnd)
+			err := parser.Records(&got, test.recordIndexStart, test.recordIndexEnd)
 
 			// Verify
 			require.NoError(t, err)
 			require.Equal(t, test.expected, got.Data())
+		})
+	}
+}
+
+// TestReadRecordsOverCapacity verifies that Records() returns
+// seb.ErrBufferTooSmall when attempting to satisfy a request that requires more
+// space than is available in either buffer.
+func TestReadRecordsOverCapacity(t *testing.T) {
+	batch := tester.MakeRandomRecordBatch(1)
+
+	buf := bytes.NewBuffer(nil)
+	err := sebrecords.Write(buf, batch)
+	require.NoError(t, err)
+
+	rdr := bytey.NewBuffer(buf.Bytes())
+	parser, err := sebrecords.Parse(rdr)
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		sizes    []uint32
+		data     []byte
+		expected error
+	}{
+		"both too small": {
+			expected: seb.ErrBufferTooSmall,
+		},
+		"sizes too small": {
+			data:     make([]byte, len(batch.Data())),
+			expected: seb.ErrBufferTooSmall,
+		},
+		"data too small": {
+			sizes:    make([]uint32, batch.Len()),
+			expected: seb.ErrBufferTooSmall,
+		},
+		"both exactly fit": {
+			data:     make([]byte, 0, len(batch.Data())),
+			sizes:    make([]uint32, 0, batch.Len()),
+			expected: nil,
+		},
+		"both generously fit": {
+			data:     make([]byte, 0, 5*len(batch.Data())),
+			sizes:    make([]uint32, 0, 5*batch.Len()),
+			expected: nil,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := sebrecords.NewBatch(test.sizes, test.data)
+
+			// Test
+			err := parser.Records(&got, 0, 1)
+
+			// Verify
+			require.ErrorIs(t, err, test.expected)
 		})
 	}
 }
@@ -161,10 +215,10 @@ func TestReadRecordsSingleByteRecords(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			require.NoError(t, err)
+			got := sebrecords.NewBatch(make([]uint32, 0, 32), make([]byte, 0, 4*1024))
 
 			// Test
-			got, err := parser.Records(test.recordIndexStart, test.recordIndexEnd)
+			err := parser.Records(&got, test.recordIndexStart, test.recordIndexEnd)
 
 			// Verify
 			require.NoError(t, err)
@@ -209,7 +263,7 @@ func TestReadRecordsOutOfBounds(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Test
-			_, err = parser.Records(test.indexStart, test.indexEnd)
+			err = parser.Records(&sebrecords.Batch{}, test.indexStart, test.indexEnd)
 
 			// Verify
 			require.ErrorIs(t, err, seb.ErrOutOfBounds)
@@ -230,7 +284,7 @@ func TestReadRecordsStartIndexLargerThanEnd(t *testing.T) {
 	parser, err := sebrecords.Parse(rdr)
 	require.NoError(t, err)
 	// Test
-	_, err = parser.Records(3, 1)
+	err = parser.Records(&sebrecords.Batch{}, 3, 1)
 
 	// Verify
 	require.ErrorIs(t, err, seb.ErrBadInput)

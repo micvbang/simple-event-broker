@@ -263,11 +263,13 @@ func testBlockingBatcherConcurrency(t *testing.T, batcher sebbroker.RecordBatche
 				// Assert
 				require.Equal(t, expectedBatch.Len(), len(offsets))
 
-				gotBatch, err := topic.ReadRecords(ctx, offsets[0], len(offsets), 0)
+				batch := tester.NewBatch(32, 4096)
+
+				err = topic.ReadRecords(ctx, &batch, offsets[0], len(offsets), 0)
 				require.NoError(t, err)
 
-				require.Equal(t, expectedBatch.Len(), gotBatch.Len())
-				require.Equal(t, expectedBatch.Data(), gotBatch.Data())
+				require.Equal(t, expectedBatch.Len(), batch.Len())
+				require.Equal(t, expectedBatch.Data(), batch.Data())
 
 				recordsAdded.Add(int32(expectedBatch.Len()))
 			}

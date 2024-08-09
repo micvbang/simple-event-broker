@@ -15,6 +15,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,7 +103,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -112,7 +113,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusBadRequest,
 		},
@@ -122,7 +123,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				// "offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusBadRequest,
 		},
@@ -132,7 +133,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":     0,
 				// "max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -142,7 +143,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":     0,
 				"max-bytes":  1,
 				// "max-records": 2,
-				"timeout": "10ms",
+				"timeout": "100ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -162,7 +163,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      10, // NOTE: offset does not exist
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusPartialContent,
 		},
@@ -172,7 +173,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusNotFound,
 		},
@@ -325,8 +326,8 @@ func TestGetRecordsErrors(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			deps.GetRecordsMock = func(ctx context.Context, topicName string, offset uint64, maxRecords, softMaxBytes int) ([][]byte, error) {
-				return nil, test.getRecordsErr
+			deps.GetRecordsMock = func(ctx context.Context, batch *sebrecords.Batch, topicName string, offset uint64, maxRecords, softMaxBytes int) error {
+				return test.getRecordsErr
 			}
 
 			r := httptest.NewRequest("GET", "/records", nil)

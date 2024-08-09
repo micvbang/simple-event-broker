@@ -88,13 +88,14 @@ var dumpCmd = &cobra.Command{
 		fmt.Printf("NumRecords:\t\t%d\n", p.Header.NumRecords)
 		fmt.Printf("Timestamp:\t\t%s\n", time.UnixMicro(p.Header.UnixEpochUs))
 
+		batch := sebrecords.NewBatch(make([]uint32, 0, p.Header.NumRecords), make([]byte, 0, fi.Size()))
 		fileSize := fi.Size()
 		headerSize := p.Header.Size()
 		dataSize := fileSize - int64(headerSize)
 		fmt.Printf("Total file size:\t%v (%v B)\n", sizey.FormatBytes(fileSize), fileSize)
 		fmt.Printf("Header size:\t\t%v (%d B)\n", sizey.FormatBytes(headerSize), headerSize)
 		fmt.Printf("Data size: %v\t(%d B)\n", sizey.FormatBytes(dataSize), dataSize)
-		batch, err := p.Records(0, p.Header.NumRecords)
+		err = p.Records(&batch, 0, p.Header.NumRecords)
 		if err != nil {
 			return fmt.Errorf("reading records: %w", err)
 		}

@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/micvbang/go-helpy/sizey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 type RecordsGetter interface {
-	GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([][]byte, error)
+	GetRecords(ctx context.Context, batch *sebrecords.Batch, topicName string, offset uint64, maxRecords int, softMaxBytes int) error
 }
 
 const multipartFormData = "multipart/form-data"
@@ -68,7 +70,9 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			WithField("timeout", timeout)
 
 		var errIsContext bool
-		records, err := s.GetRecords(ctx, topicName, offset, maxRecords, softMaxBytes)
+		// TODO: pool
+		batch := sebrecords.NewBatch(make([]uint32, 0, 32*1024), make([]byte, 0, 10*sizey.MB))
+		err = s.GetRecords(ctx, &batch, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
 			if errors.Is(err, seb.ErrTopicNotFound) {
 				log.Debugf("not found: %s", err)
@@ -102,6 +106,14 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			log.Debugf("context ended: %s", err)
 			w.WriteHeader(http.StatusPartialContent)
 			return
+		}
+
+		var records [][]byte
+		if batch.Len() > 0 {
+			records, err = batch.IndividualRecords(0, batch.Len())
+			if err != nil {
+				panic(fmt.Sprintf("this is not supposed to happen: %s", err))
+			}
 		}
 
 		for localOffset, record := range records {

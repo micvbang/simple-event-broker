@@ -12,10 +12,10 @@ type MockDependencies struct {
 	AddRecordsMock  func(topicName string, batch sebrecords.Batch) ([]uint64, error)
 	AddRecordsCalls []dependenciesAddRecordsCall
 
-	GetRecordMock  func(topicName string, offset uint64) ([]byte, error)
+	GetRecordMock  func(batch *sebrecords.Batch, topicName string, offset uint64) ([]byte, error)
 	GetRecordCalls []dependenciesGetRecordCall
 
-	GetRecordsMock  func(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([][]byte, error)
+	GetRecordsMock  func(ctx context.Context, batch *sebrecords.Batch, topicName string, offset uint64, maxRecords int, softMaxBytes int) error
 	GetRecordsCalls []dependenciesGetRecordsCall
 
 	MetadataMock  func(topicName string) (sebtopic.Metadata, error)
@@ -47,6 +47,7 @@ func (_v *MockDependencies) AddRecords(topicName string, batch sebrecords.Batch)
 }
 
 type dependenciesGetRecordCall struct {
+	Batch     *sebrecords.Batch
 	TopicName string
 	Offset    uint64
 
@@ -54,17 +55,18 @@ type dependenciesGetRecordCall struct {
 	Out1 error
 }
 
-func (_v *MockDependencies) GetRecord(topicName string, offset uint64) ([]byte, error) {
+func (_v *MockDependencies) GetRecord(batch *sebrecords.Batch, topicName string, offset uint64) ([]byte, error) {
 	if _v.GetRecordMock == nil {
 		msg := fmt.Sprintf("call to %T.GetRecord, but MockGetRecord is not set", _v)
 		panic(msg)
 	}
 
 	_v.GetRecordCalls = append(_v.GetRecordCalls, dependenciesGetRecordCall{
+		Batch:     batch,
 		TopicName: topicName,
 		Offset:    offset,
 	})
-	out0, out1 := _v.GetRecordMock(topicName, offset)
+	out0, out1 := _v.GetRecordMock(batch, topicName, offset)
 	_v.GetRecordCalls[len(_v.GetRecordCalls)-1].Out0 = out0
 	_v.GetRecordCalls[len(_v.GetRecordCalls)-1].Out1 = out1
 	return out0, out1
@@ -72,16 +74,16 @@ func (_v *MockDependencies) GetRecord(topicName string, offset uint64) ([]byte, 
 
 type dependenciesGetRecordsCall struct {
 	Ctx          context.Context
+	Batch        *sebrecords.Batch
 	TopicName    string
 	Offset       uint64
 	MaxRecords   int
 	SoftMaxBytes int
 
-	Out0 [][]byte
-	Out1 error
+	Out0 error
 }
 
-func (_v *MockDependencies) GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([][]byte, error) {
+func (_v *MockDependencies) GetRecords(ctx context.Context, batch *sebrecords.Batch, topicName string, offset uint64, maxRecords int, softMaxBytes int) error {
 	if _v.GetRecordsMock == nil {
 		msg := fmt.Sprintf("call to %T.GetRecords, but MockGetRecords is not set", _v)
 		panic(msg)
@@ -89,15 +91,15 @@ func (_v *MockDependencies) GetRecords(ctx context.Context, topicName string, of
 
 	_v.GetRecordsCalls = append(_v.GetRecordsCalls, dependenciesGetRecordsCall{
 		Ctx:          ctx,
+		Batch:        batch,
 		TopicName:    topicName,
 		Offset:       offset,
 		MaxRecords:   maxRecords,
 		SoftMaxBytes: softMaxBytes,
 	})
-	out0, out1 := _v.GetRecordsMock(ctx, topicName, offset, maxRecords, softMaxBytes)
+	out0 := _v.GetRecordsMock(ctx, batch, topicName, offset, maxRecords, softMaxBytes)
 	_v.GetRecordsCalls[len(_v.GetRecordsCalls)-1].Out0 = out0
-	_v.GetRecordsCalls[len(_v.GetRecordsCalls)-1].Out1 = out1
-	return out0, out1
+	return out0
 }
 
 type dependenciesMetadataCall struct {

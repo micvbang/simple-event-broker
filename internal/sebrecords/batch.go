@@ -3,45 +3,20 @@ package sebrecords
 import (
 	"fmt"
 
+	"github.com/micvbang/go-helpy/slicey"
 	seb "github.com/micvbang/simple-event-broker"
 )
 
 type Batch struct {
-	sizes   []uint32
-	data    []byte
-	indexes []int32
+	sizes []uint32
+	data  []byte
 }
 
-func NewBatch(recordSizes []uint32, data []byte) Batch {
-	indexes := make([]int32, len(recordSizes)+1)
-	index := int32(0)
-	for i, recordSize := range recordSizes {
-		indexes[i] = index
-		index += int32(recordSize)
-	}
-	indexes[len(recordSizes)] = int32(len(data))
-
+func NewBatch(recordSizes []uint32, recordsData []byte) Batch {
 	return Batch{
-		sizes:   recordSizes,
-		data:    data,
-		indexes: indexes,
+		sizes: recordSizes,
+		data:  recordsData,
 	}
-}
-
-func BatchFromRecords(records [][]byte) Batch {
-	totalSize := 0
-	recordSizes := make([]uint32, len(records))
-	for i, record := range records {
-		recordSizes[i] = uint32(len(record))
-		totalSize += len(record)
-	}
-
-	data := make([]byte, 0, totalSize)
-	for _, record := range records {
-		data = append(data, record...)
-	}
-
-	return NewBatch(recordSizes, data)
 }
 
 func (b Batch) Len() int {
@@ -56,6 +31,11 @@ func (b Batch) Data() []byte {
 	return b.data
 }
 
+func (b *Batch) Reset() {
+	b.data = b.data[:0]
+	b.sizes = b.sizes[:0]
+}
+
 func (b Batch) Records(startIndex int, endIndex int) ([]byte, error) {
 	if startIndex >= len(b.sizes) || endIndex > len(b.sizes) {
 		return nil, seb.ErrOutOfBounds
@@ -65,7 +45,9 @@ func (b Batch) Records(startIndex int, endIndex int) ([]byte, error) {
 		return nil, fmt.Errorf("%w: start (%d) must be smaller than end (%d)", seb.ErrBadInput, startIndex, endIndex)
 	}
 
-	startByte, endByte := b.indexes[startIndex], b.indexes[endIndex]
+	startByte := slicey.Sum(b.sizes[:startIndex])
+	endByte := startByte + slicey.Sum(b.sizes[startIndex:endIndex])
+
 	return b.data[startByte:endByte], nil
 }
 
@@ -83,4 +65,26 @@ func (b Batch) IndividualRecords(startIndex int, endIndex int) ([][]byte, error)
 		bytesUsed += size
 	}
 	return records, nil
+}
+
+// Append appends otherBatch to b
+// func (b *Batch) Append(otherBatch Batch) {
+// 	b.data = append(b.data, otherBatch.data...)
+// 	b.sizes = append(b.sizes, otherBatch.sizes...)
+// }
+
+func BatchFromRecords(records [][]byte) Batch {
+	totalSize := 0
+	recordSizes := make([]uint32, len(records))
+	for i, record := range records {
+		recordSizes[i] = uint32(len(record))
+		totalSize += len(record)
+	}
+
+	data := make([]byte, 0, totalSize)
+	for _, record := range records {
+		data = append(data, record...)
+	}
+
+	return NewBatch(recordSizes, data)
 }

@@ -59,3 +59,7 @@ func BatchIndividualRecords(t testing.TB, batch sebrecords.Batch, start int, end
 
 	return records
 }
+
+func NewBatch(numRecords int, numBytes int) sebrecords.Batch {
+	return sebrecords.NewBatch(make([]uint32, 0, numRecords), make([]byte, 0, numBytes))
+}

@@ -23,17 +23,17 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	server := tester.HTTPServer(t)
 	defer server.Close()
 
-	batch := tester.MakeRandomRecordBatch(32)
-	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
+	inputBatch := tester.MakeRandomRecordBatch(32)
+	expectedRecords := tester.BatchIndividualRecords(t, inputBatch, 0, inputBatch.Len())
 
-	expectedOffsets := make([]uint64, batch.Len())
+	expectedOffsets := make([]uint64, inputBatch.Len())
 	for i := range expectedOffsets {
 		expectedOffsets[i] = uint64(i)
 	}
 
 	buf := bytes.NewBuffer(nil)
 	r := httptest.NewRequest("POST", "/records", buf)
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes(), batch.Data())
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, inputBatch.Sizes(), inputBatch.Data())
 	require.NoError(t, err)
 
 	r.Header.Add("Content-Type", contentType)
@@ -53,7 +53,11 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedOffsets, output.Offsets)
 
-	gotRecords, err := server.Broker.GetRecords(context.Background(), topicName, 0, batch.Len(), 0)
+	batch := tester.NewBatch(inputBatch.Len(), 4096)
+	err = server.Broker.GetRecords(context.Background(), &batch, topicName, 0, inputBatch.Len(), 0)
+	require.NoError(t, err)
+
+	gotRecords, err := batch.IndividualRecords(0, batch.Len())
 	require.NoError(t, err)
 
 	require.Equal(t, expectedRecords, gotRecords)
