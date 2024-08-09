@@ -27,4 +27,5 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(dumpCmd)
 	rootCmd.AddCommand(benchmarkCmd)
+	rootCmd.AddCommand(benchmarkReadCmd)
 }
