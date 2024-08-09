@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type Persist func(sebrecords.Batch) ([]uint64, error)
@@ -70,8 +70,8 @@ func NewBlockingBatcherWithConfig(log logger.Logger, bytesSoftMax int, persist P
 func (b *BlockingBatcher) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	// NOTE: allows single records larger than bytesSoftMax; this is done to
 	// avoid making it impossible to add records of unexpectedly large size.
-	if len(batch.Data()) > b.bytesSoftMax && batch.Len() > 1 {
-		return nil, fmt.Errorf("%w (%d bytes), bytes max is %d", seb.ErrPayloadTooLarge, len(batch.Data()), b.bytesSoftMax)
+	if len(batch.Data) > b.bytesSoftMax && batch.Len() > 1 {
+		return nil, fmt.Errorf("%w (%d bytes), bytes max is %d", seberr.ErrPayloadTooLarge, len(batch.Data), b.bytesSoftMax)
 	}
 
 	responses := make(chan addResponse)
@@ -100,7 +100,7 @@ func (b *BlockingBatcher) collectBatches() {
 		blockedCaller := <-b.callers
 		blockedCallers = append(blockedCallers, blockedCaller)
 
-		batchBytes := len(blockedCaller.batch.Data())
+		batchBytes := len(blockedCaller.batch.Data)
 		batchRecords := blockedCaller.batch.Len()
 
 		ctx, cancel := context.WithCancel(b.contextFactory())
@@ -113,7 +113,7 @@ func (b *BlockingBatcher) collectBatches() {
 
 			case blockedCaller := <-b.callers:
 				blockedCallers = append(blockedCallers, blockedCaller)
-				batchBytes += len(blockedCaller.batch.Data())
+				batchBytes += len(blockedCaller.batch.Data)
 				batchRecords += blockedCaller.batch.Len()
 
 				b.log.Debugf("added record to batch (%d)", len(blockedCallers))
@@ -133,8 +133,8 @@ func (b *BlockingBatcher) collectBatches() {
 				recordData := make([]byte, 0, batchBytes)
 				recordSizes := make([]uint32, 0, batchRecords)
 				for _, add := range blockedCallers {
-					recordData = append(recordData, add.batch.Data()...)
-					recordSizes = append(recordSizes, add.batch.Sizes()...)
+					recordData = append(recordData, add.batch.Data...)
+					recordSizes = append(recordSizes, add.batch.Sizes...)
 				}
 
 				// block until records are persisted or persisting failed

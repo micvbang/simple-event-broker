@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/filepathy"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type CacheItem struct {
@@ -107,7 +107,7 @@ func (c *DiskCache) Reader(key string) (io.ReadSeekCloser, error) {
 	f, err := os.Open(cachePath)
 	if err != nil {
 		log.Debugf("miss")
-		return nil, errors.Join(seb.ErrNotInCache, fmt.Errorf("opening record batch '%s': %w", key, err))
+		return nil, errors.Join(seberr.ErrNotInCache, fmt.Errorf("opening record batch '%s': %w", key, err))
 	}
 	log.Debugf("hit")
 
@@ -137,7 +137,7 @@ func (c *DiskCache) cachePath(key string) (string, error) {
 	}
 
 	if !strings.HasPrefix(abs, c.rootDir) {
-		err := fmt.Errorf("attempting to delete key outside of root dir '%s': %w", c.rootDir, seb.ErrUnauthorized)
+		err := fmt.Errorf("attempting to delete key outside of root dir '%s': %w", c.rootDir, seberr.ErrUnauthorized)
 		c.log.
 			WithField("key", key).
 			WithField("abs", abs).

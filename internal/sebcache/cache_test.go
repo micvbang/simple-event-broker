@@ -8,9 +8,9 @@ import (
 
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/go-helpy/timey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,7 +67,7 @@ func TestCacheEvictLeastRecentlyUsed(t *testing.T) {
 			// most recently accessed items must be evicted
 			for _, item := range cacheItems[:i] {
 				_, err := cache.Reader(item.key)
-				require.ErrorIs(t, err, seb.ErrNotInCache)
+				require.ErrorIs(t, err, seberr.ErrNotInCache)
 			}
 
 			// least recently accessed items must stay
@@ -148,7 +148,7 @@ func TestCacheReaderFileNotCached(t *testing.T) {
 
 		// Act, assert
 		_, err = cache.Reader("non/existing/path")
-		require.ErrorIs(t, err, seb.ErrNotInCache)
+		require.ErrorIs(t, err, seberr.ErrNotInCache)
 	})
 }
 

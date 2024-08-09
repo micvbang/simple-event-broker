@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,17 +23,16 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	server := tester.HTTPServer(t)
 	defer server.Close()
 
-	batch := tester.MakeRandomRecordBatch(32)
-	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
+	inputBatch := tester.MakeRandomRecordBatch(32)
 
-	expectedOffsets := make([]uint64, batch.Len())
+	expectedOffsets := make([]uint64, inputBatch.Len())
 	for i := range expectedOffsets {
 		expectedOffsets[i] = uint64(i)
 	}
 
 	buf := bytes.NewBuffer(nil)
 	r := httptest.NewRequest("POST", "/records", buf)
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes(), batch.Data())
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, inputBatch.Sizes, inputBatch.Data)
 	require.NoError(t, err)
 
 	r.Header.Add("Content-Type", contentType)
@@ -53,30 +52,31 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedOffsets, output.Offsets)
 
-	gotRecords, err := server.Broker.GetRecords(context.Background(), topicName, 0, batch.Len(), 0)
+	batch := tester.NewBatch(inputBatch.Len(), 4096)
+	err = server.Broker.GetRecords(context.Background(), &batch, topicName, 0, inputBatch.Len(), 0)
 	require.NoError(t, err)
 
-	require.Equal(t, expectedRecords, gotRecords)
+	require.Equal(t, inputBatch, batch)
 }
 
 // TestAddRecordsPayloadTooLarge verifies that http.StatusRequestEntityTooLarge
-// is returned when AddRecords() receives seb.ErrPayloadTooLarge from its
+// is returned when AddRecords() receives seberr.ErrPayloadTooLarge from its
 // dependency.
 func TestAddRecordsPayloadTooLarge(t *testing.T) {
 	deps := &httphandlers.MockDependencies{}
 	deps.AddRecordsMock = func(topicName string, batch sebrecords.Batch) ([]uint64, error) {
-		return nil, seb.ErrPayloadTooLarge
+		return nil, seberr.ErrPayloadTooLarge
 	}
 
 	server := tester.HTTPServer(t, tester.HTTPDependencies(deps))
 	defer server.Close()
 
-	batch := tester.MakeRandomRecordBatch(0)
+	batch := tester.MakeRandomRecordBatch(1)
 
 	buf := bytes.NewBuffer(nil)
 	r := httptest.NewRequest("POST", "/records", buf)
 
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes(), batch.Data())
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes, batch.Data)
 	require.NoError(t, err)
 
 	r.Header.Add("Content-Type", contentType)
@@ -115,7 +115,7 @@ func BenchmarkAddRecords(b *testing.B) {
 	batch := tester.MakeRandomRecordBatch(32)
 
 	buf := bytes.NewBuffer(nil)
-	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes(), batch.Data())
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes, batch.Data)
 	require.NoError(b, err)
 
 	bs := buf.Bytes()

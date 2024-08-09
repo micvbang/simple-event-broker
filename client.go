@@ -6,21 +6,20 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
-)
-
-var (
-	ErrNotAuthorized = errors.New("not authorized")
-	ErrNotFound      = errors.New("not found")
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type RecordClient struct {
 	client  *http.Client
+	bufPool *syncy.Pool[*bytes.Buffer]
 	baseURL *url.URL
 	apiKey  string
 }
@@ -41,6 +40,9 @@ func NewRecordClient(baseURL string, apiKey string) (*RecordClient, error) {
 		},
 		baseURL: bURL,
 		apiKey:  apiKey,
+		bufPool: syncy.NewPool(func() *bytes.Buffer {
+			return bytes.NewBuffer(make([]byte, 5*sizey.MB))
+		}),
 	}, nil
 }
 
@@ -65,7 +67,7 @@ func (c *RecordClient) AddRecords(topicName string, recordSizes []uint32, record
 	defer res.Body.Close()
 	io.Copy(io.Discard, res.Body)
 
-	err = c.statusCode(res)
+	err = c.statusCode(res.StatusCode)
 	if err != nil {
 		return err
 	}
@@ -90,7 +92,7 @@ func (c *RecordClient) GetRecord(topicName string, offset uint64) ([]byte, error
 	}
 	defer res.Body.Close()
 
-	err = c.statusCode(res)
+	err = c.statusCode(res.StatusCode)
 	if err != nil {
 		return nil, err
 	}
@@ -107,10 +109,15 @@ type GetRecordsInput struct {
 	// MaxRecords is the maximum number of records to return. Defaults to 10
 	MaxRecords int
 
-	// SoftMaxBytes is the maximum number of bytes to return. If the first
-	// record is larger than SoftMaxBytes, that record is returned anyway.
-	// Defaults to infinity.
-	SoftMaxBytes int
+	// Buffer is used as the backing storage for the returned records, and
+	// therefore limits how many bytes are requested.
+	//
+	// NOTE: since this will be the backing storage for the returned records
+	// (slice-of-byte-slices), it therefore must not be reused until the records
+	// are not used anymore.
+	//
+	// Defaults to 1 MiB.
+	Buffer []byte
 
 	// Timeout is the amount of time to allow the server (on the server side) to
 	// collect records for. If this timeout is exceeded, the number of records
@@ -125,6 +132,10 @@ func (c *RecordClient) GetRecords(topicName string, offset uint64, input GetReco
 		input.MaxRecords = 10
 	}
 
+	if input.Buffer == nil {
+		input.Buffer = make([]byte, 0, sizey.MB)
+	}
+
 	req, err := c.request("GET", "/records", nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -135,7 +146,7 @@ func (c *RecordClient) GetRecords(topicName string, offset uint64, input GetReco
 		"topic-name":  topicName,
 		"offset":      fmt.Sprintf("%d", offset),
 		"max-records": fmt.Sprintf("%d", input.MaxRecords),
-		"max-bytes":   fmt.Sprintf("%d", input.SoftMaxBytes),
+		"max-bytes":   fmt.Sprintf("%d", cap(input.Buffer)),
 	})
 
 	if input.Timeout != 0 {
@@ -150,7 +161,7 @@ func (c *RecordClient) GetRecords(topicName string, offset uint64, input GetReco
 	}
 	defer res.Body.Close()
 
-	err = c.statusCode(res)
+	err = c.statusCode(res.StatusCode)
 	if err != nil {
 		return nil, err
 	}
@@ -162,18 +173,20 @@ func (c *RecordClient) GetRecords(topicName string, offset uint64, input GetReco
 	if mediaType != multipartFormData {
 		return nil, fmt.Errorf("expected mediatype '%s', got '%s'", multipartFormData, mediaType)
 	}
-	mr := multipart.NewReader(res.Body, params["boundary"])
 
-	records := make([][]byte, 0, input.MaxRecords)
-	for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
-		record, err := io.ReadAll(part)
-		if err != nil {
-			return records, err
+	batch := sebrecords.NewBatch(make([]uint32, 0, input.MaxRecords), input.Buffer)
+	err = httphelpers.MultipartFormDataToRecords(res.Body, params["boundary"], &batch)
+	if err != nil {
+		// NOTE: when partial content is received the request was accepted by
+		// the server, and the ErrBadInput error is just telling us that there's
+		// no data in the response.
+		if res.StatusCode == http.StatusPartialContent && errors.Is(err, seberr.ErrBadInput) {
+			return batch.IndividualRecords(), nil
 		}
-		records = append(records, record)
-	}
 
-	return records, nil
+		return nil, fmt.Errorf("parsing multipart form data: %w", err)
+	}
+	return batch.IndividualRecords(), nil
 }
 
 // CloseIdleConnections closes unused, idle connections on the underlying
@@ -182,20 +195,17 @@ func (c *RecordClient) CloseIdleConnections() {
 	c.client.CloseIdleConnections()
 }
 
-func (c *RecordClient) statusCode(res *http.Response) error {
-	if res.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrNotAuthorized)
+func (c *RecordClient) statusCode(statusCode int) error {
+	switch statusCode {
+	case http.StatusUnauthorized:
+		return fmt.Errorf("status code %d: %w", statusCode, seberr.ErrNotAuthorized)
+	case http.StatusNotFound:
+		return fmt.Errorf("status code %d: %w", statusCode, seberr.ErrNotFound)
+	case http.StatusRequestEntityTooLarge:
+		return fmt.Errorf("status code %d: %w", statusCode, seberr.ErrPayloadTooLarge)
+	default:
+		return nil
 	}
-
-	if res.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrNotFound)
-	}
-
-	if res.StatusCode == http.StatusRequestEntityTooLarge {
-		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrPayloadTooLarge)
-	}
-
-	return nil
 }
 
 func (c *RecordClient) request(method string, path string, body io.Reader) (*http.Request, error) {

@@ -7,7 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/micvbang/go-helpy"
 	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/go-helpy/uint64y"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -21,6 +23,7 @@ var benchmarkReadFlags BenchmarkReadFlags
 func init() {
 	fs := benchmarkReadCmd.Flags()
 
+	fs.IntVar(&benchmarkReadFlags.logLevel, "log-level", int(logger.LevelWarn), "Number of times to run the benchmark")
 	fs.IntVarP(&benchmarkReadFlags.numRuns, "runs", "r", 1, "Number of times to run the benchmark")
 	fs.IntVarP(&benchmarkReadFlags.numWorkers, "workers", "w", runtime.NumCPU()*2, "Number of workers to add data")
 	fs.BoolVarP(&benchmarkReadFlags.localBroker, "local-broker", "l", true, "Whether to start a broker only for these benchmarks")
@@ -29,7 +32,8 @@ func init() {
 
 	fs.IntVar(&benchmarkReadFlags.numBatches, "batches", 4096, "Number of records to generate")
 	fs.IntVar(&benchmarkReadFlags.recordSize, "record-size", 1024, "Size of records in bytes")
-	fs.IntVarP(&benchmarkReadFlags.numRecordsPerBatch, "records-per-batch", "b", 1024, "Records per batch")
+	fs.IntVar(&benchmarkReadFlags.numRecordsPerBatch, "records-per-batch", 1024, "Records per batch")
+	fs.IntVar(&benchmarkReadFlags.requestRecords, "request-records", 1024, "Records per request")
 
 	fs.IntVar(&benchmarkReadFlags.batchBytesMax, "batcher-max-bytes", 50*sizey.MB, "Maximum number of bytes to wait before committing incoming batch to storage")
 	fs.DurationVar(&benchmarkReadFlags.batchBlockTime, "batcher-block-time", 5*time.Millisecond, "Maximum amount of time to wait before committing incoming batches to storage")
@@ -43,17 +47,24 @@ var benchmarkReadCmd = &cobra.Command{
 	Long:  "Run benchmark read workload to check performance of various configurations",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flags := benchmarkReadFlags
-		log := logger.NewWithLevel(context.Background(), logger.LevelWarn)
+		log := logger.NewWithLevel(context.Background(), logger.LogLevel(flags.logLevel))
 
 		numRecords := flags.numBatches * flags.numRecordsPerBatch
 		bytesPerBatch := flags.numRecordsPerBatch * flags.recordSize
 		totalBytes := numRecords * flags.recordSize
 		fmt.Printf("Generating %d batches of size %s (%d records), totalling %s\n", flags.numBatches, sizey.FormatBytes(bytesPerBatch), numRecords, sizey.FormatBytes(totalBytes))
 
+		batchPool := syncy.NewPool(func() *sebrecords.Batch {
+			return helpy.Pointer(sebrecords.NewBatch(make([]uint32, 0, flags.requestRecords), make([]byte, 0, 50*sizey.MB)))
+		})
+		bufPool := syncy.NewPool(func() []byte {
+			return make([]byte, 0, 50*sizey.MB)
+		})
+
 		var broker sebbench.Broker
 		if flags.localBroker {
 			log.Warnf("Using local broker")
-			broker = sebbench.NewLocalBroker(log, flags.batchBlockTime, flags.batchBytesMax)
+			broker = sebbench.NewLocalBroker(log, batchPool, flags.batchBlockTime, flags.batchBytesMax)
 		} else {
 			log.Warnf("Using remote broker")
 			broker = &sebbench.RemoteBroker{
@@ -71,9 +82,6 @@ var benchmarkReadCmd = &cobra.Command{
 		// TODO: make it configurable whether to insert data or not
 		// insert data to read
 		if flags.localBroker {
-			numRecords := flags.numBatches * flags.numRecordsPerBatch
-			bytesPerBatch := flags.numRecordsPerBatch * flags.recordSize
-			totalBytes := numRecords * flags.recordSize
 			fmt.Printf("Inserting %d batches of size %s (%d records), totalling %s to prepare for read benchmark\n", flags.numBatches, sizey.FormatBytes(bytesPerBatch), numRecords, sizey.FormatBytes(totalBytes))
 
 			batches := make(chan sebrecords.Batch, 8)
@@ -94,21 +102,20 @@ var benchmarkReadCmd = &cobra.Command{
 
 			// TODO: make parameters configurable
 			numRequests := 10_000
-			requestRecords := flags.numRecordsPerBatch * 8
-			go generateReadRequests(readRequests, numRequests, uint64(numRecords), requestRecords)
+			go generateReadRequests(readRequests, numRequests, uint64(numRecords), flags.requestRecords)
 
 			wg := &sync.WaitGroup{}
 			t0 := time.Now()
-			httpGetRecords(log, wg, client, flags.numWorkers, readRequests, topicName)
+			httpGetRecords(log, wg, client, flags.numWorkers, readRequests, topicName, bufPool)
 
 			wg.Wait()
 			elapsed := time.Since(t0)
 
 			runs[runID] = sebbench.Stats{
 				Elapsed:          elapsed,
-				RecordsPerSecond: float64(requestRecords*numRequests) / elapsed.Seconds(),
+				RecordsPerSecond: float64(flags.requestRecords*numRequests) / elapsed.Seconds(),
 				BatchesPerSecond: float64(numRequests) / elapsed.Seconds(),
-				MbitPerSecond:    float64(requestRecords*numRequests*flags.recordSize*8) / 1024 / 1024 / elapsed.Seconds(),
+				MbitPerSecond:    float64(flags.requestRecords*numRequests*flags.recordSize*8) / 1024 / 1024 / elapsed.Seconds(),
 			}
 			fmt.Printf("%s\n\n", runs[runID].String())
 		}
@@ -150,7 +157,7 @@ type readRequest struct {
 	maxRecords int
 }
 
-func httpGetRecords(log logger.Logger, wg *sync.WaitGroup, client *seb.RecordClient, workers int, readRequests <-chan readRequest, topicName string) {
+func httpGetRecords(log logger.Logger, wg *sync.WaitGroup, client *seb.RecordClient, workers int, readRequests <-chan readRequest, topicName string, bufPool *syncy.Pool[[]byte]) {
 	wg.Add(workers)
 
 	for range workers {
@@ -158,18 +165,22 @@ func httpGetRecords(log logger.Logger, wg *sync.WaitGroup, client *seb.RecordCli
 			defer wg.Done()
 
 			for request := range readRequests {
+				buf := bufPool.Get()
+
 				records, err := client.GetRecords(topicName, request.offset, seb.GetRecordsInput{
-					MaxRecords:   request.maxRecords,
-					SoftMaxBytes: 50 * sizey.MB,
-					Timeout:      5 * time.Second,
+					MaxRecords: request.maxRecords,
+					Timeout:    5 * time.Second,
+					Buffer:     buf,
 				})
 				if err != nil {
 					log.Fatalf(err.Error())
 				}
 
 				if len(records) != request.maxRecords {
-					log.Fatalf("expected %d records, got %d", request.maxRecords, len(records))
+					log.Fatalf("expected %d records, got %d (offset %d)", request.maxRecords, len(records), request.offset)
 				}
+
+				bufPool.Put(buf)
 			}
 		}()
 	}
@@ -198,6 +209,7 @@ func httpGetRecords(log logger.Logger, wg *sync.WaitGroup, client *seb.RecordCli
 // }
 
 type BenchmarkReadFlags struct {
+	logLevel   int
 	numRuns    int
 	numWorkers int
 
@@ -208,6 +220,7 @@ type BenchmarkReadFlags struct {
 	numBatches         int
 	recordSize         int
 	numRecordsPerBatch int
+	requestRecords     int
 
 	batchBlockTime time.Duration
 	batchBytesMax  int

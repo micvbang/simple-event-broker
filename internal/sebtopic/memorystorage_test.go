@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/micvbang/go-helpy/slicey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,12 +50,12 @@ func TestMemoryTopicStorageSimpleReadWrite(t *testing.T) {
 }
 
 // TestMemoryTopicStorageReadNotFound verifies that Reader returns
-// seb.ErrNotInStorage when attempting to read a file that does not exist.
+// seberr.ErrNotInStorage when attempting to read a file that does not exist.
 func TestMemoryTopicStorageReadNotFound(t *testing.T) {
 	memoryStorage := sebtopic.NewMemoryStorage(log)
 
 	_, err := memoryStorage.Reader("does-not-exist")
-	require.ErrorIs(t, err, seb.ErrNotInStorage)
+	require.ErrorIs(t, err, seberr.ErrNotInStorage)
 }
 
 // TestMemoryTopicStorageMultiReadWrite verifies that multiple files can be

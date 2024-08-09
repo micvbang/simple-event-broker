@@ -3,73 +3,68 @@ package sebrecords
 import (
 	"fmt"
 
-	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/go-helpy/slicey"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type Batch struct {
-	sizes   []uint32
-	data    []byte
-	indexes []int32
+	Sizes []uint32
+	Data  []byte
 }
 
-func NewBatch(recordSizes []uint32, data []byte) Batch {
-	indexes := make([]int32, len(recordSizes)+1)
-	index := int32(0)
-	for i, recordSize := range recordSizes {
-		indexes[i] = index
-		index += int32(recordSize)
-	}
-	indexes[len(recordSizes)] = int32(len(data))
-
+func NewBatch(recordSizes []uint32, recordsData []byte) Batch {
 	return Batch{
-		sizes:   recordSizes,
-		data:    data,
-		indexes: indexes,
+		Sizes: recordSizes,
+		Data:  recordsData,
 	}
-}
-
-func BatchFromRecords(records [][]byte) Batch {
-	totalSize := 0
-	recordSizes := make([]uint32, len(records))
-	for i, record := range records {
-		recordSizes[i] = uint32(len(record))
-		totalSize += len(record)
-	}
-
-	data := make([]byte, 0, totalSize)
-	for _, record := range records {
-		data = append(data, record...)
-	}
-
-	return NewBatch(recordSizes, data)
 }
 
 func (b Batch) Len() int {
-	return len(b.sizes)
+	return len(b.Sizes)
 }
 
-func (b Batch) Sizes() []uint32 {
-	return b.sizes
-}
+// func (b Batch) Sizes []uint32 {
+// 	return b.sizes
+// }
 
-func (b Batch) Data() []byte {
-	return b.data
+// func (b Batch) Data []byte {
+// 	return b.data
+// }
+
+func (b *Batch) Reset() {
+	b.Data = b.Data[:0]
+	b.Sizes = b.Sizes[:0]
 }
 
 func (b Batch) Records(startIndex int, endIndex int) ([]byte, error) {
-	if startIndex >= len(b.sizes) || endIndex > len(b.sizes) {
-		return nil, seb.ErrOutOfBounds
+	if startIndex >= len(b.Sizes) || endIndex > len(b.Sizes) {
+		return nil, seberr.ErrOutOfBounds
 	}
 
 	if startIndex >= endIndex {
-		return nil, fmt.Errorf("%w: start (%d) must be smaller than end (%d)", seb.ErrBadInput, startIndex, endIndex)
+		return nil, fmt.Errorf("%w: start (%d) must be smaller than end (%d)", seberr.ErrBadInput, startIndex, endIndex)
 	}
 
-	startByte, endByte := b.indexes[startIndex], b.indexes[endIndex]
-	return b.data[startByte:endByte], nil
+	startByte := slicey.Sum(b.Sizes[:startIndex])
+	endByte := startByte + slicey.Sum(b.Sizes[startIndex:endIndex])
+
+	return b.Data[startByte:endByte], nil
 }
 
-func (b Batch) IndividualRecords(startIndex int, endIndex int) ([][]byte, error) {
+func (b Batch) IndividualRecords() [][]byte {
+	if b.Len() == 0 {
+		return nil
+	}
+
+	records, err := b.IndividualRecordsSubset(0, b.Len())
+	if err != nil {
+		panic(fmt.Sprintf("unexpected error from individual records: %s", err))
+	}
+
+	return records
+}
+
+func (b Batch) IndividualRecordsSubset(startIndex int, endIndex int) ([][]byte, error) {
 	recordsData, err := b.Records(startIndex, endIndex)
 	if err != nil {
 		return nil, err
@@ -78,7 +73,7 @@ func (b Batch) IndividualRecords(startIndex int, endIndex int) ([][]byte, error)
 	records := make([][]byte, endIndex-startIndex)
 	bytesUsed := uint32(0)
 	for i := range records {
-		size := b.sizes[startIndex+i]
+		size := b.Sizes[startIndex+i]
 		records[i] = recordsData[bytesUsed : bytesUsed+size]
 		bytesUsed += size
 	}

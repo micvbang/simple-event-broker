@@ -1,15 +1,19 @@
 package sebrecords_test
 
 import (
+	"bytes"
 	"testing"
 
-	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/go-helpy/bytey"
+	"github.com/micvbang/go-helpy/inty"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBatchRecords(t *testing.T) {
-	batch := sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}})
+	batch := tester.RecordsToBatch([][]byte{{1}, {2}, {3}})
 
 	tests := map[string]struct {
 		start    int
@@ -20,17 +24,17 @@ func TestBatchRecords(t *testing.T) {
 		"start > end": {
 			start: 1,
 			end:   0,
-			err:   seb.ErrBadInput,
+			err:   seberr.ErrBadInput,
 		},
 		"end out of bounds": {
 			start: 0,
 			end:   batch.Len() + 1,
-			err:   seb.ErrOutOfBounds,
+			err:   seberr.ErrOutOfBounds,
 		},
 		"both out of bounds": {
 			start: batch.Len() + 1,
 			end:   batch.Len() + 2,
-			err:   seb.ErrOutOfBounds,
+			err:   seberr.ErrOutOfBounds,
 		},
 		"first": {
 			start:    0,
@@ -75,7 +79,7 @@ func TestBatchRecords(t *testing.T) {
 }
 
 func TestBatchIndividualRecords(t *testing.T) {
-	batch := sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}})
+	batch := tester.RecordsToBatch([][]byte{{1}, {2}, {3}})
 
 	tests := map[string]struct {
 		start    int
@@ -86,17 +90,17 @@ func TestBatchIndividualRecords(t *testing.T) {
 		"start > end": {
 			start: 1,
 			end:   0,
-			err:   seb.ErrBadInput,
+			err:   seberr.ErrBadInput,
 		},
 		"end out of bounds": {
 			start: 0,
 			end:   batch.Len() + 1,
-			err:   seb.ErrOutOfBounds,
+			err:   seberr.ErrOutOfBounds,
 		},
 		"both out of bounds": {
 			start: batch.Len() + 1,
 			end:   batch.Len() + 2,
-			err:   seb.ErrOutOfBounds,
+			err:   seberr.ErrOutOfBounds,
 		},
 		"first": {
 			start:    0,
@@ -132,10 +136,40 @@ func TestBatchIndividualRecords(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := batch.IndividualRecords(test.start, test.end)
+			got, err := batch.IndividualRecordsSubset(test.start, test.end)
 			require.ErrorIs(t, err, test.err)
 
 			require.Equal(t, test.expected, got)
 		})
+	}
+}
+
+// TestBatchReset verifies that Reset() correctly resets the underlying buffers,
+// allowing the batch to be reused.
+func TestBatchReset(t *testing.T) {
+	batch := tester.MakeRandomRecordBatch(50)
+
+	buf := bytes.NewBuffer(nil)
+	err := sebrecords.Write(buf, batch)
+	require.NoError(t, err)
+
+	rdr := bytey.NewBuffer(buf.Bytes())
+	parser, err := sebrecords.Parse(rdr)
+	require.NoError(t, err)
+
+	got := sebrecords.NewBatch(make([]uint32, 0, batch.Len()), make([]byte, 0, len(batch.Data)))
+	for range 10000 {
+		startIndex := inty.RandomN(batch.Len())
+		endIndex := 1 + startIndex + inty.RandomN(batch.Len()-startIndex)
+		expected := tester.BatchRecords(t, batch, startIndex, endIndex)
+
+		// Test
+		got.Reset()
+		err := parser.Records(&got, uint32(startIndex), uint32(endIndex))
+
+		// Verify
+		require.NoError(t, err)
+
+		require.Equal(t, expected, got.Data)
 	}
 }

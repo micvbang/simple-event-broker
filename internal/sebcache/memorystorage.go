@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/bytey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/nops"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type memoryCacheItem struct {
@@ -40,7 +40,7 @@ func (mc *MemoryCache) Reader(key string) (io.ReadSeekCloser, error) {
 
 	item, ok := mc.items[key]
 	if !ok {
-		return nil, seb.ErrNotInCache
+		return nil, seberr.ErrNotInCache
 	}
 	item.accessedAt = mc.now()
 	mc.items[key] = item
@@ -94,7 +94,7 @@ func (mc *MemoryCache) SizeOf(key string) (CacheItem, error) {
 
 	item, ok := mc.items[key]
 	if !ok {
-		return CacheItem{}, seb.ErrNotInCache
+		return CacheItem{}, seberr.ErrNotInCache
 	}
 
 	return CacheItem{

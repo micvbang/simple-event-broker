@@ -9,17 +9,20 @@ import (
 	"net/http"
 	"time"
 
-	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/go-helpy/syncy"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type RecordsGetter interface {
-	GetRecords(ctx context.Context, topicName string, offset uint64, maxRecords int, softMaxBytes int) ([][]byte, error)
+	GetRecords(ctx context.Context, batch *sebrecords.Batch, topicName string, offset uint64, maxRecords int, softMaxBytes int) error
 }
 
 const multipartFormData = "multipart/form-data"
 
-func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
+func GetRecords(log logger.Logger, batchPool *syncy.Pool[*sebrecords.Batch], s RecordsGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("hit %s", r.URL)
 
@@ -68,16 +71,20 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			WithField("timeout", timeout)
 
 		var errIsContext bool
-		records, err := s.GetRecords(ctx, topicName, offset, maxRecords, softMaxBytes)
+		batch := batchPool.Get()
+		batch.Reset()
+		defer batchPool.Put(batch)
+
+		err = s.GetRecords(ctx, batch, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
-			if errors.Is(err, seb.ErrTopicNotFound) {
+			if errors.Is(err, seberr.ErrTopicNotFound) {
 				log.Debugf("not found: %s", err)
 				w.WriteHeader(http.StatusNotFound)
 				fmt.Fprintf(w, "topic not found")
 				return
 			}
 
-			if errors.Is(err, seb.ErrOutOfBounds) {
+			if errors.Is(err, seberr.ErrOutOfBounds) {
 				log.Debugf("offset out of bounds: %s", err)
 				w.WriteHeader(http.StatusNotFound)
 				fmt.Fprintf(w, "offset out of bounds")
@@ -91,11 +98,10 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 				fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
 				return
 			}
-
-			// NOTE: continues from here!
 		}
 
 		mw := multipart.NewWriter(w)
+		defer mw.Close()
 		w.Header().Set("Content-Type", mw.FormDataContentType())
 
 		if errIsContext {
@@ -104,19 +110,12 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			return
 		}
 
-		for localOffset, record := range records {
-			fw, err := mw.CreateFormField(fmt.Sprintf("%d", offset+uint64(localOffset)))
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if _, err := fw.Write(record); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-		if err := mw.Close(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Debugf("sizes: %d, data: %d", len(batch.Sizes), len(batch.Data))
+		// TODO: pass batch instead of sizes and data
+		err = httphelpers.RecordsToMultipartFormDataHTTP(mw, batch.Sizes, batch.Data)
+		if err != nil {
+			log.Errorf("writing record multipart form data: %s", err)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 	}

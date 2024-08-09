@@ -6,10 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
@@ -55,6 +58,10 @@ func HTTPServer(t testing.TB, OptFns ...func(*Opts)) *HTTPTestServer {
 	opts := Opts{
 		APIKey:                DefaultAPIKey,
 		BrokerTopicAutoCreate: true,
+		BatchPool: syncy.NewPool(func() *sebrecords.Batch {
+			batch := sebrecords.NewBatch(make([]uint32, 0, 1024), make([]byte, 0, 1*sizey.MB))
+			return &batch
+		}),
 	}
 	for _, optFn := range OptFns {
 		optFn(&opts)
@@ -86,7 +93,7 @@ func HTTPServer(t testing.TB, OptFns ...func(*Opts)) *HTTPTestServer {
 
 	mux := http.NewServeMux()
 
-	httphandlers.RegisterRoutes(log, mux, opts.Dependencies, opts.APIKey)
+	httphandlers.RegisterRoutes(log, mux, opts.BatchPool, opts.Dependencies, opts.APIKey)
 
 	return &HTTPTestServer{
 		t:      t,
@@ -101,6 +108,7 @@ type Opts struct {
 	APIKey                string
 	BrokerTopicAutoCreate bool
 	Dependencies          httphandlers.Dependencies
+	BatchPool             *syncy.Pool[*sebrecords.Batch]
 }
 
 // HTTPAPIKey sets the apiKey for HTTPServer
@@ -126,5 +134,15 @@ func HTTPBrokerAutoCreateTopic(autoCreate bool) func(*Opts) {
 func HTTPDependencies(deps httphandlers.Dependencies) func(*Opts) {
 	return func(c *Opts) {
 		c.Dependencies = deps
+	}
+}
+
+// HTTPBatchPool sets the batch pool used when creating HTTPServer
+//
+// This is useful when testing what happens when sending requests at the limits
+// of the batch pool, e.g. exactly at the limit or over the limit.
+func HTTPBatchPool(batchPool *syncy.Pool[*sebrecords.Batch]) func(*Opts) {
+	return func(o *Opts) {
+		o.BatchPool = batchPool
 	}
 }

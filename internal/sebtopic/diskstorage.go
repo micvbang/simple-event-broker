@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/filepathy"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type DiskStorage struct {
@@ -56,7 +56,7 @@ func (ds *DiskStorage) Reader(key string) (io.ReadCloser, error) {
 	f, err := os.Open(batchPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = errors.Join(err, seb.ErrNotInStorage)
+			err = errors.Join(err, seberr.ErrNotInStorage)
 		}
 
 		return nil, fmt.Errorf("opening record batch '%s': %w", batchPath, err)

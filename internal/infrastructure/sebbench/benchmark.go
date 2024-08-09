@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/slicey"
+	"github.com/micvbang/go-helpy/syncy"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -49,13 +50,15 @@ type LocalBroker struct {
 
 	batchBlockTime time.Duration
 	batchBytesMax  int
+	batchPool      *syncy.Pool[*sebrecords.Batch]
 }
 
-func NewLocalBroker(log logger.Logger, batchBlockTime time.Duration, batchBytesMax int) *LocalBroker {
+func NewLocalBroker(log logger.Logger, batchPool *syncy.Pool[*sebrecords.Batch], batchBlockTime time.Duration, batchBytesMax int) *LocalBroker {
 	return &LocalBroker{
 		log:            log,
 		batchBlockTime: batchBlockTime,
 		batchBytesMax:  batchBytesMax,
+		batchPool:      batchPool,
 	}
 }
 
@@ -73,7 +76,7 @@ func (lb *LocalBroker) Start() (*seb.RecordClient, error) {
 
 	mux := http.NewServeMux()
 	const apiKey = "api-key"
-	httphandlers.RegisterRoutes(lb.log, mux, broker, apiKey)
+	httphandlers.RegisterRoutes(lb.log, mux, lb.batchPool, broker, apiKey)
 
 	lb.httpServer = httptest.NewServer(mux)
 	client, err := seb.NewRecordClient(lb.httpServer.URL, apiKey)

@@ -3,18 +3,17 @@ package httphandlers_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"mime"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/micvbang/go-helpy/uint64y"
-	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,7 +61,7 @@ func TestGetRecordsExistence(t *testing.T) {
 			httphelpers.AddQueryParams(r, map[string]string{
 				"topic-name": test.topicName,
 				"offset":     fmt.Sprintf("%d", test.offset),
-				"timeout":    "10ms",
+				"timeout":    "100ms",
 			})
 
 			// Act
@@ -102,7 +101,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -112,7 +111,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusBadRequest,
 		},
@@ -122,7 +121,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				// "offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusBadRequest,
 		},
@@ -132,7 +131,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":     0,
 				// "max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -142,7 +141,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":     0,
 				"max-bytes":  1,
 				// "max-records": 2,
-				"timeout": "10ms",
+				"timeout": "100ms",
 			},
 			statusCode: http.StatusOK,
 		},
@@ -162,7 +161,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      10, // NOTE: offset does not exist
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusPartialContent,
 		},
@@ -172,7 +171,7 @@ func TestGetRecordsURLParameters(t *testing.T) {
 				"offset":      0,
 				"max-bytes":   1,
 				"max-records": 2,
-				"timeout":     "10ms",
+				"timeout":     "100ms",
 			},
 			statusCode: http.StatusNotFound,
 		},
@@ -210,7 +209,8 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 	)
 
 	batch := tester.MakeRandomRecordBatchSize(16, recordSize)
-	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
+	expectedRecords := batch.IndividualRecords()
+
 	_, err := server.Broker.AddRecords(topicName, batch)
 	require.NoError(t, err)
 
@@ -271,19 +271,15 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 
 			// Parse multipart/form-data
 			_, params, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
-			mr := multipart.NewReader(response.Body, params["boundary"])
 
-			var localOffset uint64 = 0
-			for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
-				gotOffset := uint64y.FromStringOrDefault(part.FormName(), 0)
-				require.Equal(t, localOffset+test.offset, gotOffset)
+			batch := sebrecords.NewBatch(make([]uint32, 0, 64), make([]byte, 0, sizey.MB))
+			err := httphelpers.MultipartFormDataToRecords(response.Body, params["boundary"], &batch)
+			require.NoError(t, err)
 
-				expectedRecord := test.expectedRecords[localOffset]
-				gotRecord, err := io.ReadAll(part)
-				require.NoError(t, err)
+			gotRecords := batch.IndividualRecords()
 
-				require.Equal(t, expectedRecord, []byte(gotRecord))
-				localOffset += 1
+			for i, expected := range test.expectedRecords {
+				require.Equal(t, expected, gotRecords[i])
 			}
 		})
 	}
@@ -310,11 +306,11 @@ func TestGetRecordsErrors(t *testing.T) {
 			statusCode:    http.StatusPartialContent,
 		},
 		"topic not found": {
-			getRecordsErr: seb.ErrTopicNotFound,
+			getRecordsErr: seberr.ErrTopicNotFound,
 			statusCode:    http.StatusNotFound,
 		},
 		"out of bounds": {
-			getRecordsErr: seb.ErrOutOfBounds,
+			getRecordsErr: seberr.ErrOutOfBounds,
 			statusCode:    http.StatusNotFound,
 		},
 		"nil": {
@@ -325,8 +321,8 @@ func TestGetRecordsErrors(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			deps.GetRecordsMock = func(ctx context.Context, topicName string, offset uint64, maxRecords, softMaxBytes int) ([][]byte, error) {
-				return nil, test.getRecordsErr
+			deps.GetRecordsMock = func(ctx context.Context, batch *sebrecords.Batch, topicName string, offset uint64, maxRecords, softMaxBytes int) error {
+				return test.getRecordsErr
 			}
 
 			r := httptest.NewRequest("GET", "/records", nil)

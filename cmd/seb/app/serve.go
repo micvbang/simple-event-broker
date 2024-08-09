@@ -12,11 +12,13 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/netutil"
 )
@@ -48,8 +50,10 @@ func init() {
 	fs.DurationVar(&serveFlags.cacheEvictionInterval, "cache-eviction-interval", 5*time.Minute, "Amount of time between enforcing maximum cache size")
 
 	// batching
-	fs.DurationVar(&serveFlags.recordBatchBlockTime, "batch-wait-time", time.Second, "Amount of time to wait between receiving first record in batch and committing it")
-	fs.IntVar(&serveFlags.recordBatchSoftMaxBytes, "batch-bytes-max", 10*sizey.MB, "Soft maximum for the number of bytes to include in each record batch")
+	fs.DurationVar(&serveFlags.recordBatchBlockTime, "batch-wait-time", time.Second, "Amount of time to wait between receiving first record in batch and committing the batch")
+	fs.IntVar(&serveFlags.recordBatchSoftMaxBytes, "batch-bytes-soft-max", 10*sizey.MB, "Soft maximum for the size of a batch")
+	fs.IntVar(&serveFlags.recordBatchHardMaxBytes, "batch-bytes-hard-max", 30*sizey.MB, "Hard maximum for the size of a batch")
+	fs.IntVar(&serveFlags.recordBatchMaxRecords, "batch-records-hard-max", 32*1024, "Hard maximum for the number of records a batch can contain")
 
 	// required flags
 	serveCmd.MarkFlagRequired("s3-bucket")
@@ -78,8 +82,13 @@ var serveCmd = &cobra.Command{
 			log.Fatalf("making blocking s3 broker: %s", err)
 		}
 
+		batchPool := syncy.NewPool(func() *sebrecords.Batch {
+			batch := sebrecords.NewBatch(make([]uint32, 0, flags.recordBatchMaxRecords), make([]byte, 0, flags.recordBatchHardMaxBytes))
+			return &batch
+		})
+
 		mux := http.NewServeMux()
-		httphandlers.RegisterRoutes(log, mux, blockingS3Broker, flags.httpAPIKey)
+		httphandlers.RegisterRoutes(log, mux, batchPool, blockingS3Broker, flags.httpAPIKey)
 
 		errs := make(chan error, 8)
 
@@ -147,4 +156,6 @@ type ServeFlags struct {
 
 	recordBatchBlockTime    time.Duration
 	recordBatchSoftMaxBytes int
+	recordBatchMaxRecords   int
+	recordBatchHardMaxBytes int
 }

@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type TopicGetter interface {
@@ -35,7 +35,7 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 
 		metadata, err := s.Metadata(topicName)
 		if err != nil {
-			if errors.Is(err, seb.ErrTopicNotFound) {
+			if errors.Is(err, seberr.ErrTopicNotFound) {
 				log.Debugf("not found")
 				w.WriteHeader(http.StatusNotFound)
 				return
