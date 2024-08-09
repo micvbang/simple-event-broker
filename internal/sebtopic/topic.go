@@ -226,26 +226,27 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 	batchRecordIndex := uint32(offset - batchOffset)
 	firstRecord := true
 
-	records := make([][]byte, 0, maxRecords)
+	// TODO: receive already allocated batch from caller
+	batch := sebrecords.NewBatch(make([]uint32, 0, maxRecords), make([]byte, 0, softMaxBytes))
 
-	moreRecords := func() bool { return len(records) < maxRecords }
+	moreRecords := func() bool { return batch.Len() < maxRecords }
 	moreBytes := func() bool { return (!trackByteSize || recordBatchBytes < uint32(softMaxBytes)) }
 	moreBatches := func() bool { return batchOffsetIndex < len(recordBatchOffsets) }
 
 	for moreRecords() && moreBytes() && moreBatches() {
 		select {
 		case <-ctx.Done():
-			return sebrecords.BatchFromRecords(records), ctx.Err()
+			return batch, ctx.Err()
 		default:
 		}
 
 		batchOffset = recordBatchOffsets[batchOffsetIndex]
 		rb, err := s.parseRecordBatch(batchOffset)
 		if err != nil {
-			return sebrecords.BatchFromRecords(records), fmt.Errorf("parsing record batch: %w", err)
+			return batch, fmt.Errorf("parsing record batch: %w", err)
 		}
 
-		batchMaxRecords := min(uint32(maxRecords-len(records)), rb.Header.NumRecords-batchRecordIndex)
+		batchMaxRecords := min(uint32(maxRecords-batch.Len()), rb.Header.NumRecords-batchRecordIndex)
 		numRecords := batchMaxRecords
 		if trackByteSize {
 			numRecords = 0
@@ -266,17 +267,13 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 			break
 		}
 
-		batch, err := rb.Records(batchRecordIndex, batchRecordIndex+numRecords)
+		// TODO: pass batch into rb.Records to write to it directly
+		newBatch, err := rb.Records(batchRecordIndex, batchRecordIndex+numRecords)
 		if err != nil {
-			return sebrecords.BatchFromRecords(records), fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
+			return batch, fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
 		}
 
-		newRecords, err := batch.IndividualRecords(0, int(numRecords))
-		if err != nil {
-			return sebrecords.BatchFromRecords(records), fmt.Errorf("parsing batch individual records: %w", err)
-		}
-
-		records = append(records, newRecords...)
+		batch.Append(newBatch)
 
 		// no more relevant records in batch -> prepare to check next batch
 		rb.Close()
@@ -284,7 +281,7 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 		batchRecordIndex = 0
 	}
 
-	return sebrecords.BatchFromRecords(records), nil
+	return batch, nil
 }
 
 // NextOffset returns the topic's next offset (offset of the next record added).
