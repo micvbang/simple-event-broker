@@ -51,10 +51,12 @@ func Write(wtr io.Writer, batch Batch) error {
 		return fmt.Errorf("writing header: %w", err)
 	}
 
-	// NOTE: batch.indexes contains the size of the final record as well; this
-	// isn't included in version 1 of the file format, so we can't write it
-	// here.
-	indexes := batch.indexes[:len(batch.indexes)-1]
+	indexes := make([]int32, len(batch.sizes))
+	index := int32(0)
+	for i, recordSize := range batch.sizes {
+		indexes[i] = index
+		index += int32(recordSize)
+	}
 
 	err = binary.Write(wtr, byteOrder, indexes)
 	if err != nil {

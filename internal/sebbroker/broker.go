@@ -156,6 +156,8 @@ func (s *Broker) GetRecords(ctx context.Context, topicName string, offset uint64
 		return nil, err
 	}
 
+	// TODO: make configurable whether to block on this or return
+	// seb.ErrNotFound, which allows us to remove GetRecord()
 	// wait for startOffset to become available. Can only return errors from
 	// the context
 	err = tb.topic.OffsetCond.Wait(ctx, offset)
