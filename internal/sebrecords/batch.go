@@ -31,6 +31,11 @@ func (b Batch) Data() []byte {
 	return b.data
 }
 
+func (b *Batch) Reset() {
+	b.data = b.data[:0]
+	b.sizes = b.sizes[:0]
+}
+
 func (b Batch) Records(startIndex int, endIndex int) ([]byte, error) {
 	if startIndex >= len(b.sizes) || endIndex > len(b.sizes) {
 		return nil, seb.ErrOutOfBounds
@@ -63,10 +68,10 @@ func (b Batch) IndividualRecords(startIndex int, endIndex int) ([][]byte, error)
 }
 
 // Append appends otherBatch to b
-func (b *Batch) Append(otherBatch Batch) {
-	b.data = append(b.data, otherBatch.data...)
-	b.sizes = append(b.sizes, otherBatch.sizes...)
-}
+// func (b *Batch) Append(otherBatch Batch) {
+// 	b.data = append(b.data, otherBatch.data...)
+// 	b.sizes = append(b.sizes, otherBatch.sizes...)
+// }
 
 func BatchFromRecords(records [][]byte) Batch {
 	totalSize := 0

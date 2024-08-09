@@ -227,7 +227,7 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 	firstRecord := true
 
 	// TODO: receive already allocated batch from caller
-	batch := sebrecords.NewBatch(make([]uint32, 0, maxRecords), make([]byte, 0, softMaxBytes))
+	batch := sebrecords.NewBatch(make([]uint32, 0, maxRecords), make([]byte, 0, 512*sizey.KB))
 
 	moreRecords := func() bool { return batch.Len() < maxRecords }
 	moreBytes := func() bool { return (!trackByteSize || recordBatchBytes < uint32(softMaxBytes)) }
@@ -268,12 +268,10 @@ func (s *Topic) ReadRecords(ctx context.Context, offset uint64, maxRecords int, 
 		}
 
 		// TODO: pass batch into rb.Records to write to it directly
-		newBatch, err := rb.Records(batchRecordIndex, batchRecordIndex+numRecords)
+		err = rb.Records(&batch, batchRecordIndex, batchRecordIndex+numRecords)
 		if err != nil {
 			return batch, fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
 		}
-
-		batch.Append(newBatch)
 
 		// no more relevant records in batch -> prepare to check next batch
 		rb.Close()

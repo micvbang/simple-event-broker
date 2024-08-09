@@ -122,43 +122,55 @@ func Parse(rdr io.ReadSeekCloser) (*Parser, error) {
 	}, nil
 }
 
-func (rb *Parser) Records(recordIndexStart uint32, recordIndexEnd uint32) (Batch, error) {
+func (rb *Parser) Records(batch *Batch, recordIndexStart uint32, recordIndexEnd uint32) error {
 	if recordIndexStart >= rb.Header.NumRecords {
-		return Batch{}, fmt.Errorf("%d records available, start record index %d does not exist: %w", rb.Header.NumRecords, recordIndexStart, seb.ErrOutOfBounds)
+		return fmt.Errorf("%d records available, start record index %d does not exist: %w", rb.Header.NumRecords, recordIndexStart, seb.ErrOutOfBounds)
 	}
 	if recordIndexEnd > rb.Header.NumRecords {
-		return Batch{}, fmt.Errorf("%d records available, end record index %d does not exist: %w", rb.Header.NumRecords, recordIndexEnd, seb.ErrOutOfBounds)
+		return fmt.Errorf("%d records available, end record index %d does not exist: %w", rb.Header.NumRecords, recordIndexEnd, seb.ErrOutOfBounds)
 	}
 	if recordIndexStart >= recordIndexEnd {
-		return Batch{}, fmt.Errorf("%w: recordIndexStart (%d) must be lower than recordIndexEnd (%d)", seb.ErrBadInput, recordIndexStart, recordIndexEnd)
+		return fmt.Errorf("%w: recordIndexStart (%d) must be lower than recordIndexEnd (%d)", seb.ErrBadInput, recordIndexStart, recordIndexEnd)
+	}
+
+	requestedRecords := int(recordIndexEnd - recordIndexStart)
+	recordsLeftInBatch := cap(batch.sizes) - len(batch.sizes)
+	if requestedRecords > recordsLeftInBatch {
+		return fmt.Errorf("%w: not enough records left in buffer to satisfy read; %d required, %d left", seb.ErrBufferTooSmall, requestedRecords, recordsLeftInBatch)
 	}
 
 	recordOffsetStart := rb.recordIndex[recordIndexStart]
 	recordOffsetEnd := rb.recordIndex[recordIndexEnd]
+	requestedBytes := int(recordOffsetEnd - recordOffsetStart)
+
+	bytesLeftInBatch := cap(batch.data) - len(batch.data)
+	if requestedBytes > bytesLeftInBatch {
+		return fmt.Errorf("%w: not enough bytes left in buffer to satisfy read; %d required, %d left", seb.ErrBufferTooSmall, requestedBytes, bytesLeftInBatch)
+	}
 
 	fileOffsetStart := rb.Header.Size() + recordOffsetStart
 	_, err := rb.rdr.Seek(int64(fileOffsetStart), io.SeekStart)
 	if err != nil {
-		return Batch{}, fmt.Errorf("seeking for record %d/%d: %w", recordIndexStart, len(rb.recordIndex), err)
+		return fmt.Errorf("seeking for record %d/%d: %w", recordIndexStart, len(rb.recordIndex), err)
 	}
 
-	size := recordOffsetEnd - recordOffsetStart
-	data := make([]byte, size)
-	n, err := io.ReadFull(rb.rdr, data)
+	// read into backing array but don't update batch.data length yet; if the read partially
+	// fails, we effectively ignore anything written beyond the length
+	buf := batch.data[len(batch.data) : len(batch.data)+requestedBytes]
+	n, err := io.ReadFull(rb.rdr, buf)
 	if err != nil {
-		return Batch{}, fmt.Errorf("reading record indexes [%d;%d]: %w", recordIndexStart, recordIndexEnd, err)
+		return fmt.Errorf("reading record indexes [%d;%d]: %w", recordIndexStart, recordIndexEnd, err)
+	}
+	if n != requestedBytes {
+		return fmt.Errorf("reading records indexes [%d;%d]: expected to read %d, read %d", recordIndexStart, recordIndexEnd, requestedBytes, n)
 	}
 
-	if n != int(size) {
-		return Batch{}, fmt.Errorf("reading records indexes [%d;%d]: expected to read %d, read %d", recordIndexStart, recordIndexEnd, size, n)
-	}
+	// update capacity now that we know the read succeeded
+	batch.data = batch.data[:len(batch.data)+requestedBytes]
 
-	recordSizes := make([]uint32, recordIndexEnd-recordIndexStart)
-	for i := range recordSizes {
-		recordSizes[i] = rb.RecordSizes[int(recordIndexStart)+i]
-	}
+	batch.sizes = append(batch.sizes, rb.RecordSizes[recordIndexStart:recordIndexStart+uint32(requestedRecords)]...)
 
-	return NewBatch(recordSizes, data), nil
+	return nil
 }
 
 func (rb *Parser) Close() error {
