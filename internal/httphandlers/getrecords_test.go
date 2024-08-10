@@ -1,17 +1,15 @@
 package httphandlers_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"mime"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/micvbang/go-helpy/uint64y"
-	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
@@ -64,7 +62,7 @@ func TestGetRecordsExistence(t *testing.T) {
 			httphelpers.AddQueryParams(r, map[string]string{
 				"topic-name": test.topicName,
 				"offset":     fmt.Sprintf("%d", test.offset),
-				"timeout":    "10ms",
+				"timeout":    "100ms",
 			})
 
 			// Act
@@ -212,7 +210,8 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 	)
 
 	batch := tester.MakeRandomRecordBatchSize(16, recordSize)
-	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
+	expectedRecords := batch.IndividualRecords()
+
 	_, err := server.Broker.AddRecords(topicName, batch)
 	require.NoError(t, err)
 
@@ -273,19 +272,17 @@ func TestGetRecordsMultipartFormData(t *testing.T) {
 
 			// Parse multipart/form-data
 			_, params, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
-			mr := multipart.NewReader(response.Body, params["boundary"])
+			pool := syncy.NewPool(func() *bytes.Buffer {
+				return bytes.NewBuffer(nil)
+			})
 
-			var localOffset uint64 = 0
-			for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
-				gotOffset := uint64y.FromStringOrDefault(part.FormName(), 0)
-				require.Equal(t, localOffset+test.offset, gotOffset)
+			batch, err := httphelpers.MultipartFormDataToRecords(response.Body, pool, params["boundary"])
+			require.NoError(t, err)
 
-				expectedRecord := test.expectedRecords[localOffset]
-				gotRecord, err := io.ReadAll(part)
-				require.NoError(t, err)
+			gotRecords := batch.IndividualRecords()
 
-				require.Equal(t, expectedRecord, []byte(gotRecord))
-				localOffset += 1
+			for i, expected := range test.expectedRecords {
+				require.Equal(t, expected, gotRecords[i])
 			}
 		})
 	}

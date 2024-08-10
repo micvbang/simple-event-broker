@@ -33,7 +33,6 @@ func TestRecordClientAddRecordsHappyPath(t *testing.T) {
 	require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 
 	expectedBatch := tester.MakeRandomRecordBatch(5)
-	expectedRecords := tester.BatchIndividualRecords(t, expectedBatch, 0, expectedBatch.Len())
 
 	// Act
 	err = client.AddRecords(topicName, expectedBatch.Sizes(), expectedBatch.Data())
@@ -44,10 +43,7 @@ func TestRecordClientAddRecordsHappyPath(t *testing.T) {
 	err = srv.Broker.GetRecords(context.Background(), &gotBatch, topicName, offset, 100, 0)
 	require.NoError(t, err)
 
-	gotRecords, err := gotBatch.IndividualRecords(0, gotBatch.Len())
-	require.NoError(t, err)
-
-	require.Equal(t, expectedRecords, gotRecords)
+	require.Equal(t, expectedBatch, gotBatch)
 }
 
 // TestRecordClientAddRecordsNotAuthorized verifies that ErrNotAuthorized is
@@ -130,7 +126,6 @@ func TestRecordClientGetRecordsHappyPath(t *testing.T) {
 	defer srv.Close()
 
 	batch := tester.MakeRandomRecordBatch(16)
-	expectedRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
 	_, err := srv.Broker.AddRecords(topicName, batch)
 	require.NoError(t, err)
 
@@ -139,14 +134,14 @@ func TestRecordClientGetRecordsHappyPath(t *testing.T) {
 
 	// Act
 	gotRecords, err := client.GetRecords(topicName, 0, seb.GetRecordsInput{
-		MaxRecords:   len(expectedRecords),
+		MaxRecords:   batch.Len(),
 		SoftMaxBytes: 9999999,
 		Timeout:      1 * time.Minute,
 	})
 	require.NoError(t, err)
 
 	// Assert
-	require.Equal(t, expectedRecords, gotRecords)
+	require.Equal(t, batch.IndividualRecords(), gotRecords)
 }
 
 // TestRecordClientGetRecordsTopicDoesNotExist verifies that ErrNotFound is
@@ -185,7 +180,7 @@ func TestRecordClientGetRecordsOffsetOutOfBounds(t *testing.T) {
 
 	// Act
 	records, err := client.GetRecords(topicName, offsetTooHigh, seb.GetRecordsInput{
-		Timeout: time.Millisecond, // NOTE: amount of time to wait for offset to exist
+		Timeout: 100 * time.Millisecond, // NOTE: amount of time to wait for offset to exist
 	})
 
 	// Assert

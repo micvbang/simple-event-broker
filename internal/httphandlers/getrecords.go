@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/sizey"
-	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/go-helpy/syncy"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/seberr"
@@ -21,6 +22,12 @@ type RecordsGetter interface {
 }
 
 const multipartFormData = "multipart/form-data"
+
+var batchPool = syncy.NewPool(func() *sebrecords.Batch {
+	// TODO: make #records and total size configurable
+	batch := sebrecords.NewBatch(make([]uint32, 0, 32*1024), make([]byte, 0, 30*sizey.MB))
+	return &batch
+})
 
 func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -71,9 +78,11 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			WithField("timeout", timeout)
 
 		var errIsContext bool
-		// TODO: pool
-		batch := sebrecords.NewBatch(make([]uint32, 0, 32*1024), make([]byte, 0, 10*sizey.MB))
-		err = s.GetRecords(ctx, &batch, topicName, offset, maxRecords, softMaxBytes)
+		batch := batchPool.Get()
+		batch.Reset()
+		defer batchPool.Put(batch)
+
+		err = s.GetRecords(ctx, batch, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
 			if errors.Is(err, seberr.ErrTopicNotFound) {
 				log.Debugf("not found: %s", err)
@@ -96,11 +105,10 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 				fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
 				return
 			}
-
-			// NOTE: continues from here!
 		}
 
 		mw := multipart.NewWriter(w)
+		defer mw.Close()
 		w.Header().Set("Content-Type", mw.FormDataContentType())
 
 		if errIsContext {
@@ -109,27 +117,10 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			return
 		}
 
-		var records [][]byte
-		if batch.Len() > 0 {
-			records, err = batch.IndividualRecords(0, batch.Len())
-			if err != nil {
-				panic(fmt.Sprintf("this is not supposed to happen: %s", err))
-			}
-		}
-
-		for localOffset, record := range records {
-			fw, err := mw.CreateFormField(fmt.Sprintf("%d", offset+uint64(localOffset)))
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if _, err := fw.Write(record); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-		if err := mw.Close(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		err = httphelpers.RecordsToMultipartFormDataHTTP(mw, batch.Sizes(), batch.Data())
+		if err != nil {
+			log.Errorf("writing record multipart form data: %s", err)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 	}
