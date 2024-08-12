@@ -11,13 +11,13 @@ import (
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/go-helpy/timey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,19 +82,14 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 				// Assert
 				require.Equal(t, len(test.expected), batch.Len())
 
-				if batch.Len() > 0 {
-					gotRecords, err := batch.IndividualRecords(0, batch.Len())
-					require.NoError(t, err)
-
-					require.Equal(t, test.expected, gotRecords)
-				}
+				require.Equal(t, test.expected, batch.IndividualRecords())
 			})
 		}
 	})
 }
 
 // TestAddRecordsAutoCreateTopic verifies that AddRecord and AddRecords returns
-// seb.ErrTopicNotFound when autoCreateTopic is false, and automatically creates
+// seberr.ErrTopicNotFound when autoCreateTopic is false, and automatically creates
 // the topic when it is true.
 func TestAddRecordsAutoCreateTopic(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, ts sebtopic.Storage, cache *sebcache.Cache) {
@@ -102,7 +97,7 @@ func TestAddRecordsAutoCreateTopic(t *testing.T) {
 			autoCreateTopic bool
 			err             error
 		}{
-			"false": {autoCreateTopic: false, err: seb.ErrTopicNotFound},
+			"false": {autoCreateTopic: false, err: seberr.ErrTopicNotFound},
 			"true":  {autoCreateTopic: true, err: nil},
 		}
 
@@ -138,8 +133,8 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 			addErr          error
 			getErr          error
 		}{
-			"false": {autoCreateTopic: false, addErr: seb.ErrTopicNotFound, getErr: seb.ErrTopicNotFound},
-			"true":  {autoCreateTopic: true, addErr: nil, getErr: seb.ErrOutOfBounds},
+			"false": {autoCreateTopic: false, addErr: seberr.ErrTopicNotFound, getErr: seberr.ErrTopicNotFound},
+			"true":  {autoCreateTopic: true, addErr: nil, getErr: seberr.ErrOutOfBounds},
 		}
 
 		for name, test := range tests {
@@ -230,10 +225,10 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		batch := tester.NewBatch(10, 1024)
 
 		_, err := s.GetRecord(&batch, topicName, 0)
-		require.ErrorIs(t, err, seb.ErrTopicNotFound)
+		require.ErrorIs(t, err, seberr.ErrTopicNotFound)
 
 		_, err = s.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
-		require.ErrorIs(t, err, seb.ErrTopicNotFound)
+		require.ErrorIs(t, err, seberr.ErrTopicNotFound)
 
 		// Act
 		err = s.CreateTopic(topicName)
@@ -241,7 +236,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 
 		// Assert
 		_, err = s.GetRecord(&batch, topicName, 0)
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 
 		_, err = s.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 		require.NoError(t, err)
@@ -249,7 +244,7 @@ func TestCreateTopicHappyPath(t *testing.T) {
 		// ensure that GetRecord does not block waiting for record to become
 		// available
 		_, err = s.GetRecord(&batch, topicName, 2)
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 	})
 }
 
@@ -295,7 +290,7 @@ func TestCreateTopicAlreadyExistsInStorage(t *testing.T) {
 			// Assert
 			// we expect Storage to complain that topic alreay exists, because
 			// it exists in the backing storage.
-			require.ErrorIs(t, err, seb.ErrTopicAlreadyExists)
+			require.ErrorIs(t, err, seberr.ErrTopicAlreadyExists)
 		}
 	})
 }
@@ -314,7 +309,7 @@ func TestCreateTopicAlreadyExists(t *testing.T) {
 
 		// Assert
 		err = s.CreateTopic(topicName)
-		require.ErrorIs(t, err, seb.ErrTopicAlreadyExists)
+		require.ErrorIs(t, err, seberr.ErrTopicAlreadyExists)
 	})
 }
 
@@ -347,7 +342,7 @@ func TestBrokerMetadataTopicNotFound(t *testing.T) {
 		autoCreate  bool
 		expectedErr error
 	}{
-		"no auto create": {autoCreate: false, expectedErr: seb.ErrTopicNotFound},
+		"no auto create": {autoCreate: false, expectedErr: seberr.ErrTopicNotFound},
 		"auto create":    {autoCreate: true, expectedErr: nil},
 	}
 

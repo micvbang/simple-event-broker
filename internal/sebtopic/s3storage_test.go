@@ -14,9 +14,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	"github.com/micvbang/go-helpy/stringy"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -282,5 +282,5 @@ func TestS3ReadFromS3NotFound(t *testing.T) {
 	_, err := s3Storage.Reader(recordBatchPath)
 
 	// Assert
-	require.ErrorIs(t, err, seb.ErrNotInStorage)
+	require.ErrorIs(t, err, seberr.ErrNotInStorage)
 }

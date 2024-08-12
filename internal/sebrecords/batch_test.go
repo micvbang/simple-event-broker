@@ -6,9 +6,9 @@ import (
 
 	"github.com/micvbang/go-helpy/bytey"
 	"github.com/micvbang/go-helpy/inty"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,17 +24,17 @@ func TestBatchRecords(t *testing.T) {
 		"start > end": {
 			start: 1,
 			end:   0,
-			err:   seb.ErrBadInput,
+			err:   seberr.ErrBadInput,
 		},
 		"end out of bounds": {
 			start: 0,
 			end:   batch.Len() + 1,
-			err:   seb.ErrOutOfBounds,
+			err:   seberr.ErrOutOfBounds,
 		},
 		"both out of bounds": {
 			start: batch.Len() + 1,
 			end:   batch.Len() + 2,
-			err:   seb.ErrOutOfBounds,
+			err:   seberr.ErrOutOfBounds,
 		},
 		"first": {
 			start:    0,
@@ -90,17 +90,17 @@ func TestBatchIndividualRecords(t *testing.T) {
 		"start > end": {
 			start: 1,
 			end:   0,
-			err:   seb.ErrBadInput,
+			err:   seberr.ErrBadInput,
 		},
 		"end out of bounds": {
 			start: 0,
 			end:   batch.Len() + 1,
-			err:   seb.ErrOutOfBounds,
+			err:   seberr.ErrOutOfBounds,
 		},
 		"both out of bounds": {
 			start: batch.Len() + 1,
 			end:   batch.Len() + 2,
-			err:   seb.ErrOutOfBounds,
+			err:   seberr.ErrOutOfBounds,
 		},
 		"first": {
 			start:    0,

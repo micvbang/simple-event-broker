@@ -13,10 +13,10 @@ import (
 
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/uint64y"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type File struct {
@@ -194,7 +194,7 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 // returned value should be used even if err is non-nil!
 func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset uint64, maxRecords int, softMaxBytes int) error {
 	if offset >= s.nextOffset.Load() {
-		return fmt.Errorf("offset does not exist: %w", seb.ErrOutOfBounds)
+		return fmt.Errorf("offset does not exist: %w", seberr.ErrOutOfBounds)
 	}
 
 	if maxRecords == 0 {

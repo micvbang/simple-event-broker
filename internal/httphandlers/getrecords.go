@@ -13,6 +13,7 @@ import (
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type RecordsGetter interface {
@@ -74,14 +75,14 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 		batch := sebrecords.NewBatch(make([]uint32, 0, 32*1024), make([]byte, 0, 10*sizey.MB))
 		err = s.GetRecords(ctx, &batch, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
-			if errors.Is(err, seb.ErrTopicNotFound) {
+			if errors.Is(err, seberr.ErrTopicNotFound) {
 				log.Debugf("not found: %s", err)
 				w.WriteHeader(http.StatusNotFound)
 				fmt.Fprintf(w, "topic not found")
 				return
 			}
 
-			if errors.Is(err, seb.ErrOutOfBounds) {
+			if errors.Is(err, seberr.ErrOutOfBounds) {
 				log.Debugf("offset out of bounds: %s", err)
 				w.WriteHeader(http.StatusNotFound)
 				fmt.Fprintf(w, "offset out of bounds")

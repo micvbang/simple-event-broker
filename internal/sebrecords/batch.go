@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/micvbang/go-helpy/slicey"
-	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type Batch struct {
@@ -38,11 +38,11 @@ func (b *Batch) Reset() {
 
 func (b Batch) Records(startIndex int, endIndex int) ([]byte, error) {
 	if startIndex >= len(b.sizes) || endIndex > len(b.sizes) {
-		return nil, seb.ErrOutOfBounds
+		return nil, seberr.ErrOutOfBounds
 	}
 
 	if startIndex >= endIndex {
-		return nil, fmt.Errorf("%w: start (%d) must be smaller than end (%d)", seb.ErrBadInput, startIndex, endIndex)
+		return nil, fmt.Errorf("%w: start (%d) must be smaller than end (%d)", seberr.ErrBadInput, startIndex, endIndex)
 	}
 
 	startByte := slicey.Sum(b.sizes[:startIndex])

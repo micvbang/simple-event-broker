@@ -11,12 +11,12 @@ import (
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/go-helpy/timey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,7 +35,7 @@ func TestStorageEmpty(t *testing.T) {
 		err = s.ReadRecords(context.Background(), &sebrecords.Batch{}, 0, 0, 0)
 
 		// Verify
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 	})
 }
 
@@ -65,10 +65,10 @@ func TestStorageWriteRecordBatchSingleBatch(t *testing.T) {
 
 		outOfBoundsIndex := uint64(batch.Len())
 		err = s.ReadRecords(context.Background(), &gotBatch, outOfBoundsIndex, 0, 0)
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 
 		err = s.ReadRecords(context.Background(), &gotBatch, outOfBoundsIndex+5, 0, 0)
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 	})
 }
 
@@ -180,7 +180,7 @@ func TestStorageWriteRecordBatchMultipleBatches(t *testing.T) {
 		// Out of bounds reads
 		gotBatch2 := tester.NewBatch(batch1.Len()+batch2.Len(), 4096)
 		err = s.ReadRecords(context.Background(), &gotBatch2, uint64(batch1.Len()+batch2.Len()), 0, 0)
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 	})
 }
 
@@ -235,7 +235,7 @@ func TestStorageOpenExistingStorage(t *testing.T) {
 
 		// Out of bounds reads
 		err = s2.ReadRecords(context.Background(), &sebrecords.Batch{}, uint64(totalRecords+1), 0, 0)
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 	})
 }
 
@@ -282,7 +282,7 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 
 		// Out of bounds reads
 		err = s2.ReadRecords(context.Background(), &sebrecords.Batch{}, uint64(len(expectedRecords)), 0, 0)
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 	})
 }
 
@@ -631,14 +631,14 @@ func TestTopicReadRecordsRandomRecordSizes(t *testing.T) {
 
 				// Assert
 				require.NoError(t, err)
-				require.Equal(t, test.expectedRecords, tester.BatchIndividualRecords(t, gotBatch, 0, gotBatch.Len()))
+				require.Equal(t, test.expectedRecords, gotBatch.IndividualRecords())
 				require.ErrorIs(t, err, test.expectedErr)
 			})
 		}
 	})
 }
 
-// TestTopicReadRecordsOutOfBounds verifies that seb.ErrOutOfBounds is returned
+// TestTopicReadRecordsOutOfBounds verifies that seberr.ErrOutOfBounds is returned
 // when requesting an offset larger than the existing max offset.
 func TestTopicReadRecordsOutOfBounds(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
@@ -653,7 +653,7 @@ func TestTopicReadRecordsOutOfBounds(t *testing.T) {
 		err = topic.ReadRecords(context.Background(), &sebrecords.Batch{}, 100, 1, 0)
 
 		// Assert
-		require.ErrorIs(t, err, seb.ErrOutOfBounds)
+		require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 	})
 }
 

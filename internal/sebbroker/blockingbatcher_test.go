@@ -11,12 +11,12 @@ import (
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -185,7 +185,7 @@ func TestBlockingBatcherSoftMax(t *testing.T) {
 	wg.Wait()
 }
 
-// TestBlockingBatcherSoftMaxSingleRecord verifies that seb.ErrPayloadTooLarge
+// TestBlockingBatcherSoftMaxSingleRecord verifies that seberr.ErrPayloadTooLarge
 // is returned when attempting to add a batch of records that is larger than
 // soft max bytes. Additionally, it verifies that a _single_ record with size
 // larger than the payload is allowed.
@@ -203,7 +203,7 @@ func TestBlockingBatcherSoftMaxSingleRecord(t *testing.T) {
 		expectedErr error
 	}{
 		"single large record": {records: 1, recordSize: bytesSoftMax + 100},
-		"many small records":  {records: bytesSoftMax + 1, recordSize: 1, expectedErr: seb.ErrPayloadTooLarge},
+		"many small records":  {records: bytesSoftMax + 1, recordSize: 1, expectedErr: seberr.ErrPayloadTooLarge},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

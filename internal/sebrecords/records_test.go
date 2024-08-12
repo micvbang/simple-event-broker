@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/bytey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -117,7 +117,7 @@ func TestReadRecords(t *testing.T) {
 }
 
 // TestReadRecordsOverCapacity verifies that Records() returns
-// seb.ErrBufferTooSmall when attempting to satisfy a request that requires more
+// seberr.ErrBufferTooSmall when attempting to satisfy a request that requires more
 // space than is available in either buffer.
 func TestReadRecordsOverCapacity(t *testing.T) {
 	batch := tester.MakeRandomRecordBatch(1)
@@ -136,15 +136,15 @@ func TestReadRecordsOverCapacity(t *testing.T) {
 		expected error
 	}{
 		"both too small": {
-			expected: seb.ErrBufferTooSmall,
+			expected: seberr.ErrBufferTooSmall,
 		},
 		"sizes too small": {
 			data:     make([]byte, len(batch.Data())),
-			expected: seb.ErrBufferTooSmall,
+			expected: seberr.ErrBufferTooSmall,
 		},
 		"data too small": {
 			sizes:    make([]uint32, batch.Len()),
-			expected: seb.ErrBufferTooSmall,
+			expected: seberr.ErrBufferTooSmall,
 		},
 		"both exactly fit": {
 			data:     make([]byte, 0, len(batch.Data())),
@@ -266,7 +266,7 @@ func TestReadRecordsOutOfBounds(t *testing.T) {
 			err = parser.Records(&sebrecords.Batch{}, test.indexStart, test.indexEnd)
 
 			// Verify
-			require.ErrorIs(t, err, seb.ErrOutOfBounds)
+			require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 		})
 	}
 }
@@ -287,7 +287,7 @@ func TestReadRecordsStartIndexLargerThanEnd(t *testing.T) {
 	err = parser.Records(&sebrecords.Batch{}, 3, 1)
 
 	// Verify
-	require.ErrorIs(t, err, seb.ErrBadInput)
+	require.ErrorIs(t, err, seberr.ErrBadInput)
 }
 
 func BenchmarkWriteRaw(b *testing.B) {

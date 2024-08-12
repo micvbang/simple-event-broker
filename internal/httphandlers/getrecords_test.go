@@ -16,6 +16,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -311,11 +312,11 @@ func TestGetRecordsErrors(t *testing.T) {
 			statusCode:    http.StatusPartialContent,
 		},
 		"topic not found": {
-			getRecordsErr: seb.ErrTopicNotFound,
+			getRecordsErr: seberr.ErrTopicNotFound,
 			statusCode:    http.StatusNotFound,
 		},
 		"out of bounds": {
-			getRecordsErr: seb.ErrOutOfBounds,
+			getRecordsErr: seberr.ErrOutOfBounds,
 			statusCode:    http.StatusNotFound,
 		},
 		"nil": {

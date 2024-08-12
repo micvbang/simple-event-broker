@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/nops"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 // MemoryTopicStorage is an in-memory backing storage that can be used in Topic.
@@ -41,7 +41,7 @@ func (ms *MemoryTopicStorage) Reader(key string) (io.ReadCloser, error) {
 
 	buf, ok := ms.storage[key]
 	if !ok {
-		return nil, seb.ErrNotInStorage
+		return nil, seberr.ErrNotInStorage
 	}
 
 	return io.NopCloser(buf), nil

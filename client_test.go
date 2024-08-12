@@ -11,6 +11,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +30,7 @@ func TestRecordClientAddRecordsHappyPath(t *testing.T) {
 
 	// ensure record does not already exist
 	_, err = srv.Broker.GetRecord(helpy.Pointer(tester.NewBatch(1, 256)), topicName, offset)
-	require.ErrorIs(t, err, seb.ErrOutOfBounds)
+	require.ErrorIs(t, err, seberr.ErrOutOfBounds)
 
 	expectedBatch := tester.MakeRandomRecordBatch(5)
 	expectedRecords := tester.BatchIndividualRecords(t, expectedBatch, 0, expectedBatch.Len())
@@ -60,7 +61,7 @@ func TestRecordClientAddRecordsNotAuthorized(t *testing.T) {
 
 	// Act
 	err = client.AddRecords("topicName", []uint32{}, []byte{})
-	require.ErrorIs(t, err, seb.ErrNotAuthorized)
+	require.ErrorIs(t, err, seberr.ErrNotAuthorized)
 }
 
 // TestRecordClientGetRecordHappyPath verifies that Get makes a valid HTTP GET
@@ -102,7 +103,7 @@ func TestRecordClientGetRecordNotAuthorized(t *testing.T) {
 	_, err = client.GetRecord("topicName", 0)
 
 	// Assert
-	require.ErrorIs(t, err, seb.ErrNotAuthorized)
+	require.ErrorIs(t, err, seberr.ErrNotAuthorized)
 }
 
 // TestRecordClientGetRecordNotFound verifies that Get returns ErrNotFound when
@@ -118,7 +119,7 @@ func TestRecordClientGetRecordNotFound(t *testing.T) {
 	_, err = client.GetRecord("topicName", 0)
 
 	// Assert
-	require.ErrorIs(t, err, seb.ErrNotFound)
+	require.ErrorIs(t, err, seberr.ErrNotFound)
 }
 
 // TestRecordClientGetRecordsHappyPath verifies that GetBatch returns the
@@ -164,7 +165,7 @@ func TestRecordClientGetRecordsTopicDoesNotExist(t *testing.T) {
 
 	// Assert
 	// TODO: we would like to distinguish between "record not found" and "topic not found".
-	require.ErrorIs(t, err, seb.ErrNotFound)
+	require.ErrorIs(t, err, seberr.ErrNotFound)
 }
 
 // TestRecordClientGetRecordsOffsetOutOfBounds verifies that no error is
@@ -198,7 +199,7 @@ func TestRecordClientGetRecordsOffsetOutOfBounds(t *testing.T) {
 func TestRecordClientAddRecordsPayloadTooLarge(t *testing.T) {
 	deps := &httphandlers.MockDependencies{}
 	deps.AddRecordsMock = func(topicName string, batch sebrecords.Batch) ([]uint64, error) {
-		return nil, seb.ErrPayloadTooLarge
+		return nil, seberr.ErrPayloadTooLarge
 	}
 
 	srv := tester.HTTPServer(t, tester.HTTPDependencies(deps))
@@ -211,5 +212,5 @@ func TestRecordClientAddRecordsPayloadTooLarge(t *testing.T) {
 	err = client.AddRecords("topicName", []uint32{}, []byte{})
 
 	// Assert
-	require.ErrorIs(t, err, seb.ErrPayloadTooLarge)
+	require.ErrorIs(t, err, seberr.ErrPayloadTooLarge)
 }

@@ -12,11 +12,7 @@ import (
 	"time"
 
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
-)
-
-var (
-	ErrNotAuthorized = errors.New("not authorized")
-	ErrNotFound      = errors.New("not found")
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type RecordClient struct {
@@ -184,15 +180,15 @@ func (c *RecordClient) CloseIdleConnections() {
 
 func (c *RecordClient) statusCode(res *http.Response) error {
 	if res.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrNotAuthorized)
+		return fmt.Errorf("status code %d: %w", res.StatusCode, seberr.ErrNotAuthorized)
 	}
 
 	if res.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrNotFound)
+		return fmt.Errorf("status code %d: %w", res.StatusCode, seberr.ErrNotFound)
 	}
 
 	if res.StatusCode == http.StatusRequestEntityTooLarge {
-		return fmt.Errorf("status code %d: %w", res.StatusCode, ErrPayloadTooLarge)
+		return fmt.Errorf("status code %d: %w", res.StatusCode, seberr.ErrPayloadTooLarge)
 	}
 
 	return nil

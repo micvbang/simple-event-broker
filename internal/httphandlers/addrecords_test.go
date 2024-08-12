@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,19 +57,16 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	err = server.Broker.GetRecords(context.Background(), &batch, topicName, 0, inputBatch.Len(), 0)
 	require.NoError(t, err)
 
-	gotRecords, err := batch.IndividualRecords(0, batch.Len())
-	require.NoError(t, err)
-
-	require.Equal(t, expectedRecords, gotRecords)
+	require.Equal(t, inputBatch, batch)
 }
 
 // TestAddRecordsPayloadTooLarge verifies that http.StatusRequestEntityTooLarge
-// is returned when AddRecords() receives seb.ErrPayloadTooLarge from its
+// is returned when AddRecords() receives seberr.ErrPayloadTooLarge from its
 // dependency.
 func TestAddRecordsPayloadTooLarge(t *testing.T) {
 	deps := &httphandlers.MockDependencies{}
 	deps.AddRecordsMock = func(topicName string, batch sebrecords.Batch) ([]uint64, error) {
-		return nil, seb.ErrPayloadTooLarge
+		return nil, seberr.ErrPayloadTooLarge
 	}
 
 	server := tester.HTTPServer(t, tester.HTTPDependencies(deps))

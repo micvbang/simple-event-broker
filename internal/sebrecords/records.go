@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/sizey"
-	seb "github.com/micvbang/simple-event-broker"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 var (
@@ -124,19 +124,19 @@ func Parse(rdr io.ReadSeekCloser) (*Parser, error) {
 
 func (rb *Parser) Records(batch *Batch, recordIndexStart uint32, recordIndexEnd uint32) error {
 	if recordIndexStart >= rb.Header.NumRecords {
-		return fmt.Errorf("%d records available, start record index %d does not exist: %w", rb.Header.NumRecords, recordIndexStart, seb.ErrOutOfBounds)
+		return fmt.Errorf("%d records available, start record index %d does not exist: %w", rb.Header.NumRecords, recordIndexStart, seberr.ErrOutOfBounds)
 	}
 	if recordIndexEnd > rb.Header.NumRecords {
-		return fmt.Errorf("%d records available, end record index %d does not exist: %w", rb.Header.NumRecords, recordIndexEnd, seb.ErrOutOfBounds)
+		return fmt.Errorf("%d records available, end record index %d does not exist: %w", rb.Header.NumRecords, recordIndexEnd, seberr.ErrOutOfBounds)
 	}
 	if recordIndexStart >= recordIndexEnd {
-		return fmt.Errorf("%w: recordIndexStart (%d) must be lower than recordIndexEnd (%d)", seb.ErrBadInput, recordIndexStart, recordIndexEnd)
+		return fmt.Errorf("%w: recordIndexStart (%d) must be lower than recordIndexEnd (%d)", seberr.ErrBadInput, recordIndexStart, recordIndexEnd)
 	}
 
 	requestedRecords := int(recordIndexEnd - recordIndexStart)
 	recordsLeftInBatch := cap(batch.sizes) - len(batch.sizes)
 	if requestedRecords > recordsLeftInBatch {
-		return fmt.Errorf("%w: not enough records left in buffer to satisfy read; %d required, %d left", seb.ErrBufferTooSmall, requestedRecords, recordsLeftInBatch)
+		return fmt.Errorf("%w: not enough records left in buffer to satisfy read; %d required, %d left", seberr.ErrBufferTooSmall, requestedRecords, recordsLeftInBatch)
 	}
 
 	recordOffsetStart := rb.recordIndex[recordIndexStart]
@@ -145,7 +145,7 @@ func (rb *Parser) Records(batch *Batch, recordIndexStart uint32, recordIndexEnd 
 
 	bytesLeftInBatch := cap(batch.data) - len(batch.data)
 	if requestedBytes > bytesLeftInBatch {
-		return fmt.Errorf("%w: not enough bytes left in buffer to satisfy read; %d required, %d left", seb.ErrBufferTooSmall, requestedBytes, bytesLeftInBatch)
+		return fmt.Errorf("%w: not enough bytes left in buffer to satisfy read; %d required, %d left", seberr.ErrBufferTooSmall, requestedBytes, bytesLeftInBatch)
 	}
 
 	fileOffsetStart := rb.Header.Size() + recordOffsetStart

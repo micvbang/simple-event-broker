@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/sizey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type RecordBatcher interface {
@@ -114,7 +114,7 @@ func (s *Broker) CreateTopic(topicName string) error {
 
 	_, exists := s.topicBatchers[topicName]
 	if exists {
-		return seb.ErrTopicAlreadyExists
+		return seberr.ErrTopicAlreadyExists
 	}
 
 	tb, err := s.makeTopicBatcher(topicName)
@@ -127,7 +127,7 @@ func (s *Broker) CreateTopic(topicName string) error {
 	// the topic already exists or not. Checking the topic's nextOffset is a
 	// hacky way to attempt to do this.
 	if tb.topic.NextOffset() != 0 {
-		return seb.ErrTopicAlreadyExists
+		return seberr.ErrTopicAlreadyExists
 	}
 
 	s.topicBatchers[topicName] = tb
@@ -157,7 +157,7 @@ func (s *Broker) GetRecords(ctx context.Context, batch *sebrecords.Batch, topicN
 	}
 
 	// TODO: make configurable whether to block on this or return
-	// seb.ErrNotFound, which allows us to remove GetRecord()
+	// seberr.ErrNotFound, which allows us to remove GetRecord()
 	// wait for startOffset to become available. Can only return errors from
 	// the context
 	err = tb.topic.OffsetCond.Wait(ctx, offset)
@@ -222,7 +222,7 @@ func (s *Broker) getTopicBatcher(topicName string) (topicBatcher, error) {
 	if !ok {
 		// log.Debugf("creating new topic batcher")
 		if !s.autoCreateTopics {
-			return topicBatcher{}, fmt.Errorf("%w: '%s'", seb.ErrTopicNotFound, topicName)
+			return topicBatcher{}, fmt.Errorf("%w: '%s'", seberr.ErrTopicNotFound, topicName)
 		}
 
 		tb, err = s.makeTopicBatcher(topicName)

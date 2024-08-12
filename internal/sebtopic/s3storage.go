@@ -13,8 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 // S3Storage is an Amazon S3 backing storage that can be used in Topic.
@@ -74,7 +74,7 @@ func (ss *S3Storage) Reader(key string) (io.ReadCloser, error) {
 		var apiErr smithy.APIError
 		if errors.As(err, &apiErr) {
 			if apiErr.ErrorCode() == "NoSuchKey" {
-				err = errors.Join(err, seb.ErrNotInStorage)
+				err = errors.Join(err, seberr.ErrNotInStorage)
 			}
 		}
 

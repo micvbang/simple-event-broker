@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"github.com/micvbang/go-helpy/sizey"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type RecordGetter interface {
@@ -35,7 +35,7 @@ func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 		batch := sebrecords.NewBatch(make([]uint32, 0, 8192), make([]byte, 0, 10*sizey.MB))
 		record, err := s.GetRecord(&batch, topicName, offset)
 		if err != nil {
-			if errors.Is(err, seb.ErrOutOfBounds) {
+			if errors.Is(err, seberr.ErrOutOfBounds) {
 				log.Debugf("not found")
 				w.WriteHeader(http.StatusNotFound)
 				return

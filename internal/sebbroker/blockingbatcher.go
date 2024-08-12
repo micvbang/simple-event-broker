@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type Persist func(sebrecords.Batch) ([]uint64, error)
@@ -71,7 +71,7 @@ func (b *BlockingBatcher) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	// NOTE: allows single records larger than bytesSoftMax; this is done to
 	// avoid making it impossible to add records of unexpectedly large size.
 	if len(batch.Data()) > b.bytesSoftMax && batch.Len() > 1 {
-		return nil, fmt.Errorf("%w (%d bytes), bytes max is %d", seb.ErrPayloadTooLarge, len(batch.Data()), b.bytesSoftMax)
+		return nil, fmt.Errorf("%w (%d bytes), bytes max is %d", seberr.ErrPayloadTooLarge, len(batch.Data()), b.bytesSoftMax)
 	}
 
 	responses := make(chan addResponse)
