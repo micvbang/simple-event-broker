@@ -13,7 +13,7 @@ import (
 )
 
 func TestBatchRecords(t *testing.T) {
-	batch := sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}})
+	batch := tester.RecordsToBatch([][]byte{{1}, {2}, {3}})
 
 	tests := map[string]struct {
 		start    int
@@ -79,7 +79,7 @@ func TestBatchRecords(t *testing.T) {
 }
 
 func TestBatchIndividualRecords(t *testing.T) {
-	batch := sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}})
+	batch := tester.RecordsToBatch([][]byte{{1}, {2}, {3}})
 
 	tests := map[string]struct {
 		start    int
@@ -136,7 +136,7 @@ func TestBatchIndividualRecords(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := batch.IndividualRecords(test.start, test.end)
+			got, err := batch.IndividualRecordsSubset(test.start, test.end)
 			require.ErrorIs(t, err, test.err)
 
 			require.Equal(t, test.expected, got)
@@ -173,41 +173,3 @@ func TestBatchReset(t *testing.T) {
 		require.Equal(t, expected, got.Data())
 	}
 }
-
-// TestBatchAppend verifies that Append correctly appends batches.
-// func TestBatchAppend(t *testing.T) {
-// 	tests := map[string]struct {
-// 		b1       sebrecords.Batch
-// 		b2       sebrecords.Batch
-// 		expected sebrecords.Batch
-// 	}{
-// 		"empty": {},
-// 		"b1 empty": {
-// 			b2:       sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}}),
-// 			expected: sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}}),
-// 		},
-// 		"b2 empty": {
-// 			b1:       sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}}),
-// 			expected: sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}}),
-// 		},
-// 		"1-6": {
-// 			b1:       sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}}),
-// 			b2:       sebrecords.BatchFromRecords([][]byte{{4}, {5}, {6}}),
-// 			expected: sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}, {4}, {5}, {6}}),
-// 		},
-// 		"3,4,5,1,2,3": {
-// 			b1:       sebrecords.BatchFromRecords([][]byte{{4}, {5}, {6}}),
-// 			b2:       sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}}),
-// 			expected: sebrecords.BatchFromRecords([][]byte{{4}, {5}, {6}, {1}, {2}, {3}}),
-// 		},
-// 	}
-
-// 	for name, test := range tests {
-// 		t.Run(name, func(t *testing.T) {
-// 			test.b1.Append(test.b2)
-
-// 			require.Equal(t, test.expected.Data(), test.b1.Data())
-// 			require.Equal(t, test.expected.Sizes(), test.b1.Sizes())
-// 		})
-// 	}
-// }

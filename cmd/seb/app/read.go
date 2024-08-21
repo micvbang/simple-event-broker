@@ -102,10 +102,7 @@ var dumpCmd = &cobra.Command{
 
 		if dumpFlags.dumpRecords {
 			fmt.Printf("Records:\n")
-			records, err := batch.IndividualRecords(0, batch.Len())
-			if err != nil {
-				return fmt.Errorf("parsing individual records: %w", err)
-			}
+			records := batch.IndividualRecords()
 
 			for i, record := range records {
 				dumpBytes := helpy.Clamp(dumpFlags.dumpRecordBytes, 1, len(record))

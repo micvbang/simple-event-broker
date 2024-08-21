@@ -40,7 +40,7 @@ func TestGetRecordsOffsetAndMaxCount(t *testing.T) {
 		)
 
 		batch := tester.MakeRandomRecordBatchSize(32, recordSize)
-		allRecords := tester.BatchIndividualRecords(t, batch, 0, batch.Len())
+		allRecords := batch.IndividualRecords()
 
 		_, err := s.AddRecords(topicName, batch)
 		require.NoError(t, err)
@@ -367,7 +367,6 @@ func TestAddRecordsHappyPath(t *testing.T) {
 
 		const topicName = "topic"
 		inputBatch := tester.MakeRandomRecordBatch(5)
-		expectedRecords := tester.BatchIndividualRecords(t, inputBatch, 0, inputBatch.Len())
 
 		// Act
 		_, err := broker.AddRecords(topicName, inputBatch)
@@ -379,10 +378,7 @@ func TestAddRecordsHappyPath(t *testing.T) {
 		err = broker.GetRecords(context.Background(), &batch, topicName, 0, 9999, 0)
 		require.NoError(t, err)
 
-		gotRecords, err := batch.IndividualRecords(0, batch.Len())
-		require.NoError(t, err)
-
-		require.Equal(t, expectedRecords, gotRecords)
+		require.Equal(t, inputBatch.IndividualRecords(), batch.IndividualRecords())
 	})
 }
 
@@ -449,7 +445,7 @@ func TestBrokerConcurrency(t *testing.T) {
 					verifications <- verification{
 						topicName: topicName,
 						offset:    offsets[0],
-						records:   tester.BatchIndividualRecords(t, batch, 0, batch.Len()),
+						records:   batch.IndividualRecords(),
 					}
 
 					recordsAdded.Add(int32(batch.Len()))

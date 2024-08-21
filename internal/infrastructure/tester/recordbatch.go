@@ -51,15 +51,6 @@ func BatchRecords(t testing.TB, batch sebrecords.Batch, start int, end int) []by
 	return records
 }
 
-func BatchIndividualRecords(t testing.TB, batch sebrecords.Batch, start int, end int) [][]byte {
-	records, err := batch.IndividualRecords(start, end)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	return records
-}
-
 func NewBatch(numRecords int, numBytes int) sebrecords.Batch {
 	return sebrecords.NewBatch(make([]uint32, 0, numRecords), make([]byte, 0, numBytes))
 }

@@ -175,7 +175,7 @@ func TestReadRecordsOverCapacity(t *testing.T) {
 // records when called with valid record start and end indexes, with single-byte
 // payloads.
 func TestReadRecordsSingleByteRecords(t *testing.T) {
-	batch := sebrecords.BatchFromRecords([][]byte{{1}, {2}, {3}})
+	batch := tester.RecordsToBatch([][]byte{{1}, {2}, {3}})
 
 	buf := bytes.NewBuffer(nil)
 	err := sebrecords.Write(buf, batch)

@@ -532,7 +532,7 @@ func TestTopicReadRecords(t *testing.T) {
 			_, err := topic.AddRecords(batch)
 			require.NoError(t, err)
 
-			records = append(records, tester.BatchIndividualRecords(t, batch, 0, batch.Len())...)
+			records = append(records, batch.IndividualRecords()...)
 		}
 
 		tests := map[string]struct {
@@ -566,7 +566,7 @@ func TestTopicReadRecords(t *testing.T) {
 
 				// Assert
 				require.NoError(t, err)
-				require.Equal(t, test.expectedRecords, tester.BatchIndividualRecords(t, gotBatch, 0, gotBatch.Len()))
+				require.Equal(t, test.expectedRecords, gotBatch.IndividualRecords())
 				require.ErrorIs(t, err, test.expectedErr)
 			})
 		}
@@ -594,7 +594,7 @@ func TestTopicReadRecordsRandomRecordSizes(t *testing.T) {
 			_, err := topic.AddRecords(batch)
 			require.NoError(t, err)
 
-			records = append(records, tester.BatchIndividualRecords(t, batch, 0, batch.Len())...)
+			records = append(records, batch.IndividualRecords()...)
 		}
 
 		for _, record := range records {
@@ -802,12 +802,16 @@ func benchmarkTopicReadRecords(b *testing.B, readRecord func(t *sebtopic.Topic, 
 	gotBatch := tester.NewBatch(10, 4096)
 	b.ResetTimer()
 	for range b.N {
+		gotBatch.Reset()
+
 		record, err := readRecord(topic, &gotBatch, offset)
 		if err != nil {
 			b.Fatalf("unexpected error: %s", err)
 		}
 
-		gotRecord := tester.BatchIndividualRecords(b, batch, offset, offset+1)[0]
+		gotRecords, err := batch.IndividualRecordsSubset(offset, offset+1)
+		require.NoError(b, err)
+		gotRecord := gotRecords[0]
 		if !slicey.Equal(record, gotRecord) {
 			b.Fatalf("incorrect record returned: %s vs %s", record, gotRecord)
 		}

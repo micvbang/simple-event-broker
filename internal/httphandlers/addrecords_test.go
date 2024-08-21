@@ -24,7 +24,6 @@ func TestAddRecordsHappyPath(t *testing.T) {
 	defer server.Close()
 
 	inputBatch := tester.MakeRandomRecordBatch(32)
-	expectedRecords := tester.BatchIndividualRecords(t, inputBatch, 0, inputBatch.Len())
 
 	expectedOffsets := make([]uint64, inputBatch.Len())
 	for i := range expectedOffsets {

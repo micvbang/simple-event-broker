@@ -2,20 +2,17 @@ package httphandlers
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"mime"
-	"mime/multipart"
 	"net/http"
 
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/syncy"
-	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type RecordsAdder interface {
@@ -50,55 +47,20 @@ func AddRecords(log logger.Logger, s RecordsAdder) http.HandlerFunc {
 			return
 		}
 
-		var recordSizes []uint32
-		var recordData []byte
-
-		mr := multipart.NewReader(r.Body, mediaParams["boundary"])
-		for part, err := mr.NextPart(); err == nil; part, err = mr.NextPart() {
-			buf := bufPool.Get()
-			buf.Reset()
-			defer bufPool.Put(buf)
-
-			_, err = io.Copy(buf, part)
-			if err != nil {
-				log.Errorf("reading parts of multipart/form-data: %s", err)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			err = part.Close()
-			if err != nil {
-				log.Errorf("failed to close part: %s", err)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-
-			switch part.FormName() {
-			case httphelpers.RecordsMultipartSizesKey:
-				err = json.Unmarshal(buf.Bytes(), &recordSizes)
-				if err != nil {
-					log.Errorf("reading sizes: %v", err)
-					w.WriteHeader(http.StatusBadRequest)
-					return
-				}
-
-			case httphelpers.RecordsMultipartRecordsKey:
-				recordData = buf.Bytes()
-
-			default:
-				log.Errorf("unexpected form field %s", part.FormName())
+		batch, err := httphelpers.MultipartFormDataToRecords(r.Body, bufPool, mediaParams["boundary"])
+		if err != nil {
+			switch {
+			case errors.Is(err, seberr.ErrBadInput):
 				w.WriteHeader(http.StatusBadRequest)
-				return
+			default:
+				w.WriteHeader(http.StatusInternalServerError)
 			}
-
+			return
 		}
-
-		batch := sebrecords.NewBatch(recordSizes, recordData)
-
-		// TODO: we must verify that both sizes and records have been given
 
 		offsets, err := s.AddRecords(topicName, batch)
 		if err != nil {
-			if errors.Is(err, seb.ErrPayloadTooLarge) {
+			if errors.Is(err, seberr.ErrPayloadTooLarge) {
 				w.WriteHeader(http.StatusRequestEntityTooLarge)
 				return
 			}

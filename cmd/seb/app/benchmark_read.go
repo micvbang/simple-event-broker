@@ -168,7 +168,7 @@ func httpGetRecords(log logger.Logger, wg *sync.WaitGroup, client *seb.RecordCli
 				}
 
 				if len(records) != request.maxRecords {
-					log.Fatalf("expected %d records, got %d", request.maxRecords, len(records))
+					log.Fatalf("expected %d records, got %d (offset %d)", request.maxRecords, len(records), request.offset)
 				}
 			}
 		}()
