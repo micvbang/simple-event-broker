@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/syncy"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/sebbench"
@@ -47,9 +48,14 @@ var benchmarkCmd = &cobra.Command{
 		totalBytes := numRecords * flags.recordSize
 		fmt.Printf("Generating %d batches of size %s (%d records), totalling %s\n", flags.numBatches, sizey.FormatBytes(bytesPerBatch), numRecords, sizey.FormatBytes(totalBytes))
 
+		batchPool := syncy.NewPool(func() *sebrecords.Batch {
+			batch := sebrecords.NewBatch(make([]uint32, 0, numRecords), make([]byte, 0, flags.batchBytesMax*10))
+			return &batch
+		})
+
 		var broker sebbench.Broker
 		if flags.localBroker {
-			broker = sebbench.NewLocalBroker(log, flags.batchBlockTime, flags.batchBytesMax)
+			broker = sebbench.NewLocalBroker(log, batchPool, flags.batchBlockTime, flags.batchBytesMax)
 		} else {
 			broker = &sebbench.RemoteBroker{
 				RemoteBrokerAddress: flags.remoteBrokerAddress,

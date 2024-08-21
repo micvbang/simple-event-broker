@@ -5,8 +5,10 @@ import (
 	"crypto/subtle"
 	"net/http"
 
+	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 )
 
 //go:generate mocky -i Dependencies
@@ -17,7 +19,7 @@ type Dependencies interface {
 	TopicGetter
 }
 
-func RegisterRoutes(log logger.Logger, mux *http.ServeMux, deps Dependencies, apiKey string) {
+func RegisterRoutes(log logger.Logger, mux *http.ServeMux, batchPool *syncy.Pool[*sebrecords.Batch], deps Dependencies, apiKey string) {
 	// TODO: we want something more secure and easier to manage than a
 	// single, static API key.
 	apiKeyBs := []byte(apiKey)
@@ -29,6 +31,6 @@ func RegisterRoutes(log logger.Logger, mux *http.ServeMux, deps Dependencies, ap
 
 	mux.HandleFunc("POST /records", requireAPIKey(AddRecords(log, deps)))
 	mux.HandleFunc("GET /record", requireAPIKey(GetRecord(log, deps)))
-	mux.HandleFunc("GET /records", requireAPIKey(GetRecords(log, deps)))
+	mux.HandleFunc("GET /records", requireAPIKey(GetRecords(log, batchPool, deps)))
 	mux.HandleFunc("GET /topic", requireAPIKey(GetTopic(log, deps)))
 }

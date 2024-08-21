@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
@@ -23,13 +22,7 @@ type RecordsGetter interface {
 
 const multipartFormData = "multipart/form-data"
 
-var batchPool = syncy.NewPool(func() *sebrecords.Batch {
-	// TODO: make #records and total size configurable
-	batch := sebrecords.NewBatch(make([]uint32, 0, 32*1024), make([]byte, 0, 30*sizey.MB))
-	return &batch
-})
-
-func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
+func GetRecords(log logger.Logger, batchPool *syncy.Pool[*sebrecords.Batch], s RecordsGetter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Debugf("hit %s", r.URL)
 
@@ -117,6 +110,7 @@ func GetRecords(log logger.Logger, s RecordsGetter) http.HandlerFunc {
 			return
 		}
 
+		log.Debugf("sizes: %d, data: %d", len(batch.Sizes()), len(batch.Data()))
 		err = httphelpers.RecordsToMultipartFormDataHTTP(mw, batch.Sizes(), batch.Data())
 		if err != nil {
 			log.Errorf("writing record multipart form data: %s", err)
