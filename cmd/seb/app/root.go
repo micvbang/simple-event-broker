@@ -24,8 +24,13 @@ func Execute() {
 }
 
 func init() {
+	// root
 	rootCmd.AddCommand(serveCmd)
-	rootCmd.AddCommand(dumpCmd)
+	rootCmd.AddCommand(readCmd)
 	rootCmd.AddCommand(benchmarkCmd)
 	rootCmd.AddCommand(benchmarkReadCmd)
+	rootCmd.AddCommand(clientCmd)
+
+	// client
+	clientCmd.AddCommand(clientGetCmd)
 }
