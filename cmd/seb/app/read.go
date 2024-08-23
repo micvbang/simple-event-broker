@@ -17,30 +17,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var dumpFlags DumpFlags
+var readFlags ReadFlags
 
 func init() {
-	fs := dumpCmd.Flags()
+	fs := readCmd.Flags()
 
-	fs.StringVarP(&dumpFlags.path, "path", "p", "", "Path to a .record_batch file")
-	fs.BoolVarP(&dumpFlags.dumpRecords, "dump-records", "a", false, "Whether to also dump record data")
-	fs.IntVarP(&dumpFlags.dumpRecordBytes, "dump-record-bytes", "b", 64, "Number of bytes to dump for each record, 0 for all of them")
+	fs.IntVar(&readFlags.logLevel, "log-level", int(logger.LevelInfo), "Log level, info=4, debug=5")
+	fs.StringVarP(&readFlags.path, "path", "p", "", "Path to a .record_batch file")
+	fs.BoolVarP(&readFlags.dumpRecords, "dump-records", "a", false, "Whether to also dump record data")
+	fs.IntVarP(&readFlags.dumpRecordBytes, "dump-record-bytes", "b", 64, "Number of bytes to dump for each record, 0 for all of them")
 }
 
-var dumpCmd = &cobra.Command{
+var readCmd = &cobra.Command{
 	Use:   "read",
 	Short: "Read .record_batch file",
 	Long:  "Read contents of .record_batch file",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 
-		flags := serveFlags
+		flags := readFlags
 		log := logger.NewWithLevel(ctx, logger.LogLevel(flags.logLevel))
 		log.Debugf("flags: %+v", flags)
 
 		// TODO: support for folders and multiple files
 
-		absInputPath, err := filepath.Abs(dumpFlags.path)
+		absInputPath, err := filepath.Abs(readFlags.path)
 		if err != nil {
 			return fmt.Errorf("failed to get the absolute path: %w", err)
 		}
@@ -100,13 +101,13 @@ var dumpCmd = &cobra.Command{
 			return fmt.Errorf("reading records: %w", err)
 		}
 
-		if dumpFlags.dumpRecords {
+		if readFlags.dumpRecords {
 			fmt.Printf("Records:\n")
 			records := batch.IndividualRecords()
 
 			for i, record := range records {
-				dumpBytes := helpy.Clamp(dumpFlags.dumpRecordBytes, 1, len(record))
-				if dumpFlags.dumpRecordBytes == 0 {
+				dumpBytes := helpy.Clamp(readFlags.dumpRecordBytes, 1, len(record))
+				if readFlags.dumpRecordBytes == 0 {
 					dumpBytes = len(record)
 				}
 
@@ -121,7 +122,8 @@ var dumpCmd = &cobra.Command{
 	},
 }
 
-type DumpFlags struct {
+type ReadFlags struct {
+	logLevel        int
 	path            string
 	dumpRecords     bool
 	dumpRecordBytes int
