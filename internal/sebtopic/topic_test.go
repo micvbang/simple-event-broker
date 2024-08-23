@@ -512,6 +512,50 @@ func TestTopicOffsetCondContextExpired(t *testing.T) {
 	})
 }
 
+// TestTopicOffsetCondInitFromExistingRegression verifies that OffsetCond is
+// initialized with the correct offset value. This was not the case previously,
+// which caused requests to incorrectly block until more data was added.
+func TestTopicOffsetCondInitFromExistingRegression(t *testing.T) {
+	tester.TestBackingStorage(t, func(t *testing.T, topicStorage sebtopic.Storage) {
+		const topicName = "my_topic"
+		ctx := context.Background()
+
+		batch1 := tester.MakeRandomRecordBatch(4)
+		batch2 := tester.MakeRandomRecordBatch(6)
+		var highestOffset uint64
+		{
+			cache, err := sebcache.New(log, sebcache.NewMemoryStorage(log))
+			require.NoError(t, err)
+			s1, err := sebtopic.New(log, topicStorage, topicName, cache)
+			require.NoError(t, err)
+
+			offsets, err := s1.AddRecords(batch1)
+			require.NoError(t, err)
+			tester.RequireOffsets(t, 0, 4, offsets)
+
+			offsets, err = s1.AddRecords(batch2)
+			require.NoError(t, err)
+			tester.RequireOffsets(t, 4, 10, offsets)
+
+			highestOffset = slicey.Last(offsets)
+		}
+
+		cache, err := sebcache.New(log, sebcache.NewMemoryStorage(log))
+		require.NoError(t, err)
+
+		s2, err := sebtopic.New(log, topicStorage, topicName, cache)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		defer cancel()
+
+		// Test
+		// Wait() should return immediately when requesting the highest offset.
+		err = s2.OffsetCond.Wait(ctx, highestOffset)
+		require.NoError(t, err)
+	})
+}
+
 // TestTopicReadRecords verifies that ReadRecords() returns the expected records
 // with the given offset, max number of records, and soft max bytes.
 func TestTopicReadRecords(t *testing.T) {

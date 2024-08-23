@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
@@ -84,8 +85,9 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 		}
 		defer parser.Close()
 
-		topic.nextOffset.Store(newestRecordBatchOffset + uint64(parser.Header.NumRecords))
-		topic.OffsetCond = NewOffsetCond(newestRecordBatchOffset)
+		nextOffset := newestRecordBatchOffset + uint64(parser.Header.NumRecords)
+		topic.nextOffset.Store(nextOffset)
+		topic.OffsetCond = NewOffsetCond(nextOffset - 1)
 	}
 
 	return topic, nil
@@ -173,7 +175,7 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 
 	// inform potentially waiting consumers that new offsets have been added
 	if len(offsets) > 0 {
-		s.OffsetCond.Broadcast(offsets[len(offsets)-1])
+		s.OffsetCond.Broadcast(slicey.Last(offsets))
 	}
 
 	return offsets, nil
