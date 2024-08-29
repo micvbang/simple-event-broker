@@ -23,14 +23,6 @@ func (b Batch) Len() int {
 	return len(b.Sizes)
 }
 
-// func (b Batch) Sizes []uint32 {
-// 	return b.sizes
-// }
-
-// func (b Batch) Data []byte {
-// 	return b.data
-// }
-
 func (b *Batch) Reset() {
 	b.Data = b.Data[:0]
 	b.Sizes = b.Sizes[:0]
