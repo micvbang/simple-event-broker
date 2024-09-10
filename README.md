@@ -8,6 +8,7 @@ There's an ongoing blog series on the development of Seb:
 
 - [Hello World, Simple Event Broker!](https://blog.vbang.dk/2024/05/26/seb/)
 - [Simple event broker tries Tiger Style](https://blog.vbang.dk/2024/07/10/seb-tiger-style/)
+- [Simple event broker: data serialization is expensive](https://blog.vbang.dk/2024/09/10/seb-tiger-style-read-path/)
 
 ## Goals
 
