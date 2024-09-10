@@ -2,6 +2,7 @@ package seb
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -103,6 +104,43 @@ func (c *RecordClient) GetRecord(topicName string, offset uint64) ([]byte, error
 	}
 
 	return buf, nil
+}
+
+type GetTopicOutput struct {
+	Name           string
+	NextOffset     uint64    `json:"next_offset"`
+	LastInsertTime time.Time `json:"latest_commit_at"`
+}
+
+func (c *RecordClient) GetTopic(topicName string) (GetTopicOutput, error) {
+	topic := GetTopicOutput{Name: topicName}
+
+	req, err := c.request("GET", "/topic", nil)
+	if err != nil {
+		return topic, fmt.Errorf("creating request: %w", err)
+	}
+
+	httphelpers.AddQueryParams(req, map[string]string{
+		"topic-name": topicName,
+	})
+
+	res, err := c.client.Do(req)
+	if err != nil {
+		return topic, fmt.Errorf("sending request: %w", err)
+	}
+	defer res.Body.Close()
+
+	err = c.statusCode(res.StatusCode)
+	if err != nil {
+		return topic, err
+	}
+
+	err = json.NewDecoder(res.Body).Decode(&topic)
+	if err != nil {
+		return topic, fmt.Errorf("decoding json: %w", err)
+	}
+
+	return topic, nil
 }
 
 type GetRecordsInput struct {

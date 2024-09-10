@@ -7,6 +7,7 @@ import (
 
 	"github.com/micvbang/go-helpy"
 	"github.com/micvbang/go-helpy/slicey"
+	"github.com/micvbang/go-helpy/timey"
 	seb "github.com/micvbang/simple-event-broker"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
@@ -207,4 +208,46 @@ func TestRecordClientAddRecordsPayloadTooLarge(t *testing.T) {
 
 	// Assert
 	require.ErrorIs(t, err, seberr.ErrPayloadTooLarge)
+}
+
+// TestRecordClientGetTopicHappyPath verifies that GetTopic retrieves
+// and correctly parses topic metadata.
+func TestRecordClientGetTopicHappyPath(t *testing.T) {
+	const topicName = "topic-name"
+	srv := tester.HTTPServer(t)
+	defer srv.Close()
+
+	batch := tester.MakeRandomRecordBatch(16)
+
+	t0 := time.Now()
+	_, err := srv.Broker.AddRecords(topicName, batch)
+	require.NoError(t, err)
+
+	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
+	require.NoError(t, err)
+
+	// Act
+	topic, err := client.GetTopic(topicName)
+	require.NoError(t, err)
+
+	// Assert
+	require.Equal(t, topicName, topic.Name)
+	require.Equal(t, uint64(batch.Len()), topic.NextOffset)
+	require.True(t, timey.DiffEqual(time.Second, t0, topic.LastInsertTime))
+}
+
+// TestRecordClientGetTopicNotFound verifies that GetTopic handles non-existing topics
+// by converting 404 errors to seb.ErrNotFound.
+func TestRecordClientGetTopicNotFound(t *testing.T) {
+	srv := tester.HTTPServer(t, tester.HTTPBrokerAutoCreateTopic(false))
+	defer srv.Close()
+
+	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
+	require.NoError(t, err)
+
+	// Act
+	_, err = client.GetTopic("does-not-exist")
+
+	// Assert
+	require.ErrorIs(t, err, seberr.ErrNotFound)
 }
