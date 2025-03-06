@@ -266,7 +266,6 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 			break
 		}
 
-		// TODO: pass batch into rb.Records to write to it directly
 		err = rb.Records(batch, batchRecordIndex, batchRecordIndex+numRecords)
 		if err != nil {
 			return fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
