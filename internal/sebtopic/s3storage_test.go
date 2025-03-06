@@ -3,6 +3,7 @@ package sebtopic_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path"
@@ -13,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/klauspost/compress/gzip"
+	"github.com/micvbang/go-helpy"
 	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
@@ -201,6 +204,10 @@ func TestListFiles(t *testing.T) {
 	batchI := 0
 	s3Mock := &tester.S3Mock{}
 	s3Mock.MockListObjectsV2 = func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+		if isOverviewList(params) {
+			return &s3.ListObjectsV2Output{}, nil
+		}
+
 		output := listObjectsOutputFromFiles(listObjectOutputBatches[batchI])
 		batchI += 1
 		lastPage := batchI == len(listObjectOutputBatches)
@@ -219,12 +226,84 @@ func TestListFiles(t *testing.T) {
 	require.Equal(t, expectedFiles, gotFiles)
 }
 
+// TestListFilesFromOverviewFile verifies that ListFiles uses overview files to
+// skip listing S3 paths from the very beginning; using an overview file we can
+// start S3 LISTing from the last file in the overview.
+func TestListFilesWithOverviewFile(t *testing.T) {
+	// Mock listing of overview and record batch files
+	listObjectOverviewBatches := []sebtopic.File{
+		{Path: "overview-1.json.gz", Size: 101},
+		{Path: "overview-2.json.gz", Size: 102},
+		{Path: "overview-3.json.gz", Size: 103},
+	}
+
+	filesInOverview := []sebtopic.File{
+		{Path: "file-1.record_batch", Size: 101},
+		{Path: "file-2.record_batch", Size: 102},
+		{Path: "file-3.record_batch", Size: 103},
+		{Path: "file-4.record_batch", Size: 104},
+		{Path: "file-5.record_batch", Size: 105},
+		{Path: "file-6.record_batch", Size: 106},
+	}
+	filesNotInOverview := []sebtopic.File{
+		{Path: "file-7.record_batch", Size: 107},
+		{Path: "file-8.record_batch", Size: 108},
+		{Path: "file-9.record_batch", Size: 109},
+	}
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockListObjectsV2 = func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+		if isOverviewList(params) {
+			return listObjectsOutputFromFiles(listObjectOverviewBatches), nil
+		} else {
+			return listObjectsOutputFromFiles(filesNotInOverview), nil
+		}
+	}
+
+	// Mock overview file and its contents
+	buf := makeOverviewFile(t, filesInOverview)
+	s3Mock.MockGetObject = func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+		return &s3.GetObjectOutput{Body: io.NopCloser(buf)}, nil
+	}
+
+	// Act
+	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
+
+	gotFiles, err := s3Storage.ListFiles("dummy", ".record_batch")
+	require.NoError(t, err)
+
+	// Assert
+	expectedFiles := append(filesInOverview, filesNotInOverview...)
+	require.Equal(t, expectedFiles, gotFiles)
+}
+
+func makeOverviewFile(t *testing.T, files []sebtopic.File) *bytes.Buffer {
+	buf := bytes.NewBuffer(nil)
+	gzWtr := gzip.NewWriter(buf)
+	err := json.NewEncoder(gzWtr).Encode(files)
+	require.NoError(t, err)
+
+	err = gzWtr.Close()
+	require.NoError(t, err)
+	return buf
+}
+
+// isOverviewList returns true if the s3.LisTObjectsV2Input request is deemed to
+// be an attempt at listing so-called overview files.
+func isOverviewList(params *s3.ListObjectsV2Input) bool {
+	return strings.HasSuffix(*helpy.DerefOrValue(params.Prefix, ""), "overview")
+}
+
 // TestListFilesOverlappingNames verifies that ListFiles formats Prefix in
 // requests to S3 ListObjectPages correctly, i.e. removes any prefix "/", and
 // ensures that it has "/" as a suffix.
 func TestListFilesOverlappingNames(t *testing.T) {
 	s3Mock := &tester.S3Mock{}
 	s3Mock.MockListObjectsV2 = func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+		if isOverviewList(params) {
+			return &s3.ListObjectsV2Output{}, nil
+		}
+
 		// Assert
 		require.False(t, strings.HasPrefix(*params.Prefix, "/"))
 		require.True(t, strings.HasSuffix(*params.Prefix, "/"))

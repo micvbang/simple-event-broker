@@ -2,6 +2,7 @@ package sebtopic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +13,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/klauspost/compress/gzip"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/seberr"
 )
@@ -85,6 +88,11 @@ func (ss *S3Storage) Reader(key string) (io.ReadCloser, error) {
 	return obj.Body, nil
 }
 
+// ListFiles returns record batch files for topicName with the given extension.
+//
+// NOTE: As a performance optimization, ListFiles utilizes so-called overview
+// files (e.g. "overviewXXX.json.gz") to avoid having to LIST all files in
+// topicName
 func (ss *S3Storage) ListFiles(topicName string, extension string) ([]File, error) {
 	log := ss.log.
 		WithField("topicPath", topicName).
@@ -99,17 +107,82 @@ func (ss *S3Storage) ListFiles(topicName string, extension string) ([]File, erro
 	log.Debugf("listing objects in s3")
 	t0 := time.Now()
 
-	files := make([]File, 0, 128)
-	paginator := s3.NewListObjectsV2Paginator(ss.s3, &s3.ListObjectsV2Input{
-		Bucket: aws.String(ss.bucketName),
-		Prefix: &topicName,
+	filesFromOverview, err := ss.listFilesFromOverview(topicName)
+	if err != nil {
+		return nil, err
+	}
+
+	var mostRecentOverviewFile *string
+	if len(filesFromOverview) > 0 {
+		mostRecentOverviewFile = &filesFromOverview[len(filesFromOverview)-1].Path
+	}
+
+	filesNotInOverview, err := ss.listFiles(&topicName, mostRecentOverviewFile, func(obj types.Object) bool {
+		return strings.HasSuffix(*obj.Key, extension)
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	totalFiles := len(filesFromOverview) + len(filesNotInOverview)
+	log.Debugf("found %d files (%d from overview, %d outside) (%s)", totalFiles, len(filesFromOverview), len(filesNotInOverview), time.Since(t0))
+
+	return append(filesFromOverview, filesNotInOverview...), nil
+}
+
+// listFilesFromOverview finds the most recent overview file and returns the
+// Files it contains.
+// NOTE: the overview file must be in JSON format and gzipped.
+func (ss *S3Storage) listFilesFromOverview(topicPrefix string) ([]File, error) {
+	overviewPrefix := path.Join(topicPrefix, "overview")
+	overviewFiles, err := ss.listFiles(&overviewPrefix, nil, func(obj types.Object) bool {
+		return strings.HasSuffix(*obj.Key, ".json.gz")
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(overviewFiles) == 0 {
+		return nil, nil
+	}
+
+	overviewFilePath := overviewFiles[len(overviewFiles)-1].Path
+	obj, err := ss.s3.GetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(ss.bucketName),
+		Key:    aws.String(overviewFilePath),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading overview file '%s': %w", overviewFilePath, err)
+	}
+	defer obj.Body.Close()
+
+	rdr, err := gzip.NewReader(obj.Body)
+	if err != nil {
+		return nil, fmt.Errorf("creating gzip reader: %w", err)
+	}
+
+	files := []File{}
+	err = json.NewDecoder(rdr).Decode(&files)
+	if err != nil {
+		return nil, fmt.Errorf("parsing overview file '%s': %w", overviewFilePath, err)
+	}
+
+	return files, nil
+}
+
+// listFiles is a small wrapper around S3's ListObjectsV2
+func (ss *S3Storage) listFiles(prefix *string, startAfter *string, keep func(types.Object) bool) ([]File, error) {
+	paginator := s3.NewListObjectsV2Paginator(ss.s3, &s3.ListObjectsV2Input{
+		Bucket:     aws.String(ss.bucketName),
+		Prefix:     prefix,
+		StartAfter: startAfter,
+	})
+
+	files := []File{}
 	for paginator.HasMorePages() {
 		result, err := paginator.NextPage(context.TODO())
 		if err != nil {
-			err = fmt.Errorf("retrieving pages: %w", err)
-			log.Errorf(err.Error())
-			return nil, err
+			return nil, fmt.Errorf("retrieving overview pages: %w", err)
 		}
 
 		for _, obj := range result.Contents {
@@ -117,18 +190,14 @@ func (ss *S3Storage) ListFiles(topicName string, extension string) ([]File, erro
 				continue
 			}
 
-			filePath := *obj.Key
-
-			if strings.HasSuffix(filePath, extension) {
+			if keep(obj) {
 				files = append(files, File{
-					Path: filePath,
+					Path: *obj.Key,
 					Size: *obj.Size,
 				})
 			}
 		}
 	}
-
-	log.Debugf("found %d files (%s)", len(files), time.Since(t0))
 
 	return files, nil
 }
