@@ -48,9 +48,12 @@ func AddRecords(log logger.Logger, bufPool *syncy.Pool[*sebrecords.Batch], s Rec
 			switch {
 			case errors.Is(err, seberr.ErrBadInput):
 				w.WriteHeader(http.StatusBadRequest)
+			case errors.Is(err, seberr.ErrBufferTooSmall) || errors.Is(err, seberr.ErrPayloadTooLarge):
+				w.WriteHeader(http.StatusRequestEntityTooLarge)
 			default:
 				w.WriteHeader(http.StatusInternalServerError)
 			}
+			fmt.Fprint(w, err.Error())
 			return
 		}
 

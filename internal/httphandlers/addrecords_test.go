@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/micvbang/go-helpy/sizey"
+	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/httphelpers"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
@@ -77,6 +79,39 @@ func TestAddRecordsPayloadTooLarge(t *testing.T) {
 	r := httptest.NewRequest("POST", "/records", buf)
 
 	contentType, err := httphelpers.RecordsToMultipartFormData(buf, batch.Sizes, batch.Data)
+	require.NoError(t, err)
+
+	r.Header.Add("Content-Type", contentType)
+	httphelpers.AddQueryParams(r, map[string]string{
+		"topic-name": "topic",
+	})
+
+	// Act
+	response := server.DoWithAuth(r)
+
+	// Assert
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.StatusCode)
+}
+
+// TestAddRecordsMultipartPayloadTooLarge verifies that
+// http.StatusRequestEntityTooLarge is returned when AddRecords() finds that the
+// size of the allocated sebrecords.Batch which is used when parsing the input.
+func TestAddRecordsMultipartPayloadTooLarge(t *testing.T) {
+	const batchSizeCap = 50 * sizey.B
+
+	server := tester.HTTPServer(t, tester.HTTPBatchPool(syncy.NewPool(func() *sebrecords.Batch {
+		// NOTE: this batch limits how large an input payload is allowed to be
+		batch := sebrecords.NewBatch(make([]uint32, 0, 5), make([]byte, 0, batchSizeCap))
+		return &batch
+	})))
+	defer server.Close()
+
+	inputBatch := tester.MakeRandomRecordBatchSize(1, batchSizeCap+1)
+
+	buf := bytes.NewBuffer(nil)
+	r := httptest.NewRequest("POST", "/records", buf)
+
+	contentType, err := httphelpers.RecordsToMultipartFormData(buf, inputBatch.Sizes, inputBatch.Data)
 	require.NoError(t, err)
 
 	r.Header.Add("Content-Type", contentType)
