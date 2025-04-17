@@ -100,6 +100,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 // this is not called concurrently. This is normally the responsibility of a
 // RecordBatcher.
 func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
+	s.log.Debugf("Adding %d records (%d bytes)", batch.Len(), len(batch.Data))
 	recordBatchID := s.nextOffset.Load()
 
 	rbPath := RecordBatchKey(s.topicName, recordBatchID)
