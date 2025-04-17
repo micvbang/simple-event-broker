@@ -135,7 +135,7 @@ func MultipartFormDataToRecords(r io.Reader, boundary string, batch *sebrecords.
 
 	sizesSum := slicey.Sum(batch.Sizes)
 	if cap(batch.Data) < int(sizesSum) {
-		return fmt.Errorf("%w: record data expected to be %d bytes, buffer only %d bytes", seberr.ErrBufferTooSmall, sizesSum, cap(batch.Data))
+		return fmt.Errorf("%w: record data expected to be %d bytes, buffer is %d bytes", seberr.ErrPayloadTooLarge, sizesSum, cap(batch.Data))
 	}
 
 	// records

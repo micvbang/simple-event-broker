@@ -13,7 +13,6 @@ var (
 	ErrUnauthorized       = errors.New("unauthorized")
 	ErrPayloadTooLarge    = errors.New("payload too large")
 	ErrBadInput           = errors.New("bad input")
-	ErrBufferTooSmall     = errors.New("buffer too small")
 	ErrNotAuthorized      = errors.New("not authorized")
 	ErrNotFound           = errors.New("not found")
 )

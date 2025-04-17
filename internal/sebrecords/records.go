@@ -136,7 +136,7 @@ func (rb *Parser) Records(batch *Batch, recordIndexStart uint32, recordIndexEnd 
 	requestedRecords := int(recordIndexEnd - recordIndexStart)
 	recordsLeftInBatch := cap(batch.Sizes) - len(batch.Sizes)
 	if requestedRecords > recordsLeftInBatch {
-		return fmt.Errorf("%w: not enough records left in buffer to satisfy read; %d required, %d left", seberr.ErrBufferTooSmall, requestedRecords, recordsLeftInBatch)
+		return fmt.Errorf("%w: not enough records left in buffer to satisfy read; %d required, %d left", seberr.ErrPayloadTooLarge, requestedRecords, recordsLeftInBatch)
 	}
 
 	recordOffsetStart := rb.recordIndex[recordIndexStart]
@@ -145,7 +145,7 @@ func (rb *Parser) Records(batch *Batch, recordIndexStart uint32, recordIndexEnd 
 
 	bytesLeftInBatch := cap(batch.Data) - len(batch.Data)
 	if requestedBytes > bytesLeftInBatch {
-		return fmt.Errorf("%w: not enough bytes left in buffer to satisfy read; %d required, %d left", seberr.ErrBufferTooSmall, requestedBytes, bytesLeftInBatch)
+		return fmt.Errorf("%w: not enough bytes left in buffer to satisfy read; %d required, %d left", seberr.ErrPayloadTooLarge, requestedBytes, bytesLeftInBatch)
 	}
 
 	fileOffsetStart := rb.Header.Size() + recordOffsetStart

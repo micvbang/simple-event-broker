@@ -117,8 +117,8 @@ func TestReadRecords(t *testing.T) {
 }
 
 // TestReadRecordsOverCapacity verifies that Records() returns
-// seberr.ErrBufferTooSmall when attempting to satisfy a request that requires more
-// space than is available in either buffer.
+// seberr.ErrPayloadTooLarge when attempting to satisfy a request that requires
+// more space than is available in either buffer.
 func TestReadRecordsOverCapacity(t *testing.T) {
 	batch := tester.MakeRandomRecordBatch(1)
 
@@ -136,15 +136,15 @@ func TestReadRecordsOverCapacity(t *testing.T) {
 		expected error
 	}{
 		"both too small": {
-			expected: seberr.ErrBufferTooSmall,
+			expected: seberr.ErrPayloadTooLarge,
 		},
 		"sizes too small": {
 			data:     make([]byte, len(batch.Data)),
-			expected: seberr.ErrBufferTooSmall,
+			expected: seberr.ErrPayloadTooLarge,
 		},
 		"data too small": {
 			sizes:    make([]uint32, batch.Len()),
-			expected: seberr.ErrBufferTooSmall,
+			expected: seberr.ErrPayloadTooLarge,
 		},
 		"both exactly fit": {
 			data:     make([]byte, 0, len(batch.Data)),
