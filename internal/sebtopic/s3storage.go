@@ -147,6 +147,14 @@ func (wc *s3WriteCloser) Write(b []byte) (int, error) {
 }
 
 func (wc *s3WriteCloser) Close() error {
+	// Remove temporary file once it has been uploaded to S3.
+	defer func() {
+		err := os.Remove(wc.f.Name())
+		if err != nil {
+			wc.log.Errorf("failed to delete temporary file %s", wc.f.Name())
+		}
+	}()
+
 	_, err := wc.f.Seek(0, io.SeekStart)
 	if err != nil {
 		return fmt.Errorf("seeking to beginning: %w", err)
