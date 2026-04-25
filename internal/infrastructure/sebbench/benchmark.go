@@ -75,8 +75,12 @@ func (lb *LocalBroker) Start() (*seb.RecordClient, error) {
 	}
 
 	mux := http.NewServeMux()
-	const apiKey = "api-key"
-	httphandlers.RegisterRoutes(lb.log, mux, lb.batchPool, broker, apiKey)
+	const (
+		apiKey   = "api-key"
+		readOnly = false
+	)
+
+	httphandlers.RegisterRoutes(lb.log, mux, lb.batchPool, broker, apiKey, readOnly)
 
 	lb.httpServer = httptest.NewServer(mux)
 	client, err := seb.NewRecordClient(lb.httpServer.URL, apiKey)

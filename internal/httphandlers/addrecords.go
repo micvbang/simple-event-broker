@@ -21,6 +21,15 @@ type AddRecordsOutput struct {
 	Offsets []uint64 `json:"offsets"`
 }
 
+func AddRecordsReadOnly(log logger.Logger, bufPool *syncy.Pool[*sebrecords.Batch], s RecordsAdder) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := httphelpers.WriteJSONWithStatusCode(w, http.StatusMethodNotAllowed, map[string]string{"error": "instance in read-only mode"})
+		if err != nil {
+			log.Errorf("failed to write json: %s", err)
+		}
+	}
+}
+
 func AddRecords(log logger.Logger, bufPool *syncy.Pool[*sebrecords.Batch], s RecordsAdder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()

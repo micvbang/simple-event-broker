@@ -49,6 +49,9 @@ func init() {
 	fs.Int64Var(&serveFlags.cacheMaxBytes, "cache-size", 1*sizey.GB, "Maximum number of bytes to keep in the cache (soft limit)")
 	fs.DurationVar(&serveFlags.cacheEvictionInterval, "cache-eviction-interval", 5*time.Minute, "Amount of time between enforcing maximum cache size")
 
+	// read only
+	fs.BoolVar(&serveFlags.readOnly, "read-only", false, "Whether to make the instance read-only (not accept any writes)")
+
 	// batching
 	fs.DurationVar(&serveFlags.recordBatchBlockTime, "batch-wait-time", time.Second, "Amount of time to wait between receiving first record in batch and committing the batch")
 	fs.IntVar(&serveFlags.recordBatchSoftMaxBytes, "batch-bytes-soft-max", 10*sizey.MB, "Soft maximum for the size of a batch")
@@ -88,7 +91,7 @@ var serveCmd = &cobra.Command{
 		})
 
 		mux := http.NewServeMux()
-		httphandlers.RegisterRoutes(log, mux, batchPool, blockingS3Broker, flags.httpAPIKey)
+		httphandlers.RegisterRoutes(log, mux, batchPool, blockingS3Broker, flags.httpAPIKey, flags.readOnly)
 
 		errs := make(chan error, 8)
 
@@ -153,6 +156,8 @@ type ServeFlags struct {
 	cacheDir              string
 	cacheMaxBytes         int64
 	cacheEvictionInterval time.Duration
+
+	readOnly bool
 
 	recordBatchBlockTime    time.Duration
 	recordBatchSoftMaxBytes int
