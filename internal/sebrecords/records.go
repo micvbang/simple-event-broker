@@ -29,7 +29,7 @@ type Header struct {
 	Reserved    [14]byte
 }
 
-// Size returns the size of the header in bytes
+// Size returns the size of the full header (including record index) in bytes
 func (h Header) Size() uint32 {
 	return headerBytes + h.NumRecords*recordIndexSize
 }
