@@ -213,7 +213,7 @@ func TestListFiles(t *testing.T) {
 
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
 
-	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext")
+	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext", nil)
 	require.NoError(t, err)
 
 	require.Equal(t, expectedFiles, gotFiles)
@@ -243,7 +243,7 @@ func TestListFilesOverlappingNames(t *testing.T) {
 
 	for _, prefix := range testPrefixes {
 		t.Run(fmt.Sprintf("prefix '%s'", prefix), func(t *testing.T) {
-			_, err := s3Storage.ListFiles(prefix, ".ext")
+			_, err := s3Storage.ListFiles(prefix, ".ext", nil)
 			require.NoError(t, err)
 		})
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 type MockTopicStorage struct {
-	ListFilesMock  func(topicName string, extension string) ([]sebtopic.File, error)
+	ListFilesMock  func(topicName string, extension string, startAfter *string) ([]sebtopic.File, error)
 	ListFilesCalls []storageListFilesCall
 
 	ReaderMock  func(recordBatchPath string) (io.ReadCloser, error)
@@ -19,24 +19,26 @@ type MockTopicStorage struct {
 }
 
 type storageListFilesCall struct {
-	TopicName string
-	Extension string
+	TopicName  string
+	Extension  string
+	StartAfter *string
 
 	Out0 []sebtopic.File
 	Out1 error
 }
 
-func (_v *MockTopicStorage) ListFiles(topicName string, extension string) ([]sebtopic.File, error) {
+func (_v *MockTopicStorage) ListFiles(topicName string, extension string, startAfter *string) ([]sebtopic.File, error) {
 	if _v.ListFilesMock == nil {
 		msg := fmt.Sprintf("call to %T.ListFiles, but MockListFiles is not set", _v)
 		panic(msg)
 	}
 
 	_v.ListFilesCalls = append(_v.ListFilesCalls, storageListFilesCall{
-		TopicName: topicName,
-		Extension: extension,
+		TopicName:  topicName,
+		Extension:  extension,
+		StartAfter: startAfter,
 	})
-	out0, out1 := _v.ListFilesMock(topicName, extension)
+	out0, out1 := _v.ListFilesMock(topicName, extension, startAfter)
 	_v.ListFilesCalls[len(_v.ListFilesCalls)-1].Out0 = out0
 	_v.ListFilesCalls[len(_v.ListFilesCalls)-1].Out1 = out1
 	return out0, out1

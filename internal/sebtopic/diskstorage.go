@@ -65,7 +65,7 @@ func (ds *DiskStorage) Reader(key string) (io.ReadCloser, error) {
 	return f, nil
 }
 
-func (ds *DiskStorage) ListFiles(topicName string, extension string) ([]File, error) {
+func (ds *DiskStorage) ListFiles(topicName string, extension string, startAfter *string) ([]File, error) {
 	log := ds.log.
 		WithField("topicName", topicName).
 		WithField("extension", extension)
@@ -78,6 +78,11 @@ func (ds *DiskStorage) ListFiles(topicName string, extension string) ([]File, er
 	files := make([]File, 0, 128)
 	walkConfig := filepathy.WalkConfig{Files: true, Extensions: []string{extension}}
 	err := filepathy.Walk(topicPath, walkConfig, func(path string, info os.FileInfo, _ error) error {
+		// NOTE: Base could return "." or "/"
+		if startAfter != nil && filepath.Base(path) <= *startAfter {
+			return nil
+		}
+
 		files = append(files, File{
 			Size: info.Size(),
 			Path: path,

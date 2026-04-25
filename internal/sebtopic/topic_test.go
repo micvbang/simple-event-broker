@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/micvbang/go-helpy"
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
@@ -14,6 +15,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
+	"github.com/micvbang/simple-event-broker/internal/seboffsets"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/micvbang/simple-event-broker/seberr"
@@ -79,7 +81,7 @@ func TestStorageWriteRecordsBackingStorageWriteFails(t *testing.T) {
 		expectedErr := fmt.Errorf("failed to write to file")
 
 		backingStorage := &tester.MockTopicStorage{}
-		backingStorage.ListFilesMock = func(topicName, extension string) ([]sebtopic.File, error) {
+		backingStorage.ListFilesMock = func(topicName, extension string, startAfter *string) ([]sebtopic.File, error) {
 			return nil, nil
 		}
 		backingStorage.WriterMock = func(recordBatchPath string) (io.WriteCloser, error) {
@@ -114,7 +116,7 @@ func TestStorageWriteRecordsBackingStorageCloseFails(t *testing.T) {
 		expectedErr := fmt.Errorf("failed to close file")
 
 		backingStorage := &tester.MockTopicStorage{}
-		backingStorage.ListFilesMock = func(topicName, extension string) ([]sebtopic.File, error) {
+		backingStorage.ListFilesMock = func(topicName, extension string, startAfter *string) ([]sebtopic.File, error) {
 			return nil, nil
 		}
 		backingStorage.WriterMock = func(recordBatchPath string) (io.WriteCloser, error) {
@@ -762,6 +764,120 @@ func TestTopicMetadataEmptyTopic(t *testing.T) {
 		// Assert
 		expectedMetadata := sebtopic.Metadata{}
 		require.Equal(t, expectedMetadata, gotMetadata)
+	})
+}
+
+// TestWriteRecordBatchOffsets_WriteAndReadBack verifies that sebtopic.WriteRecordBatchOffsets writes
+// offsets in a way that sebtopic.ListRecordBatchOffsets can read
+func TestWriteRecordBatchOffsets_WriteAndReadBack(t *testing.T) {
+	const topicName = "topicName"
+	log := logger.NewDefault(context.Background())
+	expectedOffsets := []uint64{0, 25, 300, 305, 1500}
+
+	tester.TestBackingStorage(t, func(t *testing.T, s sebtopic.Storage) {
+		for _, offset := range expectedOffsets {
+			recordBatchKey := sebtopic.RecordBatchKey(topicName, offset)
+			writeFile(t, s, recordBatchKey, tester.RandomBytes(t, 32))
+		}
+
+		// Act - write offsets
+		err := sebtopic.WriteRecordBatchOffsets(log, s, topicName, expectedOffsets)
+		require.NoError(t, err)
+
+		// Act - read offsets
+		gotOffsets, err := sebtopic.ListRecordBatchOffsets(log, s, topicName)
+		require.NoError(t, err)
+
+		// Assert
+		require.Equal(t, expectedOffsets, gotOffsets)
+
+		{
+			files, err := s.ListFiles(topicName, ".offsets", nil)
+			require.NoError(t, err)
+
+			require.Equal(t, 1, len(files))
+			rdr, err := s.Reader(files[0].Path)
+			require.NoError(t, err)
+
+			rawOffsets, err := seboffsets.Parse(rdr)
+			require.NoError(t, err)
+			require.Equal(t, expectedOffsets, rawOffsets)
+		}
+	})
+}
+
+// TestListRecordBatchOffsets_FromExistingRecordBatches verifies that
+// ListRecordBatchOffsets returns the expected offsets when there are no
+// .offsets files, but there are existing .record_batch files.
+func TestListRecordBatchOffsets_FromExistingRecordBatches(t *testing.T) {
+	const topicName = "topicName"
+	log := logger.NewDefault(context.Background())
+	expectedOffsets := []uint64{0, 25, 300, 305, 1500}
+
+	tester.TestBackingStorage(t, func(t *testing.T, s sebtopic.Storage) {
+		for _, offset := range expectedOffsets {
+			recordBatchKey := sebtopic.RecordBatchKey(topicName, offset)
+			writeFile(t, s, recordBatchKey, tester.RandomBytes(t, 32))
+		}
+
+		// Act - read offsets
+		gotOffsets, err := sebtopic.ListRecordBatchOffsets(log, s, topicName)
+		require.NoError(t, err)
+
+		// Assert
+		require.Equal(t, expectedOffsets, gotOffsets)
+
+		files, err := s.ListFiles(topicName, ".offsets", nil)
+		require.NoError(t, err)
+
+		require.Equal(t, 0, len(files))
+	})
+}
+
+// TestListRecordBatchOffsets_InvalidOffsetFileNames verifies that
+// WriteRecordBatchOffsets panics when finding unordered .offsets files
+func TestWriteRecordBatchOffsets_InvalidOffsetFileNames(t *testing.T) {
+	const topicName = "topicName"
+
+	tester.TestBackingStorage(t, func(t *testing.T, s sebtopic.Storage) {
+		// NOTE: these ids are not in order; they must be sequential, starting from 0
+		offsetsFile1 := sebtopic.OffsetsFileKey(topicName, 0)
+		offsetsFile2 := sebtopic.OffsetsFileKey(topicName, 2)
+
+		writeFile(t, s, offsetsFile1, []byte{})
+		writeFile(t, s, offsetsFile2, []byte{})
+
+		// Act, assert
+		require.Panics(t, func() {
+			sebtopic.WriteRecordBatchOffsets(log, s, topicName, []uint64{})
+		})
+	})
+}
+
+// TestWriteRecordBatchOffsets_SequentialOffsetFileNames verifies that
+// WriteRecordBatchOffsets panics when finding unordered .offsets files
+func TestWriteRecordBatchOffsets_SequentialOffsetFileNames(t *testing.T) {
+	const (
+		topicName      = "topicName"
+		numOffsetFiles = 100
+	)
+
+	tester.TestBackingStorage(t, func(t *testing.T, s sebtopic.Storage) {
+		// Act
+		for range numOffsetFiles {
+			err := sebtopic.WriteRecordBatchOffsets(log, s, topicName, []uint64{})
+			require.NoError(t, err)
+		}
+
+		// Assert
+		files, err := s.ListFiles(topicName, ".offsets", helpy.Pointer("offsets_"))
+		require.NoError(t, err)
+
+		// Ensure offset files are named sequentially
+		require.Equal(t, numOffsetFiles, len(files))
+		for i, offsetFile := range files {
+			require.Equal(t, sebtopic.OffsetsFileKey(topicName, uint64(i)), offsetFile.Path)
+		}
 	})
 }
 
