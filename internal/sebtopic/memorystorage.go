@@ -2,8 +2,11 @@ package sebtopic
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"io"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -47,7 +50,7 @@ func (ms *MemoryTopicStorage) Reader(key string) (io.ReadCloser, error) {
 	return io.NopCloser(buf), nil
 }
 
-func (ms *MemoryTopicStorage) ListFiles(topicName string, extension string) ([]File, error) {
+func (ms *MemoryTopicStorage) ListFiles(topicName string, extension string, startAfter *string) ([]File, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -55,13 +58,22 @@ func (ms *MemoryTopicStorage) ListFiles(topicName string, extension string) ([]F
 
 	topicPrefix := fmt.Sprintf("%s/", topicName)
 	for key, buf := range ms.storage {
-		if strings.HasPrefix(key, topicPrefix) {
-			files = append(files, File{
-				Size: int64(buf.Len()),
-				Path: key,
-			})
+		if !strings.HasPrefix(key, topicPrefix) {
+			continue
 		}
+		if startAfter != nil && filepath.Base(key) <= *startAfter {
+			continue
+		}
+
+		files = append(files, File{
+			Size: int64(buf.Len()),
+			Path: key,
+		})
 	}
+
+	slices.SortFunc(files, func(a, b File) int {
+		return cmp.Compare(a.Path, b.Path)
+	})
 
 	return files, nil
 }

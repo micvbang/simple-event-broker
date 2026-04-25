@@ -7,12 +7,15 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
+	"github.com/micvbang/go-helpy"
+	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/seberr"
 )
@@ -85,10 +88,11 @@ func (ss *S3Storage) Reader(key string) (io.ReadCloser, error) {
 	return obj.Body, nil
 }
 
-func (ss *S3Storage) ListFiles(topicName string, extension string) ([]File, error) {
+func (ss *S3Storage) ListFiles(topicName string, extension string, startAfter *string) ([]File, error) {
 	log := ss.log.
 		WithField("topicPath", topicName).
-		WithField("extension", extension)
+		WithField("extension", extension).
+		WithField("startAfter", *stringy.StringOrDefault(startAfter, "[not set]"))
 
 	topicName = path.Join(ss.s3KeyPrefix, topicName)
 	topicName, _ = strings.CutPrefix(topicName, "/")
@@ -96,13 +100,18 @@ func (ss *S3Storage) ListFiles(topicName string, extension string) ([]File, erro
 		topicName += "/"
 	}
 
+	if startAfter != nil {
+		startAfter = helpy.Pointer(filepath.Join(topicName, *startAfter))
+	}
+
 	log.Debugf("listing objects in s3")
 	t0 := time.Now()
 
 	files := make([]File, 0, 128)
 	paginator := s3.NewListObjectsV2Paginator(ss.s3, &s3.ListObjectsV2Input{
-		Bucket: aws.String(ss.bucketName),
-		Prefix: &topicName,
+		Bucket:     aws.String(ss.bucketName),
+		Prefix:     &topicName,
+		StartAfter: startAfter,
 	})
 	for paginator.HasMorePages() {
 		result, err := paginator.NextPage(context.TODO())

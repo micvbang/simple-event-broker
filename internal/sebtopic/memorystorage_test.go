@@ -3,8 +3,10 @@ package sebtopic_test
 import (
 	"io"
 	"path"
+	"path/filepath"
 	"testing"
 
+	"github.com/micvbang/go-helpy"
 	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
@@ -99,22 +101,65 @@ func TestMemoryTopicStorageListFiles(t *testing.T) {
 	writeFile(t, memoryStorage, path.Join(topicName2, "3.ext"), bs)
 
 	// topic1
-	topic1Files, err := memoryStorage.ListFiles(topicName1, ".ext")
+	topic1Files, err := memoryStorage.ListFiles(topicName1, ".ext", nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(topic1Files))
 
 	// topic2
-	topic2Files, err := memoryStorage.ListFiles(topicName2, ".ext")
+	topic2Files, err := memoryStorage.ListFiles(topicName2, ".ext", nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(topic2Files))
 
 	// non-existing topic
-	nonExistingTopicFiles, err := memoryStorage.ListFiles("does-not-exist", ".ext")
+	nonExistingTopicFiles, err := memoryStorage.ListFiles("does-not-exist", ".ext", nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(nonExistingTopicFiles))
 }
 
-func writeFile(t *testing.T, ms *sebtopic.MemoryTopicStorage, key string, bs []byte) {
+// TestMemoryTopicStorageListFilesAfter verifies that ListFiles respects
+// *startAfter, i.e. only returns files after *startAfter
+func TestMemoryTopicStorageListFilesAfter(t *testing.T) {
+	memoryStorage := sebtopic.NewMemoryStorage(log)
+
+	bs := tester.RandomBytes(t, 32)
+
+	const topicName = "topic-name"
+
+	path1 := path.Join(topicName, "1.ext")
+	path2 := path.Join(topicName, "2.ext")
+	path3 := path.Join(topicName, "3.ext")
+
+	writeFile(t, memoryStorage, path1, bs)
+	writeFile(t, memoryStorage, path2, bs)
+	writeFile(t, memoryStorage, path3, bs)
+
+	tests := map[string]struct {
+		startAfter    *string
+		expectedPaths []string
+	}{
+		"nil": {startAfter: nil, expectedPaths: []string{path1, path2, path3}},
+		"1":   {startAfter: helpy.Pointer("1.ext"), expectedPaths: []string{path2, path3}},
+		"2":   {startAfter: helpy.Pointer("2.ext"), expectedPaths: []string{path3}},
+		"3":   {startAfter: helpy.Pointer("3.ext"), expectedPaths: []string{}},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Act
+			gotFiles, err := memoryStorage.ListFiles(topicName, ".ext", test.startAfter)
+			require.NoError(t, err)
+
+			// Assert
+			require.Equal(t, len(test.expectedPaths), len(gotFiles))
+
+			for i, expectedPath := range test.expectedPaths {
+				require.Equal(t, filepath.Base(expectedPath), filepath.Base(gotFiles[i].Path))
+			}
+		})
+	}
+}
+
+func writeFile(t *testing.T, ms sebtopic.Storage, key string, bs []byte) {
 	wtr, err := ms.Writer(key)
 	require.NoError(t, err)
 

@@ -6,16 +6,19 @@ import (
 	"io"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/micvbang/go-helpy"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
+	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
+	"github.com/micvbang/simple-event-broker/internal/seboffsets"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/seberr"
 )
@@ -25,10 +28,11 @@ type File struct {
 	Path string
 }
 
+//go:generate mocky -i Storage
 type Storage interface {
 	Writer(recordBatchPath string) (io.WriteCloser, error)
 	Reader(recordBatchPath string) (io.ReadCloser, error)
-	ListFiles(topicName string, extension string) ([]File, error)
+	ListFiles(topicName string, extension string, startAfter *string) ([]File, error)
 }
 
 type Compress interface {
@@ -62,7 +66,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 		optFunc(&opts)
 	}
 
-	recordBatchOffsets, err := listRecordBatchOffsets(backingStorage, topicName)
+	recordBatchOffsets, err := ListRecordBatchOffsets(log, backingStorage, topicName)
 	if err != nil {
 		return nil, fmt.Errorf("listing record batches: %w", err)
 	}
@@ -391,17 +395,56 @@ func (s *Topic) recordBatchPath(recordBatchID uint64) string {
 	return RecordBatchKey(s.topicName, recordBatchID)
 }
 
-const recordBatchExtension = ".record_batch"
+const (
+	recordBatchExtension = ".record_batch"
+	offsetFileExtension  = ".offsets"
+	offsetFilePrefix     = "offsets_"
+)
 
-func listRecordBatchOffsets(backingStorage Storage, topicName string) ([]uint64, error) {
-	files, err := backingStorage.ListFiles(topicName, recordBatchExtension)
+// ListRecordBatchOffsets uses storage.ListFiles to identify the offsets of
+// record batches that exist in the topic. It attempts to use .offsets files to
+// make this operation faster.
+func ListRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName string) ([]uint64, error) {
+	log.Debugf("Listing '%s' files in topic '%s'", offsetFileExtension, topicName)
+	offsetFiles, err := listOffsetsFiles(backingStorage, topicName)
+	if err != nil {
+		return nil, fmt.Errorf("listing offset files: %w", err)
+	}
+
+	log.Debugf("Found %d '%s' files", len(offsetFiles), offsetFileExtension)
+
+	var offsets []uint64
+	if len(offsetFiles) > 0 {
+		file := slicey.Last(offsetFiles)
+		rdr, err := backingStorage.Reader(file.Path)
+		if err != nil {
+			return nil, fmt.Errorf("reading offsets from '%s': %w", file.Path, err)
+		}
+		defer rdr.Close()
+
+		offsets, err = seboffsets.Parse(rdr)
+		if err != nil {
+			return nil, fmt.Errorf("parsing '%s': %w", file.Path, err)
+		}
+	}
+
+	mostRecentOffset := slicey.LastOrDefault(offsets, 0)
+	var startAfter *string
+	if mostRecentOffset > 0 {
+		offsetKey := filepath.Base(RecordBatchKey(topicName, mostRecentOffset))
+		startAfter = &offsetKey
+	}
+
+	log.Debugf("Listing '%s' files in topic '%s' (start after: %s)", recordBatchExtension, topicName, *stringy.StringOrDefault(startAfter, "[not set]"))
+
+	batchFiles, err := backingStorage.ListFiles(topicName, recordBatchExtension, startAfter)
 	if err != nil {
 		return nil, fmt.Errorf("listing files: %w", err)
 	}
+	log.Debugf("Found %d '%s' files", len(batchFiles), recordBatchExtension)
 
-	offsets := make([]uint64, 0, len(files))
-	for _, file := range files {
-		fileName := path.Base(file.Path)
+	for _, batchFile := range batchFiles {
+		fileName := path.Base(batchFile.Path)
 		offsetStr := fileName[:len(fileName)-len(recordBatchExtension)]
 
 		offset, err := uint64y.FromString(offsetStr)
@@ -412,11 +455,62 @@ func listRecordBatchOffsets(backingStorage Storage, topicName string) ([]uint64,
 		offsets = append(offsets, offset)
 	}
 
-	sort.Slice(offsets, func(i, j int) bool {
-		return offsets[i] < offsets[j]
-	})
+	slices.Sort(offsets)
+
+	log.Debugf("Returning %d offsets, most recent one is %d", len(offsets), slicey.Last(offsets))
 
 	return offsets, nil
+}
+
+// WriteRecordBatchOffsets writes the given offsets to the next .offsets file.
+// This is used as a caching mechanism that allows us to avoid calling S3's LIST
+// OBJECTS endpoint excessively for large topics.
+//
+// NOTE: THIS OPERATION IS NOT SAFE TO RUN CONCURRENTLY! Not within the same
+// program, but also not concurrently with another instance of the program.
+func WriteRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName string, offsets []uint64) error {
+	offsetFilePaths, err := listOffsetsFiles(backingStorage, topicName)
+	if err != nil {
+		return fmt.Errorf("listing offset files: %w", err)
+	}
+
+	numOffsetFiles := uint64(len(offsetFilePaths))
+
+	// assert integrity of offset file naming
+	{
+		for i, offsetFilePath := range offsetFilePaths {
+			expectedPath := OffsetsFileKey(topicName, uint64(i))
+			if expectedPath != offsetFilePath.Path {
+				msg := fmt.Sprintf("expected offset file path '%s', got '%s'", expectedPath, offsetFilePath.Path)
+				log.Errorf(msg)
+				panic(msg)
+			}
+		}
+	}
+
+	offsetFilePath := OffsetsFileKey(topicName, numOffsetFiles)
+
+	wtr, err := backingStorage.Writer(offsetFilePath)
+	if err != nil {
+		return fmt.Errorf("opening writer for '%s': %w", offsetFilePath, err)
+	}
+	defer wtr.Close()
+
+	err = seboffsets.Write(wtr, offsets)
+	if err != nil {
+		return fmt.Errorf("writing offsets to '%s': %w", offsetFilePath, err)
+	}
+
+	return nil
+}
+
+func listOffsetsFiles(backingStorage Storage, topicName string) ([]File, error) {
+	return backingStorage.ListFiles(topicName, offsetFileExtension, helpy.Pointer(offsetFilePrefix))
+}
+
+// offsetFileIDs are zero-indexed, i.e. the first one is number 0.
+func OffsetsFileKey(topicName string, offsetFileID uint64) string {
+	return filepath.Join(topicName, fmt.Sprintf("%s%012d%s", offsetFilePrefix, offsetFileID, offsetFileExtension))
 }
 
 // RecordBatchKey returns the symbolic path of the topicName and the recordBatchID.

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHappyPath verifies that a Write can write data which Parse can read back.
-func TestHappyPath(t *testing.T) {
+// TestWriteReadHappyPath verifies that a Write can write data which Parse can read back.
+func TestWriteReadHappyPath(t *testing.T) {
 	expectedOffsets := make([]uint64, 257)
 	for i := range expectedOffsets {
 		expectedOffsets[i] = uint64y.Random()
