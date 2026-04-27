@@ -30,7 +30,13 @@ func init() {
 	rootCmd.AddCommand(benchmarkCmd)
 	rootCmd.AddCommand(benchmarkReadCmd)
 	rootCmd.AddCommand(clientCmd)
+	rootCmd.AddCommand(offsetsCmd)
 
 	// client
 	clientCmd.AddCommand(clientGetCmd)
+
+	// offsets
+	offsetsCmd.AddCommand(offsetsWriteCmd)
+	offsetsCmd.AddCommand(offsetsListCmd)
+	offsetsCmd.AddCommand(offsetsReadCmd)
 }
