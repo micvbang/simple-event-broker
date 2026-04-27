@@ -127,10 +127,15 @@ func (ss *S3Storage) ListFiles(topicName string, extension string, startAfter *s
 			}
 
 			filePath := *obj.Key
+			storagePath := filePath
+			if ss.s3KeyPrefix != "" {
+				prefix := strings.Trim(ss.s3KeyPrefix, "/")
+				storagePath, _ = strings.CutPrefix(storagePath, prefix+"/")
+			}
 
 			if filepath.Ext(filePath) == extension {
 				files = append(files, File{
-					Path: filePath,
+					Path: storagePath,
 					Size: *obj.Size,
 				})
 			}

@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebtopic"
@@ -216,6 +217,44 @@ func TestListFiles(t *testing.T) {
 	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext", nil)
 	require.NoError(t, err)
 
+	require.Equal(t, expectedFiles, gotFiles)
+}
+
+// TestListFilesWithPrefixReturnsStoragePaths verifies that ListFiles does not
+// return any internal parts of the name (e.g. s3 key prefix) as part of
+// File.Path.
+func TestListFilesWithPrefixReturnsStoragePaths(t *testing.T) {
+	const (
+		s3KeyPrefix = "some-prefix"
+		topicName   = "dummy/dir"
+	)
+
+	expectedFiles := []sebtopic.File{
+		{Path: "dummy/dir/name1.ext", Size: 101},
+		{Path: "dummy/dir/name2.ext", Size: 102},
+	}
+	s3Files := slicey.Map(expectedFiles, func(f sebtopic.File) sebtopic.File {
+		return sebtopic.File{
+			Path: path.Join(s3KeyPrefix, f.Path),
+			Size: f.Size,
+		}
+	})
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockListObjectsV2 = func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+		expectedPrefix := path.Join(s3KeyPrefix, topicName) + "/"
+		require.Equal(t, expectedPrefix, *params.Prefix)
+
+		return listObjectsOutputFromFiles(s3Files), nil
+	}
+
+	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", s3KeyPrefix)
+
+	// Act
+	gotFiles, err := s3Storage.ListFiles(topicName, ".ext", nil)
+	require.NoError(t, err)
+
+	// Assert
 	require.Equal(t, expectedFiles, gotFiles)
 }
 
