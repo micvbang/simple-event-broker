@@ -9,6 +9,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestStorageListFilesRegressionPaths verifies that the paths returned by
+// ListFiles do not contain information internal to the backing storage, but
+// just the key used to write the files, e.g. for DiskStorage it should be
+// "topicName/key123.ext" instead of "/full/path/topicName/key123.ext".
+func TestStorageListFilesRegressionPaths(t *testing.T) {
+	tester.TestBackingStorage(t, func(t *testing.T, s sebtopic.Storage) {
+		const topicName = "topic-name"
+
+		expectedPath := path.Join(topicName, "1.ext")
+		writeFile(t, s, expectedPath, tester.RandomBytes(t, 32))
+
+		// Act
+		gotFiles, err := s.ListFiles(topicName, ".ext", nil)
+		require.NoError(t, err)
+
+		// Assert
+		require.Equal(t, 1, len(gotFiles))
+		require.Equal(t, expectedPath, gotFiles[0].Path)
+	})
+}
+
 // TestStorageListFilesExtensions verifies that only paths with the expected
 // extension are returned.
 func TestStorageListFilesExtensions(t *testing.T) {

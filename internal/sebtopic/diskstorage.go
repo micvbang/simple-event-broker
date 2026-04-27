@@ -73,6 +73,7 @@ func (ds *DiskStorage) ListFiles(topicName string, extension string, startAfter 
 	log.Debugf("listing files")
 	t0 := time.Now()
 
+	rootDirPath := ds.rootDirPath("")
 	topicPath := ds.rootDirPath(topicName)
 
 	files := make([]File, 0, 128)
@@ -83,9 +84,13 @@ func (ds *DiskStorage) ListFiles(topicName string, extension string, startAfter 
 			return nil
 		}
 
+		relPath, err := filepath.Rel(rootDirPath, path)
+		if err != nil {
+			return fmt.Errorf("getting relative path for '%s': %w", path, err)
+		}
 		files = append(files, File{
 			Size: info.Size(),
-			Path: path,
+			Path: relPath,
 		})
 		return nil
 	})
