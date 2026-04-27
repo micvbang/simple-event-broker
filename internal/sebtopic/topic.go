@@ -429,9 +429,9 @@ func ListRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName
 		}
 	}
 
-	mostRecentOffset := slicey.LastOrDefault(offsets, 0)
+	mostRecentOffset := slicey.Last(offsets)
 	var startAfter *string
-	if mostRecentOffset > 0 {
+	if len(offsets) > 0 {
 		offsetKey := filepath.Base(RecordBatchKey(topicName, mostRecentOffset))
 		startAfter = &offsetKey
 	}
