@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/micvbang/go-helpy/bytey"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/nops"
 	"github.com/micvbang/simple-event-broker/seberr"
@@ -47,7 +48,7 @@ func (ms *MemoryTopicStorage) Reader(key string) (io.ReadCloser, error) {
 		return nil, seberr.ErrNotInStorage
 	}
 
-	return io.NopCloser(buf), nil
+	return bytey.NewBuffer(slices.Clone(buf.Bytes())), nil
 }
 
 func (ms *MemoryTopicStorage) ListFiles(topicName string, extension string, startAfter *string) ([]File, error) {
