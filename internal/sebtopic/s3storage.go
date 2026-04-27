@@ -128,7 +128,7 @@ func (ss *S3Storage) ListFiles(topicName string, extension string, startAfter *s
 
 			filePath := *obj.Key
 
-			if strings.HasSuffix(filePath, extension) {
+			if filepath.Ext(filePath) == extension {
 				files = append(files, File{
 					Path: filePath,
 					Size: *obj.Size,
