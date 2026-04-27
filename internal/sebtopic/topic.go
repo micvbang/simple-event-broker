@@ -2,6 +2,7 @@ package sebtopic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -468,7 +469,7 @@ func ListRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName
 //
 // NOTE: THIS OPERATION IS NOT SAFE TO RUN CONCURRENTLY! Not within the same
 // program, but also not concurrently with another instance of the program.
-func WriteRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName string, offsets []uint64) error {
+func WriteRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName string, offsets []uint64) (err error) {
 	offsetFilePaths, err := listOffsetsFiles(backingStorage, topicName)
 	if err != nil {
 		return fmt.Errorf("listing offset files: %w", err)
@@ -494,7 +495,14 @@ func WriteRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicNam
 	if err != nil {
 		return fmt.Errorf("opening writer for '%s': %w", offsetFilePath, err)
 	}
-	defer wtr.Close()
+	defer func() {
+		// NOTE: we do not wish to ignore the potential error returned by
+		// closing the writer
+		wtrErr := wtr.Close()
+		if wtrErr != nil {
+			errors.Join(err, fmt.Errorf("closing writer for %s: %w", offsetFilePath, wtrErr))
+		}
+	}()
 
 	err = seboffsets.Write(wtr, offsets)
 	if err != nil {
