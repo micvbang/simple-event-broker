@@ -61,6 +61,11 @@ func (ms *MemoryTopicStorage) ListFiles(topicName string, extension string, star
 		if !strings.HasPrefix(key, topicPrefix) {
 			continue
 		}
+
+		if filepath.Ext(key) != extension {
+			continue
+		}
+
 		if startAfter != nil && filepath.Base(key) <= *startAfter {
 			continue
 		}
