@@ -806,6 +806,29 @@ func TestWriteRecordBatchOffsets_WriteAndReadBack(t *testing.T) {
 	})
 }
 
+// TestListRecordBatchOffsets_OffsetZeroCachedOnce verifies that
+// ListRecordBatchOffsets will not return the file offset 0 multiple times in
+// the edge case where the most recent record id is 0 and an .offsets file has
+// been written.
+func TestListRecordBatchOffsets_OffsetZeroCachedOnce(t *testing.T) {
+	const topicName = "topicName"
+	log := logger.NewDefault(context.Background())
+	expectedOffsets := []uint64{0}
+
+	tester.TestBackingStorage(t, func(t *testing.T, s sebtopic.Storage) {
+		recordBatchKey := sebtopic.RecordBatchKey(topicName, 0)
+		writeFile(t, s, recordBatchKey, tester.RandomBytes(t, 32))
+
+		err := sebtopic.WriteRecordBatchOffsets(log, s, topicName, expectedOffsets)
+		require.NoError(t, err)
+
+		gotOffsets, err := sebtopic.ListRecordBatchOffsets(log, s, topicName)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedOffsets, gotOffsets)
+	})
+}
+
 // TestListRecordBatchOffsets_FromExistingRecordBatches verifies that
 // ListRecordBatchOffsets returns the expected offsets when there are no
 // .offsets files, but there are existing .record_batch files.
