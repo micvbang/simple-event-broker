@@ -62,6 +62,7 @@ func HTTPServer(t testing.TB, OptFns ...func(*Opts)) *HTTPTestServer {
 			batch := sebrecords.NewBatch(make([]uint32, 0, 1024), make([]byte, 0, 1*sizey.MB))
 			return &batch
 		}),
+		ReadOnly: false,
 	}
 	for _, optFn := range OptFns {
 		optFn(&opts)
@@ -93,7 +94,7 @@ func HTTPServer(t testing.TB, OptFns ...func(*Opts)) *HTTPTestServer {
 
 	mux := http.NewServeMux()
 
-	httphandlers.RegisterRoutes(log, mux, opts.BatchPool, opts.Dependencies, opts.APIKey)
+	httphandlers.RegisterRoutes(log, mux, opts.BatchPool, opts.Dependencies, opts.APIKey, opts.ReadOnly)
 
 	return &HTTPTestServer{
 		t:      t,
@@ -109,6 +110,7 @@ type Opts struct {
 	BrokerTopicAutoCreate bool
 	Dependencies          httphandlers.Dependencies
 	BatchPool             *syncy.Pool[*sebrecords.Batch]
+	ReadOnly              bool
 }
 
 // HTTPAPIKey sets the apiKey for HTTPServer
@@ -144,5 +146,11 @@ func HTTPDependencies(deps httphandlers.Dependencies) func(*Opts) {
 func HTTPBatchPool(batchPool *syncy.Pool[*sebrecords.Batch]) func(*Opts) {
 	return func(o *Opts) {
 		o.BatchPool = batchPool
+	}
+}
+
+func HTTPReadOnly(readOnly bool) func(*Opts) {
+	return func(o *Opts) {
+		o.ReadOnly = readOnly
 	}
 }
