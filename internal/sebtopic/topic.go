@@ -500,7 +500,7 @@ func WriteRecordBatchOffsets(ctx context.Context, log logger.Logger, backingStor
 		// closing the writer
 		wtrErr := wtr.Close()
 		if wtrErr != nil {
-			errors.Join(err, fmt.Errorf("closing writer for %s: %w", offsetFilePath, wtrErr))
+			err = errors.Join(err, fmt.Errorf("closing writer for %s: %w", offsetFilePath, wtrErr))
 		}
 	}()
 
