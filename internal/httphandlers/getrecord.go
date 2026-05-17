@@ -27,6 +27,7 @@ func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, err.Error())
+			return
 		}
 		offset := params[offsetKey].(uint64)
 		topicName := params[topicNameKey].(string)
@@ -44,6 +45,7 @@ func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 			log.Errorf("reading record: %s", err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
+			return
 		}
 		w.Write(record)
 	}
