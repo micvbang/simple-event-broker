@@ -53,16 +53,29 @@ func (mc *MemoryCache) Reader(key string) (io.ReadSeekCloser, error) {
 }
 
 func (mc *MemoryCache) Writer(key string) (io.WriteCloser, error) {
-	mc.mu.Lock()
-	defer mc.mu.Unlock()
-
 	buf := bytey.NewBuffer(make([]byte, 0, 4096))
-	mc.items[key] = memoryCacheItem{
-		buf:        buf,
-		accessedAt: mc.now(),
-	}
+	return &memoryWriter{mc: mc, key: key, buf: buf}, nil
+}
 
-	return nops.NopWriteCloser(buf), nil
+type memoryWriter struct {
+	mc  *MemoryCache
+	key string
+	buf *bytey.Buffer
+}
+
+func (w *memoryWriter) Write(bs []byte) (int, error) {
+	return w.buf.Write(bs)
+}
+
+func (w *memoryWriter) Close() error {
+	w.mc.mu.Lock()
+	defer w.mc.mu.Unlock()
+
+	w.mc.items[w.key] = memoryCacheItem{
+		buf:        w.buf,
+		accessedAt: w.mc.now(),
+	}
+	return nil
 }
 
 func (mc *MemoryCache) Remove(key string) error {
