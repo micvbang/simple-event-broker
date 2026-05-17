@@ -150,7 +150,7 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	}
 
 	// once Store() returns, the newly added records are visible in
-	// ReadRecords(). NOTE: recordBatchIDs must also have been updated before
+	// ReadRecords(). NOTE: recordBatchOffsets must also have been updated before
 	// this is true.
 	s.mu.Lock()
 	s.recordBatchOffsets = append(s.recordBatchOffsets, recordBatchID)
