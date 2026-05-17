@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -44,7 +45,7 @@ func TestS3WriteToS3(t *testing.T) {
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, bucketName, "")
 
 	// Act
-	rbWriter, err := s3Storage.Writer(recordBatchPath)
+	rbWriter, err := s3Storage.Writer(context.Background(), recordBatchPath)
 	require.NoError(t, err)
 
 	n, err := rbWriter.Write(randomBytes)
@@ -77,7 +78,7 @@ func TestS3WriteToS3WithError(t *testing.T) {
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, bucketName, "")
 
 	// Act
-	rbWriter, err := s3Storage.Writer(recordBatchPath)
+	rbWriter, err := s3Storage.Writer(context.Background(), recordBatchPath)
 	require.NoError(t, err)
 
 	n, err := rbWriter.Write(randomBytes)
@@ -112,7 +113,7 @@ func TestS3WriteWithPrefix(t *testing.T) {
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "some-prefix")
 
 	// Act
-	wtr, err := s3Storage.Writer(recordBatchPath)
+	wtr, err := s3Storage.Writer(context.Background(), recordBatchPath)
 	require.NoError(t, err)
 	tester.WriteAndClose(t, wtr, expectedBytes)
 	require.True(t, s3Mock.PutObjectCalled)
@@ -134,7 +135,7 @@ func TestS3ReadFromS3(t *testing.T) {
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
 
 	// Act
-	rdr, err := s3Storage.Reader(recordBatchPath)
+	rdr, err := s3Storage.Reader(context.Background(), recordBatchPath)
 	require.NoError(t, err)
 	defer rdr.Close()
 
@@ -168,7 +169,7 @@ func TestS3ReadWithPrefix(t *testing.T) {
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "some-prefix")
 
 	// Act
-	rdr, err := s3Storage.Reader(recordBatchPath)
+	rdr, err := s3Storage.Reader(context.Background(), recordBatchPath)
 	require.NoError(t, err)
 
 	tester.ReadAndClose(t, rdr)
@@ -214,7 +215,7 @@ func TestListFiles(t *testing.T) {
 
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
 
-	gotFiles, err := s3Storage.ListFiles("dummy/dir", ".ext", nil)
+	gotFiles, err := s3Storage.ListFiles(context.Background(), "dummy/dir", ".ext", nil)
 	require.NoError(t, err)
 
 	require.Equal(t, expectedFiles, gotFiles)
@@ -251,7 +252,7 @@ func TestListFilesWithPrefixReturnsStoragePaths(t *testing.T) {
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", s3KeyPrefix)
 
 	// Act
-	gotFiles, err := s3Storage.ListFiles(topicName, ".ext", nil)
+	gotFiles, err := s3Storage.ListFiles(context.Background(), topicName, ".ext", nil)
 	require.NoError(t, err)
 
 	// Assert
@@ -282,7 +283,7 @@ func TestListFilesOverlappingNames(t *testing.T) {
 
 	for _, prefix := range testPrefixes {
 		t.Run(fmt.Sprintf("prefix '%s'", prefix), func(t *testing.T) {
-			_, err := s3Storage.ListFiles(prefix, ".ext", nil)
+			_, err := s3Storage.ListFiles(context.Background(), prefix, ".ext", nil)
 			require.NoError(t, err)
 		})
 	}
@@ -318,8 +319,94 @@ func TestS3ReadFromS3NotFound(t *testing.T) {
 	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
 
 	// Act
-	_, err := s3Storage.Reader(recordBatchPath)
+	_, err := s3Storage.Reader(context.Background(), recordBatchPath)
 
 	// Assert
 	require.ErrorIs(t, err, seberr.ErrNotInStorage)
+}
+
+// TestS3ReaderRespectsContextCancellation verifies that Reader returns when
+// the caller's context is cancelled, simulating an S3 hang under network partition.
+func TestS3ReaderRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockGetObject = func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := s3Storage.Reader(ctx, "topicName/000123.record_batch")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(time.Second):
+		t.Fatal("Reader did not return after context cancellation")
+	}
+}
+
+// TestS3ListFilesRespectsContextCancellation verifies that ListFiles returns
+// when the caller's context is cancelled, simulating an S3 hang under network partition.
+func TestS3ListFilesRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockListObjectsV2 = func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := s3Storage.ListFiles(ctx, "topicName", ".record_batch", nil)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(time.Second):
+		t.Fatal("ListFiles did not return after context cancellation")
+	}
+}
+
+// TestS3WriterCloseRespectsContextCancellation verifies that Writer.Close
+// returns when the caller's context is cancelled, simulating an S3 hang under
+// network partition. Close is where the PutObject upload happens.
+func TestS3WriterCloseRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockPutObject = func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
+	wtr, err := s3Storage.Writer(ctx, "topicName/000123.record_batch")
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- wtr.Close()
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(time.Second):
+		t.Fatal("Writer.Close did not return after context cancellation")
+	}
 }

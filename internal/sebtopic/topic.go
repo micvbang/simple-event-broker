@@ -31,9 +31,9 @@ type File struct {
 
 //go:generate mocky -i Storage
 type Storage interface {
-	Writer(recordBatchPath string) (io.WriteCloser, error)
-	Reader(recordBatchPath string) (io.ReadCloser, error)
-	ListFiles(topicName string, extension string, startAfter *string) ([]File, error)
+	Writer(ctx context.Context, recordBatchPath string) (io.WriteCloser, error)
+	Reader(ctx context.Context, recordBatchPath string) (io.ReadCloser, error)
+	ListFiles(ctx context.Context, topicName string, extension string, startAfter *string) ([]File, error)
 }
 
 type Compress interface {
@@ -67,7 +67,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 		optFunc(&opts)
 	}
 
-	recordBatchOffsets, err := ListRecordBatchOffsets(log, backingStorage, topicName)
+	recordBatchOffsets, err := ListRecordBatchOffsets(context.Background(), log, backingStorage, topicName)
 	if err != nil {
 		return nil, fmt.Errorf("listing record batches: %w", err)
 	}
@@ -84,7 +84,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 
 	if len(recordBatchOffsets) > 0 {
 		newestRecordBatchOffset := recordBatchOffsets[len(recordBatchOffsets)-1]
-		parser, err := topic.parseRecordBatch(newestRecordBatchOffset)
+		parser, err := topic.parseRecordBatch(context.Background(), newestRecordBatchOffset)
 		if err != nil {
 			return nil, fmt.Errorf("reading record batch header: %w", err)
 		}
@@ -109,7 +109,7 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	recordBatchID := s.nextOffset.Load()
 
 	rbPath := RecordBatchKey(s.topicName, recordBatchID)
-	backingWriter, err := s.backingStorage.Writer(rbPath)
+	backingWriter, err := s.backingStorage.Writer(context.Background(), rbPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening writer '%s': %w", rbPath, err)
 	}
@@ -246,7 +246,7 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 		}
 
 		batchOffset = recordBatchOffsets[batchOffsetIndex]
-		rb, err := s.parseRecordBatch(batchOffset)
+		rb, err := s.parseRecordBatch(ctx, batchOffset)
 		if err != nil {
 			return fmt.Errorf("parsing record batch: %w", err)
 		}
@@ -303,7 +303,7 @@ func (s *Topic) Metadata() (Metadata, error) {
 	nextOffset := s.nextOffset.Load()
 	if nextOffset > 0 {
 		recordBatchID := s.offsetGetRecordBatchID(nextOffset - 1)
-		p, err := s.parseRecordBatch(recordBatchID)
+		p, err := s.parseRecordBatch(context.Background(), recordBatchID)
 		if err != nil {
 			return Metadata{}, fmt.Errorf("parsing record batch: %w", err)
 		}
@@ -317,7 +317,7 @@ func (s *Topic) Metadata() (Metadata, error) {
 	}, nil
 }
 
-func (s *Topic) parseRecordBatch(recordBatchID uint64) (*sebrecords.Parser, error) {
+func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*sebrecords.Parser, error) {
 	recordBatchPath := s.recordBatchPath(recordBatchID)
 
 	// NOTE: f is given to sebrecords.Parser, which will own it and be responsible
@@ -328,7 +328,7 @@ func (s *Topic) parseRecordBatch(recordBatchID uint64) (*sebrecords.Parser, erro
 	}
 
 	if f == nil { // not found in cache
-		backingReader, err := s.backingStorage.Reader(recordBatchPath)
+		backingReader, err := s.backingStorage.Reader(ctx, recordBatchPath)
 		if err != nil {
 			return nil, fmt.Errorf("opening reader '%s': %w", recordBatchPath, err)
 		}
@@ -405,9 +405,9 @@ const (
 // ListRecordBatchOffsets uses storage.ListFiles to identify the offsets of
 // record batches that exist in the topic. It attempts to use .offsets files to
 // make this operation faster.
-func ListRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName string) ([]uint64, error) {
+func ListRecordBatchOffsets(ctx context.Context, log logger.Logger, backingStorage Storage, topicName string) ([]uint64, error) {
 	log.Debugf("Listing '%s' files in topic '%s'", offsetFileExtension, topicName)
-	offsetFiles, err := listOffsetsFiles(backingStorage, topicName)
+	offsetFiles, err := listOffsetsFiles(ctx, backingStorage, topicName)
 	if err != nil {
 		return nil, fmt.Errorf("listing offset files: %w", err)
 	}
@@ -417,7 +417,7 @@ func ListRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName
 	var offsets []uint64
 	if len(offsetFiles) > 0 {
 		file := slicey.Last(offsetFiles)
-		rdr, err := backingStorage.Reader(file.Path)
+		rdr, err := backingStorage.Reader(ctx, file.Path)
 		if err != nil {
 			return nil, fmt.Errorf("reading offsets from '%s': %w", file.Path, err)
 		}
@@ -438,7 +438,7 @@ func ListRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName
 
 	log.Debugf("Listing '%s' files in topic '%s' (start after: %s)", recordBatchExtension, topicName, *stringy.StringOrDefault(startAfter, "[not set]"))
 
-	batchFiles, err := backingStorage.ListFiles(topicName, recordBatchExtension, startAfter)
+	batchFiles, err := backingStorage.ListFiles(ctx, topicName, recordBatchExtension, startAfter)
 	if err != nil {
 		return nil, fmt.Errorf("listing files: %w", err)
 	}
@@ -469,8 +469,8 @@ func ListRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName
 //
 // NOTE: THIS OPERATION IS NOT SAFE TO RUN CONCURRENTLY! Not within the same
 // program, but also not concurrently with another instance of the program.
-func WriteRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicName string, offsets []uint64) (err error) {
-	offsetFilePaths, err := listOffsetsFiles(backingStorage, topicName)
+func WriteRecordBatchOffsets(ctx context.Context, log logger.Logger, backingStorage Storage, topicName string, offsets []uint64) (err error) {
+	offsetFilePaths, err := listOffsetsFiles(ctx, backingStorage, topicName)
 	if err != nil {
 		return fmt.Errorf("listing offset files: %w", err)
 	}
@@ -491,7 +491,7 @@ func WriteRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicNam
 
 	offsetFilePath := OffsetsFileKey(topicName, numOffsetFiles)
 
-	wtr, err := backingStorage.Writer(offsetFilePath)
+	wtr, err := backingStorage.Writer(ctx, offsetFilePath)
 	if err != nil {
 		return fmt.Errorf("opening writer for '%s': %w", offsetFilePath, err)
 	}
@@ -512,8 +512,8 @@ func WriteRecordBatchOffsets(log logger.Logger, backingStorage Storage, topicNam
 	return nil
 }
 
-func listOffsetsFiles(backingStorage Storage, topicName string) ([]File, error) {
-	return backingStorage.ListFiles(topicName, offsetFileExtension, helpy.Pointer(offsetFilePrefix))
+func listOffsetsFiles(ctx context.Context, backingStorage Storage, topicName string) ([]File, error) {
+	return backingStorage.ListFiles(ctx, topicName, offsetFileExtension, helpy.Pointer(offsetFilePrefix))
 }
 
 // offsetFileIDs are zero-indexed, i.e. the first one is number 0.

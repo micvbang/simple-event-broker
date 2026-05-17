@@ -1,6 +1,7 @@
 package sebtopic_test
 
 import (
+	"context"
 	"path"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestStorageListFilesRegressionPaths(t *testing.T) {
 		writeFile(t, s, expectedPath, tester.RandomBytes(t, 32))
 
 		// Act
-		gotFiles, err := s.ListFiles(topicName, ".ext", nil)
+		gotFiles, err := s.ListFiles(context.Background(), topicName, ".ext", nil)
 		require.NoError(t, err)
 
 		// Assert
@@ -58,7 +59,7 @@ func TestStorageListFilesExtensions(t *testing.T) {
 		for name, test := range tests {
 			t.Run(name, func(t *testing.T) {
 				// Act
-				gotFiles, err := s.ListFiles(topicName, test.extension, nil)
+				gotFiles, err := s.ListFiles(context.Background(), topicName, test.extension, nil)
 				require.NoError(t, err)
 
 				require.Equal(t, len(test.expected), len(gotFiles))

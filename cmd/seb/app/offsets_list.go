@@ -47,7 +47,7 @@ var offsetsListCmd = &cobra.Command{
 		s3Client := s3.NewFromConfig(cfg)
 		storage := sebtopic.NewS3Storage(log.Name("s3 storage"), s3Client, flags.s3BucketName, flags.s3KeyPrefix)
 
-		offsets, err := sebtopic.ListRecordBatchOffsets(log, storage, flags.topicName)
+		offsets, err := sebtopic.ListRecordBatchOffsets(ctx, log, storage, flags.topicName)
 		if err != nil {
 			return fmt.Errorf("listing record batch offsets: %w", err)
 		}

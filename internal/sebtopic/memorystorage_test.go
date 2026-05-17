@@ -1,6 +1,7 @@
 package sebtopic_test
 
 import (
+	"context"
 	"io"
 	"path"
 	"path/filepath"
@@ -25,7 +26,7 @@ func TestMemoryTopicStorageSimpleReadWrite(t *testing.T) {
 	// Write
 	{
 		// Act
-		wtr, err := memoryStorage.Writer(recordBatchPath)
+		wtr, err := memoryStorage.Writer(context.Background(), recordBatchPath)
 		require.NoError(t, err)
 
 		n, err := wtr.Write(expectedBytes)
@@ -40,7 +41,7 @@ func TestMemoryTopicStorageSimpleReadWrite(t *testing.T) {
 	// Read
 	{
 		// Act
-		rdr, err := memoryStorage.Reader(recordBatchPath)
+		rdr, err := memoryStorage.Reader(context.Background(), recordBatchPath)
 		require.NoError(t, err)
 
 		// Assert
@@ -56,7 +57,7 @@ func TestMemoryTopicStorageSimpleReadWrite(t *testing.T) {
 func TestMemoryTopicStorageReadNotFound(t *testing.T) {
 	memoryStorage := sebtopic.NewMemoryStorage(log)
 
-	_, err := memoryStorage.Reader("does-not-exist")
+	_, err := memoryStorage.Reader(context.Background(), "does-not-exist")
 	require.ErrorIs(t, err, seberr.ErrNotInStorage)
 }
 
@@ -74,7 +75,7 @@ func TestMemoryTopicStorageMultiReadWrite(t *testing.T) {
 		// Act
 		writeFile(t, memoryStorage, key, expected)
 
-		rdr, err := memoryStorage.Reader(key)
+		rdr, err := memoryStorage.Reader(context.Background(), key)
 		require.NoError(t, err)
 
 		// Assert
@@ -101,17 +102,17 @@ func TestMemoryTopicStorageListFiles(t *testing.T) {
 	writeFile(t, memoryStorage, path.Join(topicName2, "3.ext"), bs)
 
 	// topic1
-	topic1Files, err := memoryStorage.ListFiles(topicName1, ".ext", nil)
+	topic1Files, err := memoryStorage.ListFiles(context.Background(), topicName1, ".ext", nil)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(topic1Files))
 
 	// topic2
-	topic2Files, err := memoryStorage.ListFiles(topicName2, ".ext", nil)
+	topic2Files, err := memoryStorage.ListFiles(context.Background(), topicName2, ".ext", nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(topic2Files))
 
 	// non-existing topic
-	nonExistingTopicFiles, err := memoryStorage.ListFiles("does-not-exist", ".ext", nil)
+	nonExistingTopicFiles, err := memoryStorage.ListFiles(context.Background(), "does-not-exist", ".ext", nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(nonExistingTopicFiles))
 }
@@ -146,7 +147,7 @@ func TestMemoryTopicStorageListFilesAfter(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Act
-			gotFiles, err := memoryStorage.ListFiles(topicName, ".ext", test.startAfter)
+			gotFiles, err := memoryStorage.ListFiles(context.Background(), topicName, ".ext", test.startAfter)
 			require.NoError(t, err)
 
 			// Assert
@@ -160,7 +161,7 @@ func TestMemoryTopicStorageListFilesAfter(t *testing.T) {
 }
 
 func writeFile(t *testing.T, ms sebtopic.Storage, key string, bs []byte) {
-	wtr, err := ms.Writer(key)
+	wtr, err := ms.Writer(context.Background(), key)
 	require.NoError(t, err)
 
 	tester.WriteAndClose(t, wtr, bs)

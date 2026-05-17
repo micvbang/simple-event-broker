@@ -43,8 +43,9 @@ func NewS3Storage(log logger.Logger, s3 S3API, bucketName string, s3KeyPrefix st
 	}
 }
 
-func (ss *S3Storage) Writer(key string) (io.WriteCloser, error) {
+func (ss *S3Storage) Writer(ctx context.Context, key string) (io.WriteCloser, error) {
 	return &s3WriteCloser{
+		ctx:        ctx,
 		log:        ss.log.Name("s3UploadWriteCloser"),
 		s3:         ss.s3,
 		bucketName: ss.bucketName,
@@ -52,11 +53,11 @@ func (ss *S3Storage) Writer(key string) (io.WriteCloser, error) {
 	}, nil
 }
 
-func (ss *S3Storage) Reader(key string) (io.ReadCloser, error) {
+func (ss *S3Storage) Reader(ctx context.Context, key string) (io.ReadCloser, error) {
 	log := ss.log.WithField("recordBatchPath", key)
 
 	log.Debugf("fetching record batch from s3")
-	obj, err := ss.s3.GetObject(context.Background(), &s3.GetObjectInput{
+	obj, err := ss.s3.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(ss.bucketName),
 		Key:    aws.String(path.Join(ss.s3KeyPrefix, key)),
 	})
@@ -75,7 +76,7 @@ func (ss *S3Storage) Reader(key string) (io.ReadCloser, error) {
 	return obj.Body, nil
 }
 
-func (ss *S3Storage) ListFiles(topicName string, extension string, startAfter *string) ([]File, error) {
+func (ss *S3Storage) ListFiles(ctx context.Context, topicName string, extension string, startAfter *string) ([]File, error) {
 	log := ss.log.
 		WithField("topicPath", topicName).
 		WithField("extension", extension).
@@ -101,7 +102,7 @@ func (ss *S3Storage) ListFiles(topicName string, extension string, startAfter *s
 		StartAfter: startAfter,
 	})
 	for paginator.HasMorePages() {
-		result, err := paginator.NextPage(context.TODO())
+		result, err := paginator.NextPage(ctx)
 		if err != nil {
 			err = fmt.Errorf("retrieving pages: %w", err)
 			log.Errorf(err.Error())
@@ -135,6 +136,7 @@ func (ss *S3Storage) ListFiles(topicName string, extension string, startAfter *s
 }
 
 type s3WriteCloser struct {
+	ctx context.Context
 	log logger.Logger
 	s3  S3API
 
@@ -152,7 +154,7 @@ func (wc *s3WriteCloser) Close() error {
 
 	wc.log.Debugf("uploading to s3://%s/%s", wc.bucketName, wc.objectKey)
 	t0 := time.Now()
-	_, err := wc.s3.PutObject(context.Background(), &s3.PutObjectInput{
+	_, err := wc.s3.PutObject(wc.ctx, &s3.PutObjectInput{
 		Bucket:        &wc.bucketName,
 		Key:           &wc.objectKey,
 		Body:          &wc.buf,

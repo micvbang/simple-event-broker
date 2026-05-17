@@ -1,6 +1,7 @@
 package sebtopic_test
 
 import (
+	"context"
 	"path"
 	"path/filepath"
 	"testing"
@@ -22,12 +23,12 @@ func TestDiskTopicWriterReaderHappyPath(t *testing.T) {
 	d := sebtopic.NewDiskStorage(log, t.TempDir())
 
 	// Act, write
-	wtr, err := d.Writer(recordsKey)
+	wtr, err := d.Writer(context.Background(), recordsKey)
 	require.NoError(t, err)
 	tester.WriteAndClose(t, wtr, expectedBytes)
 
 	// Act, read
-	rdr, err := d.Reader(recordsKey)
+	rdr, err := d.Reader(context.Background(), recordsKey)
 	require.NoError(t, err)
 
 	// Assert
@@ -65,7 +66,7 @@ func TestDiskTopicStorageListFilesAfter(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Act
-			gotFiles, err := diskStorage.ListFiles(topicName, ".ext", test.startAfter)
+			gotFiles, err := diskStorage.ListFiles(context.Background(), topicName, ".ext", test.startAfter)
 			require.NoError(t, err)
 
 			// Assert

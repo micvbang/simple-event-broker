@@ -1,6 +1,7 @@
 package sebtopic
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +28,7 @@ func NewDiskStorage(log logger.Logger, rootDir string) *DiskStorage {
 	}
 }
 
-func (ds *DiskStorage) Writer(key string) (io.WriteCloser, error) {
+func (ds *DiskStorage) Writer(_ context.Context, key string) (io.WriteCloser, error) {
 	batchPath := ds.rootDirPath(key)
 
 	log := ds.log.WithField("key", key).WithField("path", batchPath)
@@ -47,7 +48,7 @@ func (ds *DiskStorage) Writer(key string) (io.WriteCloser, error) {
 	return f, nil
 }
 
-func (ds *DiskStorage) Reader(key string) (io.ReadCloser, error) {
+func (ds *DiskStorage) Reader(_ context.Context, key string) (io.ReadCloser, error) {
 	batchPath := ds.rootDirPath(key)
 
 	log := ds.log.WithField("key", key).WithField("path", batchPath)
@@ -65,7 +66,7 @@ func (ds *DiskStorage) Reader(key string) (io.ReadCloser, error) {
 	return f, nil
 }
 
-func (ds *DiskStorage) ListFiles(topicName string, extension string, startAfter *string) ([]File, error) {
+func (ds *DiskStorage) ListFiles(_ context.Context, topicName string, extension string, startAfter *string) ([]File, error) {
 	log := ds.log.
 		WithField("topicName", topicName).
 		WithField("extension", extension)

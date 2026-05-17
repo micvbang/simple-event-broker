@@ -1,6 +1,7 @@
 package tester
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -8,13 +9,13 @@ import (
 )
 
 type MockTopicStorage struct {
-	ListFilesMock  func(topicName string, extension string, startAfter *string) ([]sebtopic.File, error)
+	ListFilesMock  func(ctx context.Context, topicName string, extension string, startAfter *string) ([]sebtopic.File, error)
 	ListFilesCalls []storageListFilesCall
 
-	ReaderMock  func(recordBatchPath string) (io.ReadCloser, error)
+	ReaderMock  func(ctx context.Context, recordBatchPath string) (io.ReadCloser, error)
 	ReaderCalls []storageReaderCall
 
-	WriterMock  func(recordBatchPath string) (io.WriteCloser, error)
+	WriterMock  func(ctx context.Context, recordBatchPath string) (io.WriteCloser, error)
 	WriterCalls []storageWriterCall
 }
 
@@ -27,7 +28,7 @@ type storageListFilesCall struct {
 	Out1 error
 }
 
-func (_v *MockTopicStorage) ListFiles(topicName string, extension string, startAfter *string) ([]sebtopic.File, error) {
+func (_v *MockTopicStorage) ListFiles(ctx context.Context, topicName string, extension string, startAfter *string) ([]sebtopic.File, error) {
 	if _v.ListFilesMock == nil {
 		msg := fmt.Sprintf("call to %T.ListFiles, but MockListFiles is not set", _v)
 		panic(msg)
@@ -38,7 +39,7 @@ func (_v *MockTopicStorage) ListFiles(topicName string, extension string, startA
 		Extension:  extension,
 		StartAfter: startAfter,
 	})
-	out0, out1 := _v.ListFilesMock(topicName, extension, startAfter)
+	out0, out1 := _v.ListFilesMock(ctx, topicName, extension, startAfter)
 	_v.ListFilesCalls[len(_v.ListFilesCalls)-1].Out0 = out0
 	_v.ListFilesCalls[len(_v.ListFilesCalls)-1].Out1 = out1
 	return out0, out1
@@ -51,7 +52,7 @@ type storageReaderCall struct {
 	Out1 error
 }
 
-func (_v *MockTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error) {
+func (_v *MockTopicStorage) Reader(ctx context.Context, recordBatchPath string) (io.ReadCloser, error) {
 	if _v.ReaderMock == nil {
 		msg := fmt.Sprintf("call to %T.Reader, but MockReader is not set", _v)
 		panic(msg)
@@ -60,7 +61,7 @@ func (_v *MockTopicStorage) Reader(recordBatchPath string) (io.ReadCloser, error
 	_v.ReaderCalls = append(_v.ReaderCalls, storageReaderCall{
 		RecordBatchPath: recordBatchPath,
 	})
-	out0, out1 := _v.ReaderMock(recordBatchPath)
+	out0, out1 := _v.ReaderMock(ctx, recordBatchPath)
 	_v.ReaderCalls[len(_v.ReaderCalls)-1].Out0 = out0
 	_v.ReaderCalls[len(_v.ReaderCalls)-1].Out1 = out1
 	return out0, out1
@@ -73,7 +74,7 @@ type storageWriterCall struct {
 	Out1 error
 }
 
-func (_v *MockTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, error) {
+func (_v *MockTopicStorage) Writer(ctx context.Context, recordBatchPath string) (io.WriteCloser, error) {
 	if _v.WriterMock == nil {
 		msg := fmt.Sprintf("call to %T.Writer, but MockWriter is not set", _v)
 		panic(msg)
@@ -82,7 +83,7 @@ func (_v *MockTopicStorage) Writer(recordBatchPath string) (io.WriteCloser, erro
 	_v.WriterCalls = append(_v.WriterCalls, storageWriterCall{
 		RecordBatchPath: recordBatchPath,
 	})
-	out0, out1 := _v.WriterMock(recordBatchPath)
+	out0, out1 := _v.WriterMock(ctx, recordBatchPath)
 	_v.WriterCalls[len(_v.WriterCalls)-1].Out0 = out0
 	_v.WriterCalls[len(_v.WriterCalls)-1].Out1 = out1
 	return out0, out1

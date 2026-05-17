@@ -48,13 +48,13 @@ var offsetsWriteCmd = &cobra.Command{
 		storage := sebtopic.NewS3Storage(log.Name("s3 storage"), s3Client, flags.s3BucketName, flags.s3KeyPrefix)
 
 		log.Infof("listing record batch offsets for topic %q", flags.topicName)
-		offsets, err := sebtopic.ListRecordBatchOffsets(log, storage, flags.topicName)
+		offsets, err := sebtopic.ListRecordBatchOffsets(ctx, log, storage, flags.topicName)
 		if err != nil {
 			return fmt.Errorf("listing record batch offsets: %w", err)
 		}
 		log.Infof("found %d offsets", len(offsets))
 
-		err = sebtopic.WriteRecordBatchOffsets(log, storage, flags.topicName, offsets)
+		err = sebtopic.WriteRecordBatchOffsets(ctx, log, storage, flags.topicName, offsets)
 		if err != nil {
 			return fmt.Errorf("writing record batch offsets: %w", err)
 		}

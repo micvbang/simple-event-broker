@@ -3,6 +3,7 @@ package sebtopic
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -29,7 +30,7 @@ func NewMemoryStorage(log logger.Logger) *MemoryTopicStorage {
 	}
 }
 
-func (ms *MemoryTopicStorage) Writer(key string) (io.WriteCloser, error) {
+func (ms *MemoryTopicStorage) Writer(_ context.Context, key string) (io.WriteCloser, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -39,7 +40,7 @@ func (ms *MemoryTopicStorage) Writer(key string) (io.WriteCloser, error) {
 	return nops.NopWriteCloser(buf), nil
 }
 
-func (ms *MemoryTopicStorage) Reader(key string) (io.ReadCloser, error) {
+func (ms *MemoryTopicStorage) Reader(_ context.Context, key string) (io.ReadCloser, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -51,7 +52,7 @@ func (ms *MemoryTopicStorage) Reader(key string) (io.ReadCloser, error) {
 	return bytey.NewBuffer(slices.Clone(buf.Bytes())), nil
 }
 
-func (ms *MemoryTopicStorage) ListFiles(topicName string, extension string, startAfter *string) ([]File, error) {
+func (ms *MemoryTopicStorage) ListFiles(_ context.Context, topicName string, extension string, startAfter *string) ([]File, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 

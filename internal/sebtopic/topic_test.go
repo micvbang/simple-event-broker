@@ -81,10 +81,10 @@ func TestStorageWriteRecordsBackingStorageWriteFails(t *testing.T) {
 		expectedErr := fmt.Errorf("failed to write to file")
 
 		backingStorage := &tester.MockTopicStorage{}
-		backingStorage.ListFilesMock = func(topicName, extension string, startAfter *string) ([]sebtopic.File, error) {
+		backingStorage.ListFilesMock = func(ctx context.Context, topicName, extension string, startAfter *string) ([]sebtopic.File, error) {
 			return nil, nil
 		}
-		backingStorage.WriterMock = func(recordBatchPath string) (io.WriteCloser, error) {
+		backingStorage.WriterMock = func(ctx context.Context, recordBatchPath string) (io.WriteCloser, error) {
 			return &tester.MockWriteCloser{
 				WriteMock: func(p []byte) (n int, err error) {
 					return 0, expectedErr
@@ -116,10 +116,10 @@ func TestStorageWriteRecordsBackingStorageCloseFails(t *testing.T) {
 		expectedErr := fmt.Errorf("failed to close file")
 
 		backingStorage := &tester.MockTopicStorage{}
-		backingStorage.ListFilesMock = func(topicName, extension string, startAfter *string) ([]sebtopic.File, error) {
+		backingStorage.ListFilesMock = func(ctx context.Context, topicName, extension string, startAfter *string) ([]sebtopic.File, error) {
 			return nil, nil
 		}
-		backingStorage.WriterMock = func(recordBatchPath string) (io.WriteCloser, error) {
+		backingStorage.WriterMock = func(ctx context.Context, recordBatchPath string) (io.WriteCloser, error) {
 			return &tester.MockWriteCloser{
 				WriteMock: func(p []byte) (n int, err error) {
 					return len(p), nil
@@ -312,7 +312,7 @@ func TestStorageCacheWrite(t *testing.T) {
 		_, err = cache.Reader(batchKey)
 		require.NoError(t, err)
 
-		_, err = backingStorage.Reader(batchKey)
+		_, err = backingStorage.Reader(context.Background(), batchKey)
 		require.NoError(t, err)
 
 		gotBatch := tester.NewBatch(numRecords, 4096)
@@ -341,7 +341,7 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 		// NOTE: in order to prove that we're reading from the cache and not
 		// from the backing storage, we're truncating the file in the backing
 		// storage to zero bytes.
-		wtr, err := backingStorage.Writer(sebtopic.RecordBatchKey(topicName, 0))
+		wtr, err := backingStorage.Writer(context.Background(), sebtopic.RecordBatchKey(topicName, 0))
 		require.NoError(t, err)
 		tester.WriteAndClose(t, wtr, []byte{})
 
@@ -399,7 +399,7 @@ func TestStorageCompressFiles(t *testing.T) {
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 0, numRecords, offsets)
 
-		backingStorageReader, err := backingStorage.Reader(sebtopic.RecordBatchKey(topicName, 0))
+		backingStorageReader, err := backingStorage.Reader(context.Background(), sebtopic.RecordBatchKey(topicName, 0))
 		require.NoError(t, err)
 
 		// read records directly from compressor in order to prove that they're compressed
@@ -781,22 +781,22 @@ func TestWriteRecordBatchOffsets_WriteAndReadBack(t *testing.T) {
 		}
 
 		// Act - write offsets
-		err := sebtopic.WriteRecordBatchOffsets(log, s, topicName, expectedOffsets)
+		err := sebtopic.WriteRecordBatchOffsets(context.Background(), log, s, topicName, expectedOffsets)
 		require.NoError(t, err)
 
 		// Act - read offsets
-		gotOffsets, err := sebtopic.ListRecordBatchOffsets(log, s, topicName)
+		gotOffsets, err := sebtopic.ListRecordBatchOffsets(context.Background(), log, s, topicName)
 		require.NoError(t, err)
 
 		// Assert
 		require.Equal(t, expectedOffsets, gotOffsets)
 
 		{
-			files, err := s.ListFiles(topicName, ".offsets", nil)
+			files, err := s.ListFiles(context.Background(), topicName, ".offsets", nil)
 			require.NoError(t, err)
 
 			require.Equal(t, 1, len(files))
-			rdr, err := s.Reader(files[0].Path)
+			rdr, err := s.Reader(context.Background(), files[0].Path)
 			require.NoError(t, err)
 
 			rawOffsets, err := seboffsets.Parse(rdr)
@@ -819,10 +819,10 @@ func TestListRecordBatchOffsets_OffsetZeroCachedOnce(t *testing.T) {
 		recordBatchKey := sebtopic.RecordBatchKey(topicName, 0)
 		writeFile(t, s, recordBatchKey, tester.RandomBytes(t, 32))
 
-		err := sebtopic.WriteRecordBatchOffsets(log, s, topicName, expectedOffsets)
+		err := sebtopic.WriteRecordBatchOffsets(context.Background(), log, s, topicName, expectedOffsets)
 		require.NoError(t, err)
 
-		gotOffsets, err := sebtopic.ListRecordBatchOffsets(log, s, topicName)
+		gotOffsets, err := sebtopic.ListRecordBatchOffsets(context.Background(), log, s, topicName)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedOffsets, gotOffsets)
@@ -844,13 +844,13 @@ func TestListRecordBatchOffsets_FromExistingRecordBatches(t *testing.T) {
 		}
 
 		// Act - read offsets
-		gotOffsets, err := sebtopic.ListRecordBatchOffsets(log, s, topicName)
+		gotOffsets, err := sebtopic.ListRecordBatchOffsets(context.Background(), log, s, topicName)
 		require.NoError(t, err)
 
 		// Assert
 		require.Equal(t, expectedOffsets, gotOffsets)
 
-		files, err := s.ListFiles(topicName, ".offsets", nil)
+		files, err := s.ListFiles(context.Background(), topicName, ".offsets", nil)
 		require.NoError(t, err)
 
 		require.Equal(t, 0, len(files))
@@ -872,7 +872,7 @@ func TestWriteRecordBatchOffsets_InvalidOffsetFileNames(t *testing.T) {
 
 		// Act, assert
 		require.Panics(t, func() {
-			sebtopic.WriteRecordBatchOffsets(log, s, topicName, []uint64{})
+			sebtopic.WriteRecordBatchOffsets(context.Background(), log, s, topicName, []uint64{})
 		})
 	})
 }
@@ -888,12 +888,12 @@ func TestWriteRecordBatchOffsets_SequentialOffsetFileNames(t *testing.T) {
 	tester.TestBackingStorage(t, func(t *testing.T, s sebtopic.Storage) {
 		// Act
 		for range numOffsetFiles {
-			err := sebtopic.WriteRecordBatchOffsets(log, s, topicName, []uint64{})
+			err := sebtopic.WriteRecordBatchOffsets(context.Background(), log, s, topicName, []uint64{})
 			require.NoError(t, err)
 		}
 
 		// Assert
-		files, err := s.ListFiles(topicName, ".offsets", helpy.Pointer("offsets_"))
+		files, err := s.ListFiles(context.Background(), topicName, ".offsets", helpy.Pointer("offsets_"))
 		require.NoError(t, err)
 
 		// Ensure offset files are named sequentially
