@@ -1,11 +1,11 @@
 package sebtopic
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -44,25 +44,12 @@ func NewS3Storage(log logger.Logger, s3 S3API, bucketName string, s3KeyPrefix st
 }
 
 func (ss *S3Storage) Writer(key string) (io.WriteCloser, error) {
-	log := ss.log.WithField("recordBatchPath", key)
-
-	log.Debugf("creating temp file")
-	tmpFile, err := os.CreateTemp("", "seb_*")
-	if err != nil {
-		return nil, fmt.Errorf("creating temp file: %w", err)
-	}
-	log = log.WithField("temp file", tmpFile.Name())
-
-	log.Debugf("creating s3WriteCloser")
-	writeCloser := &s3WriteCloser{
+	return &s3WriteCloser{
 		log:        ss.log.Name("s3UploadWriteCloser"),
-		f:          tmpFile,
 		s3:         ss.s3,
 		bucketName: ss.bucketName,
 		objectKey:  path.Join(ss.s3KeyPrefix, key),
-	}
-
-	return writeCloser, nil
+	}, nil
 }
 
 func (ss *S3Storage) Reader(key string) (io.ReadCloser, error) {
@@ -151,40 +138,30 @@ type s3WriteCloser struct {
 	log logger.Logger
 	s3  S3API
 
-	f          *os.File
+	buf        bytes.Buffer
 	bucketName string
 	objectKey  string
 }
 
 func (wc *s3WriteCloser) Write(b []byte) (int, error) {
-	return wc.f.Write(b)
+	return wc.buf.Write(b)
 }
 
 func (wc *s3WriteCloser) Close() error {
-	// Remove temporary file once it has been uploaded to S3.
-	defer func() {
-		err := os.Remove(wc.f.Name())
-		if err != nil {
-			wc.log.Errorf("failed to delete temporary file %s", wc.f.Name())
-		}
-	}()
-
-	_, err := wc.f.Seek(0, io.SeekStart)
-	if err != nil {
-		return fmt.Errorf("seeking to beginning: %w", err)
-	}
+	size := int64(wc.buf.Len())
 
 	wc.log.Debugf("uploading to s3://%s/%s", wc.bucketName, wc.objectKey)
 	t0 := time.Now()
-	_, err = wc.s3.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: &wc.bucketName,
-		Key:    &wc.objectKey,
-		Body:   wc.f,
+	_, err := wc.s3.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket:        &wc.bucketName,
+		Key:           &wc.objectKey,
+		Body:          &wc.buf,
+		ContentLength: &size,
 	})
 	if err != nil {
 		return fmt.Errorf("uploading to s3: %w", err)
 	}
 	wc.log.Debugf("uploaded to %s%s (%s)", wc.bucketName, wc.objectKey, time.Since(t0))
 
-	return wc.f.Close()
+	return nil
 }
