@@ -1,6 +1,11 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
+pub const Batch = struct {
+    sizes: []u32,
+    data: []u8,
+};
+
 const PositionalFileReader = struct {
     io: std.Io,
     file: std.Io.File,
@@ -60,6 +65,7 @@ pub fn Parser(comptime Input: type) type {
             return next_record_offset - record_offset;
         }
 
+        // TODO: write to Batch instead of buf
         pub fn record(self: Self, record_id: u32, buf: []u8) !usize {
             if (record_id >= self.header.num_records) return error.RecordNotFound;
             if (self.sizeOf(record_id) > buf.len) return error.BufferTooSmall;
@@ -74,12 +80,20 @@ pub fn Parser(comptime Input: type) type {
 
             return read_size;
         }
+
+        pub fn records(self: Self, batch: Batch, start_index: u32, end_index: u32) !void {
+            _ = self;
+            _ = batch;
+            _ = start_index;
+            _ = end_index;
+        }
     };
 }
 
 const Header = struct {
     const header_bytes = 32;
     const record_offset_size = 4;
+    const a: u32 = "hello";
 
     // static header
     magic_bytes: [4]u8,
@@ -198,8 +212,7 @@ pub fn main(init: std.process.Init) !void {
 
     _ = args.next(); // program path
 
-    const records_path = args.next() orelse "/Users/micvbang/projects/simple-event-broker/zig/src/000000000000.record_batch";
-
+    const records_path = args.next() orelse "/Users/micvbang/projects/simple-event-broker/src/000000000000.record_batch";
     const f = try openPositionalFile(init.io, records_path);
     defer f.close();
 
