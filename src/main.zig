@@ -97,7 +97,7 @@ test "record and records reads the same" {
     defer batch_pool.pool.put(batch);
     seb.testing.randomizeBatch(batch, records_num, records_bytes);
 
-    try seb.record.Write(allocator, &memory_writer, batch.*, seb.testing.now);
+    try seb.record.Write(allocator, &memory_writer, batch.*, seb.testing.NowFactory(std.testing.io));
 
     const memory_reader = seb.testing.PositionalBufferReader{ .buf = &buf };
     const parser = try seb.record.Parser(@TypeOf(memory_reader)).init(allocator, memory_reader, file_size);
@@ -118,8 +118,8 @@ test "record and records reads the same" {
         assert(batch_multiple_records.sizes[i] == batch_single_record.sizes[0]);
         const record_size = batch_multiple_records.sizes[i];
 
-        const b1_data = batch_multiple_records.data[b1_data_offset..][0..record_size];
-        const b2_data = batch_single_record.data[0..record_size];
+        const b1_data = batch_multiple_records.data[b1_data_offset .. b1_data_offset + record_size];
+        const b2_data = batch_single_record.data;
         assert(std.mem.eql(u8, b1_data, b2_data));
 
         b1_data_offset += record_size;

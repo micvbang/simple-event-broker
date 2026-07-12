@@ -225,7 +225,8 @@ fn unix_epoch_ns_static_nonsense_value() u64 {
     return 41231;
 }
 
-pub fn Write(allocator: std.mem.Allocator, output: *std.Io.Writer, batch: Batch, now: *const fn () u64) !void {
+// TODO: declare now to be a type with now() u64 on it.
+pub fn Write(allocator: std.mem.Allocator, output: *std.Io.Writer, batch: Batch, now: anytype) !void {
     const header_size = Header.header_bytes + batch.sizes.len * Header.record_offset_size;
     const buf: []u8 = try allocator.alloc(u8, header_size);
     defer allocator.free(buf);
@@ -242,7 +243,7 @@ pub fn Write(allocator: std.mem.Allocator, output: *std.Io.Writer, batch: Batch,
     var headerWriter = std.Io.Writer.fixed(buf);
     try headerWriter.writeSliceEndian(u8, Header.expected_magic_bytes[0..], .little);
     try headerWriter.writeInt(u16, Header.expected_version, .little);
-    try headerWriter.writeInt(u64, now(), .little);
+    try headerWriter.writeInt(u64, now.now(), .little);
     try headerWriter.writeInt(u32, @as(u32, @intCast(batch.sizes.len)), .little);
     try headerWriter.writeSliceEndian(u8, &([_]u8{0} ** 14), .little);
     try headerWriter.writeSliceEndian(u32, batch.sizes, .little);
@@ -266,7 +267,7 @@ test "can write and read record batch" {
     var batch_read = try Batch.init(std.testing.allocator, 1024 * 1024 * 10, 32 * 1024);
     defer batch_read.deinit();
 
-    try Write(std.testing.allocator, &memory_writer, batch_write, unix_epoch_ns_static_nonsense_value);
+    try Write(std.testing.allocator, &memory_writer, batch_write, testing.NowFactory(std.testing.io));
 
     const memory_reader = testing.PositionalBufferReader{ .buf = &buf };
     const parser = try Parser(@TypeOf(memory_reader)).init(std.testing.allocator, memory_reader, file_size);

@@ -20,9 +20,16 @@ pub fn randomizeBatch(batch: *Batch, num_records: usize, record_size: u32) void 
     }
 }
 
-pub fn now() u64 {
-    // TODO: allow to use actual timestamp
-    return 1234;
+pub const Now = struct {
+    io: std.Io = undefined,
+
+    pub fn now(self: Now) u64 {
+        return @intCast(std.Io.Timestamp.now(self.io, .real).toNanoseconds());
+    }
+};
+
+pub fn NowFactory(io: std.Io) Now {
+    return Now{ .io = io };
 }
 
 pub const PositionalBufferReader = struct {
