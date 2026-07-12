@@ -1,0 +1,37 @@
+const std = @import("std");
+
+const Self = @This();
+
+allocator: std.mem.Allocator,
+data: []u8,
+sizes: []u32,
+
+// for keeping track of the originally allocated sizes of data and sizes
+data_full: []u8,
+sizes_full: []u32,
+
+pub fn init(allocator: std.mem.Allocator, data_size: usize, sizes_size: usize) !Self {
+    const data_full = try allocator.alloc(u8, data_size);
+    const sizes_full = try allocator.alloc(u32, sizes_size);
+
+    return Self{
+        .allocator = allocator,
+        .data = data_full[0..data_size],
+        .data_full = data_full[0..data_size],
+
+        .sizes = sizes_full[0..sizes_size],
+        .sizes_full = sizes_full[0..sizes_size],
+    };
+}
+
+pub fn deinit(self: Self) void {
+    self.allocator.free(self.data_full);
+    self.allocator.free(self.sizes_full);
+}
+
+// reset() reslices data and sizes to their full allocations
+pub fn reset(self: *Self) void {
+    // TODO: do we need to zero out the memory? I don't think so..
+    self.data = self.data_full;
+    self.sizes = self.sizes_full;
+}

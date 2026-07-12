@@ -1,18 +1,15 @@
 //! By convention, root.zig is the root source file when making a package.
 const std = @import("std");
-const Io = std.Io;
 
-/// This is a documentation comment to explain the `printAnotherMessage` function below.
-///
-/// Accepting an `Io.Writer` instance is a handy way to write reusable code.
-pub fn printAnotherMessage(writer: *Io.Writer) Io.Writer.Error!void {
-    try writer.print("Run `zig build test` to run the tests.\n", .{});
-}
+pub const record = @import("record.zig");
+pub const stdx = @import("stdx.zig");
 
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
+pub const Batch = @import("Batch.zig");
+pub const pool = @import("pool.zig");
+pub const BatchPool = pool.BatchPool;
 
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
+pub const testing = @import("testing.zig");
+
+test {
+    std.testing.refAllDecls(@This());
 }

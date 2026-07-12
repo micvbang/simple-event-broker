@@ -1,0 +1,19 @@
+const std = @import("std");
+
+const Self = @This();
+
+buf: []u8,
+
+pub fn readAt(self: Self, dest: []u8, offset: u64) !usize {
+    for (0..dest.len) |i| {
+        dest[i] = self.buf[offset + i];
+    }
+
+    return dest.len;
+}
+
+pub fn length(self: Self) !usize {
+    return self.buf.len;
+}
+
+pub fn close(_: Self) void {}
