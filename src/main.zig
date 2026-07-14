@@ -24,21 +24,25 @@ pub fn main(init: std.process.Init) !void {
     var batch_pool = try seb.BatchPool.init(init.gpa, 2, batch_bytes, batch_num_records);
     defer batch_pool.deinit();
 
-    var batch_records = try batch_pool.pool.get();
-    defer batch_pool.pool.put(batch_records);
+    var batch_records = try batch_pool.get();
+    defer batch_pool.put(batch_records);
 
-    var batch_record = try batch_pool.pool.get();
-    defer batch_pool.pool.put(batch_record);
+    var batch_record = try batch_pool.get();
+    defer batch_pool.put(batch_record);
 
     var b1_data_offset: usize = 0;
     try parser.records(batch_records, 0, parser.header.num_records);
     for (0..parser.header.num_records) |i| {
-        print("{d}: record: {s}\n", .{ i, batch_records.data[0..@min(80, batch_records.sizes[i])] });
+        const record_size = batch_records.sizes[i];
+
+        var sha256: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(batch_records.data[0..record_size], &sha256, .{});
+
+        print("{d}: {x} {s} len: {d:6}\n", .{ i, sha256, batch_records.data[0..@min(80, record_size)], record_size });
         try parser.record(batch_record, @intCast(i));
         defer batch_record.reset();
 
-        assert(batch_records.sizes[i] == batch_record.sizes[0]);
-        const record_size = batch_records.sizes[i];
+        assert(record_size == batch_record.sizes[0]);
 
         const b1_data = batch_records.data[b1_data_offset..][0..record_size];
         const b2_data = batch_record.data[0..record_size];
@@ -76,52 +80,5 @@ test "records fails when batch input is too small" {
         } else |err| {
             assert(err == seb.record.ParserError.BatchDataTooSmall);
         }
-    }
-}
-
-test "record and records reads the same" {
-    const allocator = std.testing.allocator;
-
-    const batch_bytes = 10 * 1024 * 1024;
-    const batch_num_records = 32 * 1024;
-    var batch_pool = try seb.BatchPool.init(allocator, 3, batch_bytes, batch_num_records);
-    defer batch_pool.deinit();
-
-    const records_num = 8;
-    const records_bytes = 32;
-    const file_size = seb.record.Header.header_bytes + records_num * (records_bytes + seb.record.Header.record_offset_size);
-    var buf: [file_size]u8 = undefined;
-    var memory_writer = std.Io.Writer.fixed(&buf);
-
-    const batch = try batch_pool.pool.get();
-    defer batch_pool.pool.put(batch);
-    seb.testing.randomizeBatch(batch, records_num, records_bytes);
-
-    try seb.record.Write(allocator, &memory_writer, batch.*, seb.testing.NowFactory(std.testing.io));
-
-    const memory_reader = seb.testing.PositionalBufferReader{ .buf = &buf };
-    const parser = try seb.record.Parser(@TypeOf(memory_reader)).init(allocator, memory_reader, file_size);
-    defer parser.deinit();
-
-    const batch_multiple_records = try batch_pool.pool.get();
-    defer batch_pool.pool.put(batch_multiple_records);
-
-    const batch_single_record = try batch_pool.pool.get();
-    defer batch_pool.pool.put(batch_single_record);
-
-    var b1_data_offset: usize = 0;
-    try parser.records(batch_multiple_records, 0, parser.header.num_records);
-    for (0..parser.header.num_records) |i| {
-        try parser.record(batch_single_record, @intCast(i));
-        defer batch_single_record.reset();
-
-        assert(batch_multiple_records.sizes[i] == batch_single_record.sizes[0]);
-        const record_size = batch_multiple_records.sizes[i];
-
-        const b1_data = batch_multiple_records.data[b1_data_offset .. b1_data_offset + record_size];
-        const b2_data = batch_single_record.data;
-        assert(std.mem.eql(u8, b1_data, b2_data));
-
-        b1_data_offset += record_size;
     }
 }

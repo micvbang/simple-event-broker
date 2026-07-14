@@ -12,6 +12,8 @@ sizes_full: []u32,
 
 pub fn init(allocator: std.mem.Allocator, data_size: usize, sizes_size: usize) !Self {
     const data_full = try allocator.alloc(u8, data_size);
+    errdefer allocator.free(data_full);
+
     const sizes_full = try allocator.alloc(u32, sizes_size);
 
     return Self{

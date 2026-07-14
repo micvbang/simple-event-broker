@@ -130,4 +130,14 @@ pub const BatchPool = struct {
         self.allocator.free(self.pool_elements);
         self.allocator.free(self.batches);
     }
+
+    pub fn get(self: *BatchPool) !*Batch {
+        const batch = try self.pool.get();
+        batch.reset();
+        return batch;
+    }
+
+    pub fn put(self: *BatchPool, batch: *Batch) void {
+        return self.pool.put(batch);
+    }
 };
