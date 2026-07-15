@@ -17,7 +17,7 @@ pub fn main(init: std.process.Init) !void {
 
     const file_length = try f.length();
 
-    const batch_bytes = 10 * 1024 * 1024;
+    const batch_bytes = file_length + 1 * 1024 * 1024;
     const batch_num_records = 32 * 1024;
     var buffers = try seb.record.Buffers.init(init.gpa, batch_bytes, batch_num_records);
     defer buffers.deinit();
