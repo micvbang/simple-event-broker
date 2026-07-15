@@ -29,7 +29,7 @@ pub fn Parser(comptime Input: type) type {
         const Self = @This();
 
         header: Header,
-        fileSize: usize,
+        file_size: usize,
         input: Input,
 
         // NOTE: Parser borrows bufs during its entire lifetime
@@ -38,33 +38,32 @@ pub fn Parser(comptime Input: type) type {
 
             return Self{
                 .header = header,
-                .fileSize = file_size,
+                .file_size = file_size,
                 .input = input,
             };
         }
 
         pub fn deinit(_: Self) void {}
 
-        pub fn sizeOf(self: Self, start_index: u32, end_index: u32) usize {
-            // TODO: verify end_index isn't beyond num_records
-            // if (start_index >= self.header.num_records) return ParserError.StartOffsetOutOfBounds;
-            // if (end_index > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
-            // if (start_index > end_index) return ParserError.StartIndexLargerThanEndIndex;
+        fn sizeOf(self: Self, index_start: u32, index_end: u32) !usize {
+            if (index_start >= self.header.num_records - 1) return ParserError.StartOffsetOutOfBounds;
+            if (index_end > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
+            if (index_start >= index_end) return ParserError.StartIndexLargerThanEndIndex;
 
-            const start_offset = self.header.record_offsets[start_index];
-            const end_offset = if (end_index < self.header.num_records)
-                @as(usize, self.header.record_offsets[end_index])
+            const offset_start = self.header.record_offsets[index_start];
+            const offset_end = if (index_end < self.header.num_records)
+                @as(usize, self.header.record_offsets[index_end])
             else
-                self.fileSize - self.header.size();
+                self.file_size - self.header.size();
 
-            return end_offset - start_offset;
+            return offset_end - offset_start;
         }
 
         pub fn record(self: Self, batch: *Batch, record_id: u32) !void {
             if (record_id >= self.header.num_records) return ParserError.RecordNotFound;
             if (batch.sizes_full.len < 1) return ParserError.BatchSizesTooSmall;
 
-            const record_size = self.sizeOf(record_id, record_id + 1);
+            const record_size = try self.sizeOf(record_id, record_id + 1);
             if (record_size > batch.data_full.len) return ParserError.BatchDataTooSmall;
 
             const record_offset = self.header.record_offsets[record_id];
@@ -82,14 +81,14 @@ pub fn Parser(comptime Input: type) type {
 
         // NOTE: reads records in the range [index_start; index_end[
         pub fn records(self: Self, batch: *Batch, index_start: u32, index_end: u32) !void {
-            if (index_start >= self.header.num_records) return ParserError.StartOffsetOutOfBounds;
+            if (index_start >= self.header.num_records - 1) return ParserError.StartOffsetOutOfBounds;
             if (index_end > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
-            if (index_start > index_end) return ParserError.StartIndexLargerThanEndIndex;
+            if (index_start >= index_end) return ParserError.StartIndexLargerThanEndIndex;
 
             const records_num = index_end - index_start;
             if (records_num > batch.sizes_full.len) return ParserError.BatchSizesTooSmall;
 
-            const data_size = self.sizeOf(index_start, index_end);
+            const data_size = try self.sizeOf(index_start, index_end);
             if (data_size > batch.data_full.len) return ParserError.BatchDataTooSmall;
 
             const offset_start = self.header.record_offsets[index_start];
@@ -100,11 +99,8 @@ pub fn Parser(comptime Input: type) type {
             }
 
             for (0..records_num) |i| {
-                // TODO: compute size instead of calling sizeOf() records_num times
-                batch.sizes_full[i] = @intCast(self.sizeOf(
-                    index_start + @as(u32, @intCast(i)),
-                    index_start + @as(u32, @intCast(i)) + 1,
-                ));
+                const index = @as(u32, @intCast(index_start + i));
+                batch.sizes_full[i] = @intCast(try self.sizeOf(index, index + 1));
             }
             batch.data = batch.data_full[0..read_size];
             batch.sizes = batch.sizes_full[0..records_num];
@@ -113,7 +109,7 @@ pub fn Parser(comptime Input: type) type {
 }
 
 pub const Header = struct {
-    pub const header_bytes = 32;
+    pub const header_size = 32;
     pub const record_offset_size = 4;
     const expected_magic_bytes = "seb!";
     const expected_version = 1;
@@ -132,9 +128,9 @@ pub const Header = struct {
     fn parse(bufs: *Buffers, input: anytype, file_size: usize) !Header {
         assert(bufs.data.len >= file_size);
 
-        var header_buf: [header_bytes]u8 = undefined;
+        var header_buf: [header_size]u8 = undefined;
         const read = try input.readAt(&header_buf, 0);
-        if (read < header_bytes) return ParserError.EndOfStream;
+        if (read < header_size) return ParserError.EndOfStream;
 
         // parse static fields
         const magic_bytes = header_buf[0..4].*;
@@ -150,12 +146,12 @@ pub const Header = struct {
 
         // parse record offsets
         const record_offsets_size = @as(usize, num_records) * record_offset_size;
-        const header_end_offset = header_bytes + record_offsets_size;
+        const header_end_offset = header_size + record_offsets_size;
         const file_size_min = header_end_offset + @as(usize, num_records);
         if (file_size < file_size_min) return ParserError.FileTooSmall; // assumes at least 1 byte per record
 
         const data = bufs.data[0..record_offsets_size];
-        const read_size = try input.readAt(data, header_bytes);
+        const read_size = try input.readAt(data, header_size);
         if (read_size < record_offsets_size) return ParserError.EndOfStream;
 
         const offsets = bufs.offsets[0..num_records];
@@ -192,7 +188,7 @@ pub const Header = struct {
     }
 
     fn size(self: Header) usize {
-        return header_bytes + self.num_records * record_offset_size;
+        return header_size + self.num_records * record_offset_size;
     }
 
     pub fn format(self: Header, writer: *std.Io.Writer) !void {
@@ -216,7 +212,7 @@ fn ClockNow(comptime T: type) type {
 // size and number of records
 pub fn batch_file_size(data_size: usize, sizes_size: usize) usize {
     // static header + dynamic header + data
-    const header_static_size = Header.header_bytes;
+    const header_static_size = Header.header_size;
     const header_dynamic_size = sizes_size * Header.record_offset_size;
     return header_static_size + header_dynamic_size + data_size;
 }
@@ -276,11 +272,11 @@ test "can write and read record batch" {
     const gpa = std.testing.allocator;
 
     const records_num = 8;
-    const records_bytes = 32;
-    const batch_write = try testing.randomBatch(gpa, records_num, records_bytes);
+    const records_size = 32;
+    const batch_write = try testing.randomBatch(gpa, records_num, records_size);
     defer batch_write.deinit();
 
-    const file_size = Header.header_bytes + records_num * (Header.record_offset_size + records_bytes);
+    const file_size = Header.header_size + records_num * (Header.record_offset_size + records_size);
 
     var buf: [file_size]u8 = undefined;
     var memory_writer = std.Io.Writer.fixed(&buf);
@@ -309,27 +305,27 @@ test "record and records reads the same" {
     const allocator = std.testing.allocator;
     const io = std.testing.io;
 
-    const batch_bytes = 10 * 1024 * 1024;
+    const batch_size = 10 * 1024 * 1024;
     const batch_num_records = 32 * 1024;
-    var batch_pool = try Pool.BatchPool.init(allocator, 3, batch_bytes, batch_num_records);
+    var batch_pool = try Pool.BatchPool.init(allocator, 3, batch_size, batch_num_records);
     defer batch_pool.deinit();
 
     const records_num = 8;
-    const records_bytes = 32;
-    const file_size = Header.header_bytes + records_num * (records_bytes + Header.record_offset_size);
+    const records_size = 32;
+    const file_size = Header.header_size + records_num * (records_size + Header.record_offset_size);
     var buf: [file_size]u8 = undefined;
     var memory_writer = std.Io.Writer.fixed(&buf);
 
     const batch = try batch_pool.get();
     defer batch_pool.put(batch);
-    testing.randomizeBatch(batch, records_num, records_bytes);
+    testing.randomizeBatch(batch, records_num, records_size);
 
     const clock = stdx.Clock{ .io = io };
     const write_buffers = try Buffers.init(std.testing.allocator, batch.data.len, batch.sizes.len);
     defer write_buffers.deinit();
     try Write(write_buffers, &memory_writer, batch.*, clock, .{ .now = stdx.Clock.now });
 
-    var parser_buffers = try Buffers.init(std.testing.allocator, batch_bytes, batch_num_records);
+    var parser_buffers = try Buffers.init(std.testing.allocator, batch_size, batch_num_records);
     defer parser_buffers.deinit();
 
     const memory_reader = testing.PositionalBufferReader{ .buf = &buf };
