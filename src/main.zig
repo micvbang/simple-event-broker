@@ -16,11 +16,15 @@ pub fn main(init: std.process.Init) !void {
     defer f.close();
 
     const file_length = try f.length();
-    const parser = try seb.record.Parser(@TypeOf(f)).init(init.gpa, f, file_length);
-    defer parser.deinit();
 
     const batch_bytes = 10 * 1024 * 1024;
     const batch_num_records = 32 * 1024;
+    var buffers = try seb.record.Buffers.init(init.gpa, batch_bytes, batch_num_records);
+    defer buffers.deinit();
+
+    const parser = try seb.record.Parser(@TypeOf(f)).init(&buffers, f, file_length);
+    defer parser.deinit();
+
     var batch_pool = try seb.BatchPool.init(init.gpa, 2, batch_bytes, batch_num_records);
     defer batch_pool.deinit();
 
@@ -59,7 +63,10 @@ test "records fails when batch input is too small" {
     const f = try seb.record.openPositionalFile(io, records_batch_path);
     defer f.close();
 
-    const parser = try seb.record.Parser(@TypeOf(f)).init(allocator, f, try f.length());
+    var buffers = try seb.record.Buffers.init(allocator, 10 * 1024 * 1024, 32 * 1024);
+    defer buffers.deinit();
+
+    const parser = try seb.record.Parser(@TypeOf(f)).init(&buffers, f, try f.length());
     defer parser.deinit();
 
     {

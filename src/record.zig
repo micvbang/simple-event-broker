@@ -30,32 +30,20 @@ pub fn Parser(comptime Input: type) type {
 
         header: Header,
         fileSize: usize,
-        maxSize: usize,
         input: Input,
 
-        pub fn init(gpa: std.mem.Allocator, input: Input, file_size: usize) !Self {
-            const header = try Header.parse(input, gpa, file_size);
+        // NOTE: Parser borrows bufs during its entire lifetime
+        pub fn init(bufs: *Buffers, input: Input, file_size: usize) !Self {
+            const header = try Header.parse(bufs, input, file_size);
 
-            var parser = Self{
+            return Self{
                 .header = header,
                 .fileSize = file_size,
-                .maxSize = 0,
                 .input = input,
             };
-
-            var max_size: usize = 0;
-            for (0..header.num_records) |record_id| {
-                const rid: u32 = @intCast(record_id);
-                max_size = @max(parser.sizeOf(rid, rid + 1), max_size);
-            }
-            parser.maxSize = max_size;
-
-            return parser;
         }
 
-        pub fn deinit(self: Self) void {
-            self.header.deinit();
-        }
+        pub fn deinit(_: Self) void {}
 
         pub fn sizeOf(self: Self, start_index: u32, end_index: u32) usize {
             // TODO: verify end_index isn't beyond num_records
@@ -139,10 +127,11 @@ pub const Header = struct {
 
     // dynamic header
     record_offsets: []u32,
-    allocator: std.mem.Allocator,
 
-    // TODO: take pre-allocated buffers as input instead of allocator
-    fn parse(input: anytype, allocator: std.mem.Allocator, file_size: usize) !Header {
+    // NOTE: parse borrows bufs through its lifetime
+    fn parse(bufs: *Buffers, input: anytype, file_size: usize) !Header {
+        assert(bufs.data.len >= file_size);
+
         var header_buf: [header_bytes]u8 = undefined;
         const read = try input.readAt(&header_buf, 0);
         if (read < header_bytes) return ParserError.EndOfStream;
@@ -157,6 +146,7 @@ pub const Header = struct {
         if (num_records == 0) return ParserError.FileHasNoRecords;
         if (!std.mem.eql(u8, magic_bytes[0..], Header.expected_magic_bytes)) return ParserError.InvalidMagicBytes;
         if (Header.expected_version != version) return ParserError.InvalidVersion;
+        assert(bufs.offsets.len >= num_records);
 
         // parse record offsets
         const record_offsets_size = @as(usize, num_records) * record_offset_size;
@@ -164,30 +154,28 @@ pub const Header = struct {
         const file_size_min = header_end_offset + @as(usize, num_records);
         if (file_size < file_size_min) return ParserError.FileTooSmall; // assumes at least 1 byte per record
 
-        var record_offsets_buf = try allocator.alloc(u8, record_offsets_size);
-        defer allocator.free(record_offsets_buf);
-
-        const read_size = try input.readAt(record_offsets_buf, header_bytes);
+        const data = bufs.data[0..record_offsets_size];
+        const read_size = try input.readAt(data, header_bytes);
         if (read_size < record_offsets_size) return ParserError.EndOfStream;
 
-        var record_offsets: []u32 = try allocator.alloc(u32, num_records);
+        const offsets = bufs.offsets[0..num_records];
         for (0..num_records) |i| {
-            record_offsets[i] = std.mem.readInt(u32, record_offsets_buf[i * 4 ..][0..4], .little);
+            offsets[i] = std.mem.readInt(u32, data[i * 4 ..][0..4], .little);
         }
 
-        // validate record_offsets
+        // validate offsets
         {
             // offset must start at 0
-            if (record_offsets[0] != 0) return ParserError.OffsetsMustStartAtZero;
+            if (offsets[0] != 0) return ParserError.OffsetsMustStartAtZero;
 
             const record_offsets_max_size = file_size - header_end_offset;
 
             var previous_offset: u32 = undefined;
-            for (0.., record_offsets) |i, offset| {
-                // Validate that offset doesn't point beyond file length
+            for (0.., offsets) |i, offset| {
+                // offset must not point beyond file length
                 if (offset >= record_offsets_max_size) return ParserError.OffsetOutOfBounds;
 
-                // Verify that offset is monotonically increasing
+                // offset is monotonically increasing
                 if (i > 0 and previous_offset >= offset) return ParserError.OffsetsNotMonotonicallyIncreasing;
                 previous_offset = offset;
             }
@@ -199,13 +187,8 @@ pub const Header = struct {
             .unix_epoch_us = unix_epoch_us,
             .num_records = num_records,
             .reserved = reserved,
-            .record_offsets = record_offsets,
-            .allocator = allocator,
+            .record_offsets = offsets,
         };
-    }
-
-    fn deinit(self: Header) void {
-        self.allocator.free(self.record_offsets);
     }
 
     fn size(self: Header) usize {
@@ -238,32 +221,31 @@ pub fn batch_file_size(data_size: usize, sizes_size: usize) usize {
     return header_static_size + header_dynamic_size + data_size;
 }
 
-pub const WriteBuffers = struct {
+pub const Buffers = struct {
     allocator: std.mem.Allocator,
     offsets: []u32,
-    file: []u8,
+    data: []u8,
 
-    pub fn init(allocator: std.mem.Allocator, data_size: usize, sizes_size: usize) !WriteBuffers {
+    pub fn init(allocator: std.mem.Allocator, data_size: usize, sizes_size: usize) !Buffers {
         const offsets = try allocator.alloc(u32, sizes_size);
         errdefer allocator.free(offsets);
 
-        return WriteBuffers{
+        return Buffers{
             .allocator = allocator,
             .offsets = offsets,
-            .file = try allocator.alloc(u8, batch_file_size(data_size, sizes_size)),
+            .data = try allocator.alloc(u8, batch_file_size(data_size, sizes_size)),
         };
     }
 
-    pub fn deinit(self: WriteBuffers) void {
+    pub fn deinit(self: Buffers) void {
         self.allocator.free(self.offsets);
-        self.allocator.free(self.file);
+        self.allocator.free(self.data);
     }
 };
 
-// TODO: take pre-allocated buffers as input instead of allocator
-pub fn Write(bufs: WriteBuffers, output: *std.Io.Writer, batch: Batch, now: anytype, fns: ClockNow(@TypeOf(now))) !void {
+pub fn Write(bufs: Buffers, output: *std.Io.Writer, batch: Batch, now: anytype, fns: ClockNow(@TypeOf(now))) !void {
     assert(bufs.offsets.len >= batch.sizes.len);
-    assert(bufs.file.len >= batch_file_size(batch.data.len, batch.sizes.len));
+    assert(bufs.data.len >= batch_file_size(batch.data.len, batch.sizes.len));
 
     var index: u32 = 0;
     for (0.., batch.sizes) |i, size| {
@@ -271,7 +253,7 @@ pub fn Write(bufs: WriteBuffers, output: *std.Io.Writer, batch: Batch, now: anyt
         index += size;
     }
 
-    const file = bufs.file[0..batch_file_size(batch.data.len, batch.sizes.len)];
+    const file = bufs.data[0..batch_file_size(batch.data.len, batch.sizes.len)];
 
     // Write correct format into buf, making as few writes to output as we can
     var mem_writer = std.Io.Writer.fixed(file);
@@ -303,14 +285,17 @@ test "can write and read record batch" {
     var buf: [file_size]u8 = undefined;
     var memory_writer = std.Io.Writer.fixed(&buf);
 
-    const write_buffers = try WriteBuffers.init(std.testing.allocator, batch_write.data.len, batch_write.sizes.len);
+    const write_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.sizes.len);
     defer write_buffers.deinit();
+
+    var parser_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.sizes.len);
+    defer parser_buffers.deinit();
 
     const clock = stdx.Clock{ .io = io };
     try Write(write_buffers, &memory_writer, batch_write, clock, .{ .now = stdx.Clock.now });
 
     const memory_reader = testing.PositionalBufferReader{ .buf = &buf };
-    const parser = try Parser(@TypeOf(memory_reader)).init(gpa, memory_reader, file_size);
+    const parser = try Parser(@TypeOf(memory_reader)).init(&parser_buffers, memory_reader, file_size);
     defer parser.deinit();
 
     var batch_read = try Batch.init(gpa, 1024 * 1024 * 10, 32 * 1024);
@@ -340,12 +325,15 @@ test "record and records reads the same" {
     testing.randomizeBatch(batch, records_num, records_bytes);
 
     const clock = stdx.Clock{ .io = io };
-    const write_buffers = try WriteBuffers.init(std.testing.allocator, batch.data.len, batch.sizes.len);
+    const write_buffers = try Buffers.init(std.testing.allocator, batch.data.len, batch.sizes.len);
     defer write_buffers.deinit();
     try Write(write_buffers, &memory_writer, batch.*, clock, .{ .now = stdx.Clock.now });
 
+    var parser_buffers = try Buffers.init(std.testing.allocator, batch_bytes, batch_num_records);
+    defer parser_buffers.deinit();
+
     const memory_reader = testing.PositionalBufferReader{ .buf = &buf };
-    const parser = try Parser(@TypeOf(memory_reader)).init(allocator, memory_reader, file_size);
+    const parser = try Parser(@TypeOf(memory_reader)).init(&parser_buffers, memory_reader, file_size);
     defer parser.deinit();
 
     const batch_multiple_records = try batch_pool.get();
