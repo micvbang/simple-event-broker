@@ -12,11 +12,13 @@ pub fn randomBatch(allocator: std.mem.Allocator, num_records: usize, record_size
 
 pub fn randomizeBatch(batch: *Batch, num_records: usize, record_size: u32) void {
     batch.data = batch.data[0 .. num_records * record_size];
-    batch.sizes = batch.sizes[0..num_records];
+    batch.offsets = batch.offsets[0..num_records];
 
     random.fill(batch.data);
+    var offset: u32 = 0;
     for (0..num_records) |i| {
-        batch.sizes[i] = record_size;
+        batch.offsets[i] = offset;
+        offset += record_size;
     }
 }
 

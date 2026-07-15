@@ -34,10 +34,12 @@ pub fn main(init: std.process.Init) !void {
     var batch_record = try batch_pool.get();
     defer batch_pool.put(batch_record);
 
-    var b1_data_offset: usize = 0;
     try parser.records(batch_records, 0, parser.header.num_records);
     for (0..parser.header.num_records) |i| {
-        const record_size = batch_records.sizes[i];
+        const index: u32 = @intCast(i);
+        const record_size = try parser.sizeOf(index, index + 1);
+        const b1_record_start = batch_records.offsets[i];
+        const b1_record_end = b1_record_start + record_size;
 
         var sha256: [32]u8 = undefined;
         std.crypto.hash.sha2.Sha256.hash(batch_records.data[0..record_size], &sha256, .{});
@@ -46,13 +48,9 @@ pub fn main(init: std.process.Init) !void {
         try parser.record(batch_record, @intCast(i));
         defer batch_record.reset();
 
-        assert(record_size == batch_record.sizes[0]);
-
-        const b1_data = batch_records.data[b1_data_offset..][0..record_size];
+        const b1_data = batch_records.data[b1_record_start..b1_record_end];
         const b2_data = batch_record.data[0..record_size];
         assert(std.mem.eql(u8, b1_data, b2_data));
-
-        b1_data_offset += record_size;
     }
 }
 
@@ -70,9 +68,9 @@ test "records fails when batch input is too small" {
     defer parser.deinit();
 
     {
-        var batch_sizes_too_small = try seb.Batch.init(allocator, 10 * 1024 * 1024, 300);
-        defer batch_sizes_too_small.deinit();
-        if (parser.records(&batch_sizes_too_small, 0, parser.header.num_records)) |_| {
+        var batch_offsets_too_small = try seb.Batch.init(allocator, 10 * 1024 * 1024, 300);
+        defer batch_offsets_too_small.deinit();
+        if (parser.records(&batch_offsets_too_small, 0, parser.header.num_records)) |_| {
             unreachable;
         } else |err| {
             assert(err == seb.record.ParserError.BatchSizesTooSmall);

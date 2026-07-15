@@ -89,13 +89,13 @@ pub const BatchPool = struct {
     pool_elements: []*Batch,
     pool: Pool(Batch),
 
-    pub fn init(allocator: std.mem.Allocator, pool_size: usize, data_size: usize, sizes_size: usize) !BatchPool {
+    pub fn init(allocator: std.mem.Allocator, pool_size: usize, data_size: usize, offsets_size: usize) !BatchPool {
         const batches = try allocator.alloc(Batch, pool_size);
         errdefer allocator.free(batches);
 
         var initialized: usize = 0;
         for (batches) |*batch| {
-            batch.* = try Batch.init(allocator, data_size, sizes_size);
+            batch.* = try Batch.init(allocator, data_size, offsets_size);
             initialized += 1;
         }
         errdefer {

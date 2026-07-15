@@ -45,8 +45,8 @@ pub fn Parser(comptime Input: type) type {
 
         pub fn deinit(_: Self) void {}
 
-        fn sizeOf(self: Self, index_start: u32, index_end: u32) !usize {
-            if (index_start >= self.header.num_records - 1) return ParserError.StartOffsetOutOfBounds;
+        pub fn sizeOf(self: Self, index_start: u32, index_end: u32) !usize {
+            if (index_start >= self.header.num_records) return ParserError.StartOffsetOutOfBounds;
             if (index_end > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
             if (index_start >= index_end) return ParserError.StartIndexLargerThanEndIndex;
 
@@ -61,7 +61,7 @@ pub fn Parser(comptime Input: type) type {
 
         pub fn record(self: Self, batch: *Batch, record_id: u32) !void {
             if (record_id >= self.header.num_records) return ParserError.RecordNotFound;
-            if (batch.sizes_full.len < 1) return ParserError.BatchSizesTooSmall;
+            if (batch.offsets_full.len < 1) return ParserError.BatchSizesTooSmall;
 
             const record_size = try self.sizeOf(record_id, record_id + 1);
             if (record_size > batch.data_full.len) return ParserError.BatchDataTooSmall;
@@ -72,21 +72,21 @@ pub fn Parser(comptime Input: type) type {
             if (read_size != record_size) {
                 return ParserError.ShortRead;
             }
-            batch.sizes_full[0] = @intCast(read_size);
+            batch.offsets_full[0] = 0;
 
             // reslice to expose data to caller
-            batch.sizes = batch.sizes_full[0..1];
+            batch.offsets = batch.offsets_full[0..1];
             batch.data = batch.data_full[0..read_size];
         }
 
         // NOTE: reads records in the range [index_start; index_end[
         pub fn records(self: Self, batch: *Batch, index_start: u32, index_end: u32) !void {
-            if (index_start >= self.header.num_records - 1) return ParserError.StartOffsetOutOfBounds;
+            if (index_start >= self.header.num_records) return ParserError.StartOffsetOutOfBounds;
             if (index_end > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
             if (index_start >= index_end) return ParserError.StartIndexLargerThanEndIndex;
 
             const records_num = index_end - index_start;
-            if (records_num > batch.sizes_full.len) return ParserError.BatchSizesTooSmall;
+            if (records_num > batch.offsets_full.len) return ParserError.BatchSizesTooSmall;
 
             const data_size = try self.sizeOf(index_start, index_end);
             if (data_size > batch.data_full.len) return ParserError.BatchDataTooSmall;
@@ -98,12 +98,16 @@ pub fn Parser(comptime Input: type) type {
                 return ParserError.ShortRead;
             }
 
+            var offset: u32 = 0;
             for (0..records_num) |i| {
                 const index = @as(u32, @intCast(index_start + i));
-                batch.sizes_full[i] = @intCast(try self.sizeOf(index, index + 1));
+                batch.offsets_full[i] = offset;
+                offset += @intCast(try self.sizeOf(index, index + 1));
             }
+
+            // point user-facing slices into backing storage
             batch.data = batch.data_full[0..read_size];
-            batch.sizes = batch.sizes_full[0..records_num];
+            batch.offsets = batch.offsets_full[0..records_num];
         }
     };
 }
@@ -210,10 +214,10 @@ fn ClockNow(comptime T: type) type {
 
 // batch_file_size returns the exact file size of a batch with the given data
 // size and number of records
-pub fn batch_file_size(data_size: usize, sizes_size: usize) usize {
+pub fn batch_file_size(data_size: usize, offsets_size: usize) usize {
     // static header + dynamic header + data
     const header_static_size = Header.header_size;
-    const header_dynamic_size = sizes_size * Header.record_offset_size;
+    const header_dynamic_size = offsets_size * Header.record_offset_size;
     return header_static_size + header_dynamic_size + data_size;
 }
 
@@ -222,14 +226,14 @@ pub const Buffers = struct {
     offsets: []u32,
     data: []u8,
 
-    pub fn init(allocator: std.mem.Allocator, data_size: usize, sizes_size: usize) !Buffers {
-        const offsets = try allocator.alloc(u32, sizes_size);
+    pub fn init(allocator: std.mem.Allocator, data_size: usize, offsets_size: usize) !Buffers {
+        const offsets = try allocator.alloc(u32, offsets_size);
         errdefer allocator.free(offsets);
 
         return Buffers{
             .allocator = allocator,
             .offsets = offsets,
-            .data = try allocator.alloc(u8, batch_file_size(data_size, sizes_size)),
+            .data = try allocator.alloc(u8, batch_file_size(data_size, offsets_size)),
         };
     }
 
@@ -240,25 +244,19 @@ pub const Buffers = struct {
 };
 
 pub fn Write(bufs: Buffers, output: *std.Io.Writer, batch: Batch, now: anytype, fns: ClockNow(@TypeOf(now))) !void {
-    assert(bufs.offsets.len >= batch.sizes.len);
-    assert(bufs.data.len >= batch_file_size(batch.data.len, batch.sizes.len));
+    assert(bufs.offsets.len >= batch.offsets.len);
+    assert(bufs.data.len >= batch_file_size(batch.data.len, batch.offsets.len));
 
-    var index: u32 = 0;
-    for (0.., batch.sizes) |i, size| {
-        bufs.offsets[i] = index;
-        index += size;
-    }
-
-    const file = bufs.data[0..batch_file_size(batch.data.len, batch.sizes.len)];
+    const file = bufs.data[0..batch_file_size(batch.data.len, batch.offsets.len)];
 
     // Write correct format into buf, making as few writes to output as we can
     var mem_writer = std.Io.Writer.fixed(file);
     try mem_writer.writeSliceEndian(u8, Header.expected_magic_bytes[0..], .little);
     try mem_writer.writeInt(u16, Header.expected_version, .little);
     try mem_writer.writeInt(u64, fns.now(now), .little);
-    try mem_writer.writeInt(u32, @as(u32, @intCast(batch.sizes.len)), .little);
+    try mem_writer.writeInt(u32, @as(u32, @intCast(batch.offsets.len)), .little);
     try mem_writer.writeSliceEndian(u8, &([_]u8{0} ** 14), .little);
-    try mem_writer.writeSliceEndian(u32, bufs.offsets[0..batch.sizes.len], .little);
+    try mem_writer.writeSliceEndian(u32, batch.offsets, .little);
     try mem_writer.writeSliceEndian(u8, batch.data, .little);
 
     assert(mem_writer.unusedCapacityLen() == 0);
@@ -281,10 +279,10 @@ test "can write and read record batch" {
     var buf: [file_size]u8 = undefined;
     var memory_writer = std.Io.Writer.fixed(&buf);
 
-    const write_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.sizes.len);
+    const write_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.offsets.len);
     defer write_buffers.deinit();
 
-    var parser_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.sizes.len);
+    var parser_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.offsets.len);
     defer parser_buffers.deinit();
 
     const clock = stdx.Clock{ .io = io };
@@ -321,7 +319,7 @@ test "record and records reads the same" {
     testing.randomizeBatch(batch, records_num, records_size);
 
     const clock = stdx.Clock{ .io = io };
-    const write_buffers = try Buffers.init(std.testing.allocator, batch.data.len, batch.sizes.len);
+    const write_buffers = try Buffers.init(std.testing.allocator, batch.data.len, batch.offsets.len);
     defer write_buffers.deinit();
     try Write(write_buffers, &memory_writer, batch.*, clock, .{ .now = stdx.Clock.now });
 
@@ -338,19 +336,17 @@ test "record and records reads the same" {
     const batch_single_record = try batch_pool.get();
     defer batch_pool.put(batch_single_record);
 
-    var b1_data_offset: usize = 0;
     try parser.records(batch_multiple_records, 0, parser.header.num_records);
     for (0..parser.header.num_records) |i| {
-        try parser.record(batch_single_record, @intCast(i));
+        const index: u32 = @intCast(i);
+        try parser.record(batch_single_record, index);
 
-        assert(batch_multiple_records.sizes[i] == batch_single_record.sizes[0]);
-        const record_size = batch_multiple_records.sizes[i];
+        const b1_offset_start = batch_multiple_records.offsets[i];
+        const b1_offset_end: u32 = @intCast(b1_offset_start + try parser.sizeOf(index, index + 1));
 
-        const b1_data = batch_multiple_records.data[b1_data_offset .. b1_data_offset + record_size];
+        const b1_data = batch_multiple_records.data[b1_offset_start..b1_offset_end];
         const b2_data = batch_single_record.data;
         assert(std.mem.eql(u8, b1_data, b2_data));
-
-        b1_data_offset += record_size;
     }
 }
 
