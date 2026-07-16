@@ -1,5 +1,9 @@
 const std = @import("std");
 
+const BatchError = error{
+    OutOfBounds,
+};
+
 const Self = @This();
 
 allocator: std.mem.Allocator,
@@ -36,4 +40,17 @@ pub fn reset(self: *Self) void {
     // TODO: do we need to zero out the memory? I don't think so..
     self.data = self.data_full;
     self.offsets = self.offsets_full;
+}
+
+pub fn record(self: Self, index: usize) ![]u8 {
+    if (index >= self.offsets.len) return BatchError.OutOfBounds;
+
+    const start: usize = @intCast(self.offsets[index]);
+    const end: usize =
+        if (index == self.offsets.len - 1)
+            self.data.len
+        else
+            @intCast(self.offsets[index + 1]);
+
+    return self.data[start..end];
 }

@@ -350,6 +350,49 @@ test "record and records reads the same" {
     }
 }
 
+test "records fails when batch input is too small" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    const records_num = 8;
+    const records_size = 32;
+    const file_size = Header.header_size + records_num * (records_size + Header.record_offset_size);
+    var buf: [file_size]u8 = undefined;
+    var memory_writer = std.Io.Writer.fixed(&buf);
+
+    var batch = try Batch.init(allocator, 10 * 1024 * 1024, 32 * 1024);
+    defer batch.deinit();
+    testing.randomizeBatch(&batch, records_num, records_size);
+
+    const clock = stdx.Clock{ .io = io };
+    const write_buffers = try Buffers.init(std.testing.allocator, batch.data.len, batch.offsets.len);
+    defer write_buffers.deinit();
+    try Write(write_buffers, &memory_writer, batch, clock, .{ .now = stdx.Clock.now });
+
+    var buffers = try Buffers.init(allocator, 10 * 1024 * 1024, 32 * 1024);
+    defer buffers.deinit();
+
+    const memory_reader = testing.PositionalBufferReader{ .buf = &buf };
+    const parser = try Parser(@TypeOf(memory_reader)).init(&buffers, memory_reader, file_size);
+    defer parser.deinit();
+
+    {
+        var batch_offsets_too_small = try Batch.init(allocator, batch.data.len, batch.offsets.len - 1);
+        defer batch_offsets_too_small.deinit();
+
+        const err = parser.records(&batch_offsets_too_small, 0, parser.header.num_records);
+        assert(err == ParserError.BatchSizesTooSmall);
+    }
+
+    {
+        var batch_data_too_small = try Batch.init(allocator, batch.data.len - 1, batch.offsets.len);
+        defer batch_data_too_small.deinit();
+
+        const err = parser.records(&batch_data_too_small, 0, parser.header.num_records);
+        assert(err == ParserError.BatchDataTooSmall);
+    }
+}
+
 pub fn openPositionalFile(io: std.Io, path: []const u8) !PositionalFileReader {
     const f = try stdx.openFile(io, path);
     return PositionalFileReader{ .io = io, .file = f };
