@@ -310,24 +310,10 @@ test "record and records reads the same" {
 
     const records_num = 8;
     const records_size = 32;
-    const file_size = Header.header_size + records_num * (records_size + Header.record_offset_size);
-    var buf: [file_size]u8 = undefined;
-    var memory_writer = std.Io.Writer.fixed(&buf);
+    var mem_batch = try testing.MemWriteBatch(allocator, io, records_num, records_size);
+    defer mem_batch.deinit();
 
-    const batch = try batch_pool.get();
-    defer batch_pool.put(batch);
-    testing.randomizeBatch(batch, records_num, records_size);
-
-    const clock = stdx.Clock{ .io = io };
-    const write_buffers = try Buffers.init(std.testing.allocator, batch.data.len, batch.offsets.len);
-    defer write_buffers.deinit();
-    try Write(write_buffers, &memory_writer, batch.*, clock, .{ .now = stdx.Clock.now });
-
-    var parser_buffers = try Buffers.init(std.testing.allocator, batch_size, batch_num_records);
-    defer parser_buffers.deinit();
-
-    const memory_reader = testing.PositionalBufferReader{ .buf = &buf };
-    const parser = try Parser(@TypeOf(memory_reader)).init(&parser_buffers, memory_reader, file_size);
+    const parser = try mem_batch.parser();
     defer parser.deinit();
 
     const batch_multiple_records = try batch_pool.get();
@@ -356,24 +342,12 @@ test "records fails when batch input is too small" {
 
     const records_num = 8;
     const records_size = 32;
-    const file_size = Header.header_size + records_num * (records_size + Header.record_offset_size);
-    var buf: [file_size]u8 = undefined;
-    var memory_writer = std.Io.Writer.fixed(&buf);
 
-    var batch = try Batch.init(allocator, 10 * 1024 * 1024, 32 * 1024);
-    defer batch.deinit();
-    testing.randomizeBatch(&batch, records_num, records_size);
+    var mem_batch = try testing.MemWriteBatch(allocator, io, records_num, records_size);
+    defer mem_batch.deinit();
+    const batch = mem_batch.batch;
 
-    const clock = stdx.Clock{ .io = io };
-    const write_buffers = try Buffers.init(std.testing.allocator, batch.data.len, batch.offsets.len);
-    defer write_buffers.deinit();
-    try Write(write_buffers, &memory_writer, batch, clock, .{ .now = stdx.Clock.now });
-
-    var buffers = try Buffers.init(allocator, 10 * 1024 * 1024, 32 * 1024);
-    defer buffers.deinit();
-
-    const memory_reader = testing.PositionalBufferReader{ .buf = &buf };
-    const parser = try Parser(@TypeOf(memory_reader)).init(&buffers, memory_reader, file_size);
+    const parser = try mem_batch.parser();
     defer parser.deinit();
 
     {
