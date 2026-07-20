@@ -3,7 +3,7 @@ const stdx = @import("stdx.zig");
 const PositionalFileReader = @import("PositionalFileReader.zig");
 const Batch = @import("Batch.zig");
 const assert = std.debug.assert;
-const Pool = @import("Pool.zig");
+const pool = @import("pool.zig");
 const testing = @import("testing.zig");
 
 pub const ParserError = error{
@@ -149,9 +149,9 @@ pub const Header = struct {
         assert(bufs.offsets.len >= num_records);
 
         // parse record offsets
-        const record_offsets_size = @as(usize, num_records) * record_offset_size;
+        const record_offsets_size = num_records * record_offset_size;
         const header_end_offset = header_size + record_offsets_size;
-        const file_size_min = header_end_offset + @as(usize, num_records);
+        const file_size_min = header_end_offset + num_records;
         if (file_size < file_size_min) return ParserError.FileTooSmall; // assumes at least 1 byte per record
 
         const data = bufs.data[0..record_offsets_size];
@@ -292,7 +292,7 @@ test "can write and read record batch" {
     const parser = try Parser(@TypeOf(memory_reader)).init(&parser_buffers, memory_reader, file_size);
     defer parser.deinit();
 
-    var batch_read = try Batch.init(gpa, 1024 * 1024 * 10, 32 * 1024);
+    var batch_read = try Batch.init(gpa, 10 * stdx.MiB, 32 * 1024);
     defer batch_read.deinit();
     try parser.records(&batch_read, 0, records_num);
 
@@ -303,9 +303,9 @@ test "record and records reads the same" {
     const allocator = std.testing.allocator;
     const io = std.testing.io;
 
-    const batch_size = 10 * 1024 * 1024;
+    const batch_size = 10 * stdx.MiB;
     const batch_num_records = 32 * 1024;
-    var batch_pool = try Pool.BatchPool.init(allocator, 3, batch_size, batch_num_records);
+    var batch_pool = try pool.BatchPool.init(allocator, 3, batch_size, batch_num_records);
     defer batch_pool.deinit();
 
     const records_num = 8;
