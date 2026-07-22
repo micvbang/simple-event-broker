@@ -36,11 +36,11 @@ const MemBatch = struct {
 
     parser_buffers: ?record.Buffers,
 
-    pub fn parser(self: *MemBatch) !record.Parser(PositionalBufferReader) {
+    pub fn parser(self: *MemBatch) !record.Parser(stdx.BufferReader) {
         std.debug.assert(self.parser_buffers == null); // don't leak parser_buffers
 
         self.parser_buffers = try record.Buffers.init(self.allocator, self.buf.len, self.batch.offsets.len);
-        const reader = PositionalBufferReader{ .buf = self.buf };
+        const reader = stdx.BufferReader{ .buf = self.buf };
         return try record.Parser(@TypeOf(reader)).init(&self.parser_buffers.?, reader, self.buf.len);
     }
 
@@ -71,23 +71,3 @@ pub fn MemWriteBatch(allocator: Allocator, io: Io, records_num: usize, records_s
         .parser_buffers = null,
     };
 }
-
-pub const PositionalBufferReader = struct {
-    const Self = @This();
-
-    buf: []u8,
-
-    pub fn readAt(self: Self, dest: []u8, offset: u64) !usize {
-        for (0..dest.len) |i| {
-            dest[i] = self.buf[offset + i];
-        }
-
-        return dest.len;
-    }
-
-    pub fn length(self: Self) !usize {
-        return self.buf.len;
-    }
-
-    pub fn close(_: Self) void {}
-};

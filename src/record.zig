@@ -206,12 +206,6 @@ pub const Header = struct {
     }
 };
 
-fn ClockNow(comptime T: type) type {
-    return struct {
-        now: fn (T) u64,
-    };
-}
-
 // batch_file_size returns the exact file size of a batch with the given data
 // size and number of records
 pub fn batch_file_size(data_size: usize, offsets_size: usize) usize {
@@ -243,7 +237,7 @@ pub const Buffers = struct {
     }
 };
 
-pub fn Write(bufs: Buffers, output: *std.Io.Writer, batch: Batch, now: anytype, fns: ClockNow(@TypeOf(now))) !void {
+pub fn Write(bufs: Buffers, output: *std.Io.Writer, batch: Batch, now: anytype, fns: stdx.ClockNow(@TypeOf(now))) !void {
     assert(bufs.offsets.len >= batch.offsets.len);
     assert(bufs.data.len >= batch_file_size(batch.data.len, batch.offsets.len));
 
@@ -288,7 +282,7 @@ test "can write and read record batch" {
     const clock = stdx.Clock{ .io = io };
     try Write(write_buffers, &memory_writer, batch_write, clock, .{ .now = stdx.Clock.now });
 
-    const memory_reader = testing.PositionalBufferReader{ .buf = &buf };
+    const memory_reader = stdx.BufferReader{ .buf = &buf };
     const parser = try Parser(@TypeOf(memory_reader)).init(&parser_buffers, memory_reader, file_size);
     defer parser.deinit();
 
