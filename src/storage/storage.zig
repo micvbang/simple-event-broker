@@ -33,7 +33,7 @@ pub const Storage = struct {
 
 pub const Reader = struct {
     context: *anyopaque,
-    vtable: *const VTableReader,
+    vtable: *const ReaderVTable,
 
     pub fn readAt(self: Reader, buf: []u8, offset: usize) anyerror!usize {
         return self.vtable.readAt(self.context, buf, offset);
@@ -44,14 +44,14 @@ pub const Reader = struct {
     }
 };
 
-pub const VTableReader = struct {
+pub const ReaderVTable = struct {
     readAt: *const fn (context: *anyopaque, buf: []u8, offset: usize) anyerror!usize,
     close: *const fn (context: *anyopaque) void,
 };
 
 pub const Writer = struct {
     context: *anyopaque,
-    vtable: *const VTableWriter,
+    vtable: *const WriterVTable,
 
     pub fn write(self: Writer, buf: []const u8) anyerror!usize {
         return self.vtable.write(self.context, buf);
@@ -62,7 +62,7 @@ pub const Writer = struct {
     }
 };
 
-pub const VTableWriter = struct {
+pub const WriterVTable = struct {
     write: *const fn (context: *anyopaque, buf: []const u8) anyerror!usize,
     close: *const fn (context: *anyopaque) void,
 };

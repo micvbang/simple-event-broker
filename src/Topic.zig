@@ -14,16 +14,24 @@ const recordBatchExtension = ".record_batch";
 
 allocator: Allocator,
 name: []u8,
+
+// TODO: we should probably write (parts of) this to disk, so that we are not
+// limited by memory in how many offsets a topic can contain.
 storage_files_offsets: ArrayList(u64),
 next_offset: u64,
 
-// TODO: stop using allocator
+// TODO: stop using allocator, likely writing offsets to disk when they get larger than memory
 pub fn init(allocator: Allocator, storage: Storage, bufs: *Buffers, name: []u8) !Self {
     var offsets = try listBatchRecordOffsets(storage, bufs, name);
+    errdefer offsets.deinit(allocator);
     std.debug.print("got {d} offsets: {any}", offsets.items.len, offsets.items);
 
-    // TODO: compute next_offset (requires reading most recent record_batch to get its length)
-    const next_offset = 0;
+    const next_offset = try if (offsets.len > 0)
+        // TODO: read offsets[offsets.len-1] to get number of records, then return
+        // offsets[offsets.len-1] + parsed_record_batch.header.num_records
+        error.NotImplemented
+    else
+        0;
 
     return Self{
         .allocator = allocator,
@@ -43,6 +51,8 @@ fn listBatchRecordOffsets(allocator: Allocator, storage: Storage, bufs: *Buffers
     if (offset_files.len > 0) {
         const most_recent_file = offset_files[offset_files.len - 1];
         const reader = try storage.reader(most_recent_file);
+        defer reader.close();
+
         try record_offsets.Parse(reader, &bufs.offset_file_buf, &offsetsBuf);
     }
 
@@ -68,7 +78,7 @@ fn listBatchRecordOffsets(allocator: Allocator, storage: Storage, bufs: *Buffers
 
     try offsets.appendSlice(allocator, file_offsets);
 
-    std.mem.sortUnstable(u64, offsets.items, .{}, std.sort.asc(u64));
+    assert(std.sort.isSorted(u64, offsets.items, .{}, std.sort.asc(u64)));
 
     return offsets;
 }

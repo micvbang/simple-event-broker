@@ -49,7 +49,6 @@ pub const Storage = struct {
 
         var i: usize = 0;
         while (iter.next()) |key| {
-            // TODO: add "/" after topic_name, otherwise e.g. topic would match topic_1
             if (key.*.len < topic_name.len) {
                 continue;
             }
@@ -78,36 +77,54 @@ pub const Storage = struct {
             i += 1;
         }
 
-        return files.*[0..i];
+        const output = files.*[0..i];
+        std.mem.sort(storage.File, output, {}, sortFiles);
+        return output;
+    }
+
+    pub fn sortFiles(_: void, a: storage.File, b: storage.File) bool {
+        return std.mem.order(u8, a.path, b.path) == .lt;
     }
 
     pub fn reader(self: *Self, key: []const u8) anyerror!storage.Reader {
         const buf = self.topics.get(key) orelse return error.KeyNotFound;
-        // BUG: rdr disappears after we return from this function
-        var rdr = BufferReader{
-            .buf = buf,
+
+        const rdr = try self.allocator.create(MemoryReader);
+        rdr.* = .{
+            .allocator = self.allocator,
+            .buffer_reader = .{ .buf = buf },
         };
 
         return storage.Reader{
-            .context = &rdr,
+            .context = rdr,
             .vtable = &.{
-                .readAt = @TypeOf(rdr).readAtAdapter,
-                .close = @TypeOf(rdr).closeAdapter,
+                .readAt = @TypeOf(rdr.*).readAtAdapter,
+                .close = @TypeOf(rdr.*).closeAdapter,
             },
         };
     }
 
     pub fn writer(self: *Self, key: []const u8) anyerror!storage.Writer {
         const buf: []u8 = try self.allocator.alloc(u8, self.value_size);
-        // BUG: wtr disappears after we return from this function
-        var wtr = BufferWriter{ .buf = buf };
-        try self.topics.put(key, wtr.buf);
+        errdefer self.allocator.free(buf);
+
+        const wtr = try self.allocator.create(MemoryWriter);
+        errdefer self.allocator.destroy(wtr);
+
+        wtr.* = .{
+            .allocator = self.allocator,
+            .buffer_writer = .{ .buf = buf },
+        };
+
+        // TODO: this shouldn't be done until wtr.close() is called, otherwise
+        // we expose a file that hasn't been written yet.
+        try self.topics.put(key, buf);
 
         return storage.Writer{
-            .context = &wtr,
+            .context = wtr,
             .vtable = &.{
-                .write = @TypeOf(wtr).writeAdapter,
-                .close = @TypeOf(wtr).closeAdapter,
+                .write = @TypeOf(wtr.*).writeAdapter,
+                .close = @TypeOf(wtr.*).closeAdapter,
             },
         };
     }
@@ -130,6 +147,44 @@ pub const Storage = struct {
     pub fn writerAdapter(context: *anyopaque, key: []const u8) anyerror!storage.Writer {
         const self: *Self = @ptrCast(@alignCast(context));
         return self.writer(key);
+    }
+};
+
+const MemoryReader = struct {
+    const Self = @This();
+
+    allocator: Allocator,
+    buffer_reader: BufferReader,
+
+    pub fn readAtAdapter(context: *anyopaque, dest: []u8, offset: usize) anyerror!usize {
+        const self: *Self = @ptrCast(@alignCast(context));
+        return self.buffer_reader.readAt(dest, offset);
+    }
+
+    pub fn closeAdapter(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.buffer_reader.close();
+        const allocator = self.allocator;
+        allocator.destroy(self);
+    }
+};
+
+const MemoryWriter = struct {
+    const Self = @This();
+
+    allocator: Allocator,
+    buffer_writer: BufferWriter,
+
+    pub fn writeAdapter(context: *anyopaque, src: []const u8) anyerror!usize {
+        const self: *Self = @ptrCast(@alignCast(context));
+        return self.buffer_writer.write(src);
+    }
+
+    pub fn closeAdapter(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.buffer_writer.close();
+        const allocator = self.allocator;
+        allocator.destroy(self);
     }
 };
 
@@ -172,9 +227,9 @@ test "can list multiple files" {
 
     var files_in: [files_num]storage.File = undefined;
     var files_buf: []storage.File = files_in[0..];
-    const files_out = try memory_storage.listFiles("topic1", ".file", null, &files_buf);
+    const files_out = try memory_storage.listFiles("topic", ".file", null, &files_buf);
 
-    assert(files_buf.len == files_out.len);
+    assert(files_expected.len == files_out.len);
     assertFilesEqual(files_expected[0..], files_out);
 }
 
@@ -204,6 +259,8 @@ test "can read and write files" {
     assert(write_size == input.len);
 
     const rdr = try memory_storage.reader("topic/key");
+    defer rdr.close();
+
     var buf: [input.len]u8 = undefined;
     const read_size = try rdr.readAt(buf[0..], 0);
     assert(read_size == buf.len);

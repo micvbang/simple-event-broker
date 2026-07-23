@@ -45,20 +45,7 @@ pub const BufferReader = struct {
         return read_size;
     }
 
-    pub fn readAtAdapter(context: *anyopaque, dest: []u8, offset: usize) !usize {
-        const self: *Self = @ptrCast(@alignCast(context));
-        return self.readAt(dest, offset);
-    }
-
-    pub fn length(self: Self) !usize {
-        return self.buf.len;
-    }
-
     pub fn close(_: Self) void {}
-    pub fn closeAdapter(context: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(context));
-        self.close();
-    }
 };
 
 test "BufferReader can read entire buffer" {
@@ -107,20 +94,7 @@ pub const BufferWriter = struct {
         return write_size;
     }
 
-    pub fn writeAdapter(context: *anyopaque, src: []const u8) anyerror!usize {
-        var self: *Self = @ptrCast(@alignCast(context));
-        return self.write(src);
-    }
-
-    pub fn length(self: Self) !usize {
-        return self.buf.len;
-    }
-
     pub fn close(_: *Self) void {}
-    pub fn closeAdapter(context: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(context));
-        self.close();
-    }
 };
 
 test "BufferWriter can write full buffer at once" {
