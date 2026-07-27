@@ -13,13 +13,13 @@ pub const Storage = struct {
 
     allocator: Allocator,
     topics: std.StringHashMap([]u8),
-    value_size: usize,
+    file_buf_size: usize,
 
-    pub fn init(allocator: Allocator, value_size: usize) Self {
+    pub fn init(allocator: Allocator, file_buf_size: usize) Self {
         return Self{
             .allocator = allocator,
             .topics = std.StringHashMap([]u8).init(allocator),
-            .value_size = value_size,
+            .file_buf_size = file_buf_size,
         };
     }
 
@@ -27,29 +27,30 @@ pub const Storage = struct {
         return storage.Storage{
             .context = self,
             .vtable = &.{
-                .listFiles = @TypeOf(self).listFilesAdapter,
-                .reader = @TypeOf(self).readerAdapter,
-                .writer = @TypeOf(self).writerAdapter,
-                .deinit = @TypeOf(self).deinitAdapter,
+                .listFiles = Storage.listFilesAdapter,
+                .reader = Storage.readerAdapter,
+                .writer = Storage.writerAdapter,
+                .deinit = Storage.deinitAdapter,
             },
         };
     }
 
     pub fn deinit(self: *Self) void {
-        var iter = self.topics.valueIterator();
-        while (iter.next()) |buf| {
-            self.allocator.free(buf.*);
+        var iter = self.topics.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
         }
 
         self.topics.deinit();
     }
 
-    pub fn listFiles(self: *Self, topic_name: []const u8, ext: []const u8, startAfter: ?[]const u8, files: *[]storage.File) ![]storage.File {
+    pub fn listFiles(self: *Self, topic_name: []const u8, ext: []const u8, start_after: ?[]const u8, files: *[]storage.File) ![]storage.File {
         var iter = self.topics.keyIterator();
 
         var i: usize = 0;
         while (iter.next()) |key| {
-            if (key.*.len < topic_name.len) {
+            if (key.*.len <= topic_name.len) {
                 continue;
             }
 
@@ -63,7 +64,7 @@ pub const Storage = struct {
             }
 
             const file_name = std.fs.path.basename(key.*);
-            if (startAfter != null and std.mem.order(u8, file_name, startAfter.?) != .gt) {
+            if (start_after != null and std.mem.order(u8, file_name, start_after.?) != .gt) {
                 continue;
             }
 
@@ -89,10 +90,10 @@ pub const Storage = struct {
     pub fn reader(self: *Self, key: []const u8) anyerror!storage.Reader {
         const buf = self.topics.get(key) orelse return error.KeyNotFound;
 
-        const rdr = try self.allocator.create(MemoryReader);
+        const rdr = try self.allocator.create(stdx.ReaderAdapter(BufferReader, true));
         rdr.* = .{
             .allocator = self.allocator,
-            .buffer_reader = .{ .buf = buf },
+            .reader = .{ .buf = buf },
         };
 
         return storage.Reader{
@@ -105,20 +106,24 @@ pub const Storage = struct {
     }
 
     pub fn writer(self: *Self, key: []const u8) anyerror!storage.Writer {
-        const buf: []u8 = try self.allocator.alloc(u8, self.value_size);
+        const buf: []u8 = try self.allocator.alloc(u8, self.file_buf_size);
         errdefer self.allocator.free(buf);
 
-        const wtr = try self.allocator.create(MemoryWriter);
+        const wtr = try self.allocator.create(stdx.WriterAdapter(BufferWriter));
         errdefer self.allocator.destroy(wtr);
 
         wtr.* = .{
             .allocator = self.allocator,
-            .buffer_writer = .{ .buf = buf },
+            .writer = .{ .buf = buf },
         };
+
+        // TODO: we would like to now have to allocate here
+        const owned_key = try self.allocator.dupe(u8, key);
+        errdefer self.allocator.free(owned_key);
 
         // TODO: this shouldn't be done until wtr.close() is called, otherwise
         // we expose a file that hasn't been written yet.
-        try self.topics.put(key, buf);
+        try self.topics.put(owned_key, buf);
 
         return storage.Writer{
             .context = wtr,
@@ -134,9 +139,9 @@ pub const Storage = struct {
         self.deinit();
     }
 
-    pub fn listFilesAdapter(context: *anyopaque, topic_name: []const u8, ext: []const u8, startAfter: ?[]const u8, files: *[]storage.File) anyerror![]storage.File {
+    pub fn listFilesAdapter(context: *anyopaque, topic_name: []const u8, ext: []const u8, start_after: ?[]const u8, files: *[]storage.File) anyerror![]storage.File {
         const self: *Self = @ptrCast(@alignCast(context));
-        return self.listFiles(topic_name, ext, startAfter, files);
+        return self.listFiles(topic_name, ext, start_after, files);
     }
 
     pub fn readerAdapter(context: *anyopaque, key: []const u8) anyerror!storage.Reader {
@@ -147,44 +152,6 @@ pub const Storage = struct {
     pub fn writerAdapter(context: *anyopaque, key: []const u8) anyerror!storage.Writer {
         const self: *Self = @ptrCast(@alignCast(context));
         return self.writer(key);
-    }
-};
-
-const MemoryReader = struct {
-    const Self = @This();
-
-    allocator: Allocator,
-    buffer_reader: BufferReader,
-
-    pub fn readAtAdapter(context: *anyopaque, dest: []u8, offset: usize) anyerror!usize {
-        const self: *Self = @ptrCast(@alignCast(context));
-        return self.buffer_reader.readAt(dest, offset);
-    }
-
-    pub fn closeAdapter(context: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(context));
-        self.buffer_reader.close();
-        const allocator = self.allocator;
-        allocator.destroy(self);
-    }
-};
-
-const MemoryWriter = struct {
-    const Self = @This();
-
-    allocator: Allocator,
-    buffer_writer: BufferWriter,
-
-    pub fn writeAdapter(context: *anyopaque, src: []const u8) anyerror!usize {
-        const self: *Self = @ptrCast(@alignCast(context));
-        return self.buffer_writer.write(src);
-    }
-
-    pub fn closeAdapter(context: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(context));
-        self.buffer_writer.close();
-        const allocator = self.allocator;
-        allocator.destroy(self);
     }
 };
 

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 const assert = std.debug.assert;
+const Allocator = std.mem.Allocator;
 
 pub const KiB = 1 << 10;
 pub const MiB = 1 << 20;
@@ -26,6 +27,51 @@ pub const Clock = struct {
 pub fn ClockNow(comptime T: type) type {
     return struct {
         now: fn (T) u64,
+    };
+}
+
+pub fn ReaderAdapter(Input: type, owned: bool) type {
+    return struct {
+        const Self = @This();
+
+        allocator: if (owned) Allocator else void,
+        reader: Input,
+
+        pub fn readAtAdapter(context: *anyopaque, dest: []u8, offset: usize) anyerror!usize {
+            const self: *Self = @ptrCast(@alignCast(context));
+            return self.reader.readAt(dest, offset);
+        }
+
+        pub fn closeAdapter(context: *anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(context));
+            self.reader.close();
+
+            if (owned) {
+                const allocator = self.allocator;
+                allocator.destroy(self);
+            }
+        }
+    };
+}
+
+pub fn WriterAdapter(Input: type) type {
+    return struct {
+        const Self = @This();
+
+        allocator: Allocator,
+        writer: Input,
+
+        pub fn writeAdapter(context: *anyopaque, src: []const u8) anyerror!usize {
+            const self: *Self = @ptrCast(@alignCast(context));
+            return self.writer.write(src);
+        }
+
+        pub fn closeAdapter(context: *anyopaque) void {
+            const self: *Self = @ptrCast(@alignCast(context));
+            self.writer.close();
+            const allocator = self.allocator;
+            allocator.destroy(self);
+        }
     };
 }
 

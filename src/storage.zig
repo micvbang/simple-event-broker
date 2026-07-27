@@ -2,6 +2,7 @@ const std = @import("std");
 const storage = @import("storage/storage.zig");
 
 pub const Storage = storage.Storage;
+pub const File = storage.File;
 pub const Reader = storage.Reader;
 pub const Writer = storage.Writer;
 

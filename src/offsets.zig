@@ -100,7 +100,12 @@ test "can read and write offsets file" {
     var buf_scratch: [offsets_file_size(offsets_in_buf.len)]u8 = undefined;
     const write_size = try Write(buf_scratch[0..], &memory_writer, offsets_in_buf[0..], clock, .{ .now = stdx.Clock.now });
 
-    var rdr = stdx.BufferReader{ .buf = buf_file[0..write_size] };
+    var rdr = stdx.ReaderAdapter(stdx.BufferReader, false){
+        .allocator = {},
+        .reader = .{
+            .buf = buf_file[0..write_size],
+        },
+    };
     const reader = storage.Reader{
         .context = &rdr,
         .vtable = &.{
