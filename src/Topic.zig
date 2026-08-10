@@ -202,3 +202,41 @@ test "list existing files, no offsets file" {
     defer topic.deinit();
     assert(topic.next_offset == batch_size * 3);
 }
+
+test "list existing files, has offsets file" {
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+
+    var mem_strg = storage.memory.Storage.init(allocator, 512);
+    const strg = mem_strg.interface();
+    defer strg.deinit();
+
+    const topic_name = "topic";
+
+    const batch_size = 32;
+    const offsets_expected = comptime [_]u64{ batch_size * 0, batch_size * 1, batch_size * 2 };
+    for (offsets_expected) |offset| {
+        var buf: [key_len_max]u8 = undefined;
+        const key = try recordBatchKey(buf[0..], topic_name, offset);
+        const wtr = try strg.writer(key);
+        defer wtr.close();
+
+        const mem_batch = try testing.MemWriteBatch(allocator, io, batch_size, 32);
+        defer mem_batch.deinit();
+        _ = try wtr.write(mem_batch.buf);
+    }
+
+    TODO: write offsets file
+
+    var offset_file_buf: [512]u8 = undefined;
+    var offset_file_offsets: [512]u64 = undefined;
+
+    var bufs = Buffers{
+        .offset_file_buf = offset_file_buf[0..],
+        .offset_file_offsets = offset_file_offsets[0..],
+    };
+
+    var topic = try Self.init(allocator, strg, &bufs, "topic");
+    defer topic.deinit();
+    assert(topic.next_offset == batch_size * 3);
+}
