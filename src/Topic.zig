@@ -42,10 +42,8 @@ pub fn init(allocator: Allocator, strg: Storage, bufs: *Buffers, name: []const u
         // allocate buffers and know the exact file size
         var buffers = try record.Buffers.init(allocator, 512, 512);
         defer buffers.deinit();
-        // BUG: the exact file size is not 99999 and we don't want to have to specify it here
-        const parser = try record.Parser(@TypeOf(rdr)).init(&buffers, rdr, 99999);
-        defer parser.deinit();
-        break :blk offsets.items[offsets.items.len - 1] + parser.header.num_records;
+        const header = try record.Header.parse(&buffers, rdr);
+        break :blk offsets.items[offsets.items.len - 1] + header.num_records;
     };
 
     return Self{
@@ -54,6 +52,10 @@ pub fn init(allocator: Allocator, strg: Storage, bufs: *Buffers, name: []const u
         .storage_files_offsets = offsets,
         .next_offset = next_offset,
     };
+}
+
+fn deinit(self: *Self) void {
+    self.storage_files_offsets.deinit(self.allocator);
 }
 
 fn listBatchRecordOffsets(allocator: Allocator, strg: Storage, bufs: *Buffers, topic_name: []const u8) !ArrayList(u64) {
@@ -196,6 +198,7 @@ test "list existing files, no offsets file" {
         .offset_file_offsets = offset_file_offsets[0..],
     };
 
-    const topic = try Self.init(allocator, strg, &bufs, "topic");
+    var topic = try Self.init(allocator, strg, &bufs, "topic");
+    defer topic.deinit();
     assert(topic.next_offset == batch_size * 3);
 }
