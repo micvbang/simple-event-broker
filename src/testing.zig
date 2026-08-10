@@ -71,3 +71,24 @@ pub fn MemWriteBatch(allocator: Allocator, io: Io, records_num: usize, records_s
         .parser_buffers = null,
     };
 }
+
+pub fn WriteBatch(allocator: Allocator, io: Io, records_num: usize, records_size: usize) !MemBatch {
+    const file_size = record.Header.header_size + records_num * (records_size + record.Header.record_offset_size);
+    const buf: []u8 = try allocator.alloc(u8, file_size);
+    var memory_writer = Writer.fixed(buf);
+
+    var batch = try Batch.init(allocator, 10 * 1024 * 1024, 32 * 1024);
+    randomizeBatch(&batch, records_num, records_size);
+
+    const clock = Clock{ .io = io };
+    const write_buffers = try record.Buffers.init(std.testing.allocator, batch.data.len, batch.offsets.len);
+    defer write_buffers.deinit();
+    try record.Write(write_buffers, &memory_writer, batch, clock, .{ .now = stdx.Clock.now });
+
+    return MemBatch{
+        .allocator = allocator,
+        .buf = buf,
+        .batch = batch,
+        .parser_buffers = null,
+    };
+}

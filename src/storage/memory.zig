@@ -88,6 +88,7 @@ pub const Storage = struct {
     }
 
     pub fn reader(self: *Self, key: []const u8) anyerror!storage.Reader {
+        std.debug.print("reading key {s}\n", .{key});
         const buf = self.topics.get(key) orelse return error.KeyNotFound;
 
         const rdr = try self.allocator.create(stdx.ReaderAdapter(BufferReader, true));
