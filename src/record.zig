@@ -2,6 +2,7 @@ const std = @import("std");
 const stdx = @import("stdx.zig");
 const PositionalFileReader = @import("PositionalFileReader.zig");
 const Batch = @import("Batch.zig");
+const storage = @import("storage.zig");
 const assert = std.debug.assert;
 const pool = @import("pool.zig");
 const testing = @import("testing.zig");
@@ -239,7 +240,7 @@ pub const Buffers = struct {
     }
 };
 
-pub fn Write(bufs: Buffers, output: *std.Io.Writer, batch: Batch, now: anytype, fns: stdx.ClockNow(@TypeOf(now))) !void {
+pub fn Write(bufs: Buffers, output: storage.Writer, batch: Batch, now: anytype, fns: stdx.ClockNow(@TypeOf(now))) !void {
     assert(bufs.offsets.len >= batch.offsets.len);
     assert(bufs.data.len >= batch_file_size(batch.data.len, batch.offsets.len));
 
@@ -258,7 +259,7 @@ pub fn Write(bufs: Buffers, output: *std.Io.Writer, batch: Batch, now: anytype, 
     assert(mem_writer.unusedCapacityLen() == 0);
 
     // Write buf and data to output in a single write
-    try output.writeAll(file);
+    if (try output.write(file) < file.len) return error.ShortWrite;
 }
 
 test "can write and read record batch" {
@@ -270,22 +271,24 @@ test "can write and read record batch" {
     const batch_write = try testing.randomBatch(gpa, records_num, records_size);
     defer batch_write.deinit();
 
-    const file_size = Header.header_size + records_num * (Header.record_offset_size + records_size);
+    const file_size = batch_file_size(records_num * records_size, records_num);
 
-    var buf: [file_size]u8 = undefined;
-    var memory_writer = std.Io.Writer.fixed(&buf);
+    const strg_helper = try testing.MemoryStorageHelper.init(gpa, io, file_size);
+    defer strg_helper.deinit();
+
+    var wtr = try strg_helper.record_batch_writer("topic", 0);
+    defer wtr.close();
 
     const write_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.offsets.len);
     defer write_buffers.deinit();
+    try Write(write_buffers, wtr, batch_write, strg_helper.clock, .{ .now = stdx.Clock.now });
+
+    const rdr = try strg_helper.record_batch_reader("topic", 0);
+    defer rdr.close();
 
     var parser_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.offsets.len);
     defer parser_buffers.deinit();
-
-    const clock = stdx.Clock{ .io = io };
-    try Write(write_buffers, &memory_writer, batch_write, clock, .{ .now = stdx.Clock.now });
-
-    const memory_reader = stdx.BufferReader{ .buf = &buf };
-    const parser = try Parser(@TypeOf(memory_reader)).init(&parser_buffers, memory_reader, file_size);
+    const parser = try Parser(@TypeOf(rdr)).init(&parser_buffers, rdr, file_size);
     defer parser.deinit();
 
     var batch_read = try Batch.init(gpa, 10 * stdx.MiB, 32 * 1024);
@@ -296,20 +299,26 @@ test "can write and read record batch" {
 }
 
 test "record and records reads the same" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
     const io = std.testing.io;
 
     const batch_size = 10 * stdx.MiB;
     const batch_num_records = 32 * 1024;
-    var batch_pool = try pool.BatchPool.init(allocator, 3, batch_size, batch_num_records);
+    var batch_pool = try pool.BatchPool.init(gpa, 3, batch_size, batch_num_records);
     defer batch_pool.deinit();
+
+    const strg_helper = try testing.MemoryStorageHelper.init(gpa, io, stdx.MiB);
+    defer strg_helper.deinit();
 
     const records_num = 8;
     const records_size = 32;
-    var mem_batch = try testing.MemWriteBatch(allocator, io, records_num, records_size);
+    var mem_batch = try strg_helper.write_record_batch("topic", 0, records_num, records_size);
     defer mem_batch.deinit();
 
-    const parser = try mem_batch.parser();
+    const rdr = try strg_helper.record_batch_reader("topic", 0);
+    defer rdr.close();
+
+    const parser = try mem_batch.parser(rdr);
     defer parser.deinit();
 
     const batch_multiple_records = try batch_pool.get();
@@ -334,20 +343,26 @@ test "record and records reads the same" {
 
 test "records fails when batch input is too small" {
     const io = std.testing.io;
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
 
     const records_num = 8;
     const records_size = 32;
 
-    var mem_batch = try testing.MemWriteBatch(allocator, io, records_num, records_size);
+    const strg_helper = try testing.MemoryStorageHelper.init(gpa, io, stdx.MiB);
+    defer strg_helper.deinit();
+
+    var mem_batch = try strg_helper.write_record_batch("topic", 0, records_num, records_size);
     defer mem_batch.deinit();
     const batch = mem_batch.batch;
 
-    const parser = try mem_batch.parser();
+    const rdr = try strg_helper.record_batch_reader("topic", 0);
+    defer rdr.close();
+
+    const parser = try mem_batch.parser(rdr);
     defer parser.deinit();
 
     {
-        var batch_offsets_too_small = try Batch.init(allocator, batch.data.len, batch.offsets.len - 1);
+        var batch_offsets_too_small = try Batch.init(gpa, batch.data.len, batch.offsets.len - 1);
         defer batch_offsets_too_small.deinit();
 
         const err = parser.records(&batch_offsets_too_small, 0, parser.header.num_records);
@@ -355,7 +370,7 @@ test "records fails when batch input is too small" {
     }
 
     {
-        var batch_data_too_small = try Batch.init(allocator, batch.data.len - 1, batch.offsets.len);
+        var batch_data_too_small = try Batch.init(gpa, batch.data.len - 1, batch.offsets.len);
         defer batch_data_too_small.deinit();
 
         const err = parser.records(&batch_data_too_small, 0, parser.header.num_records);

@@ -1,4 +1,5 @@
 const std = @import("std");
+const stdx = @import("stdx.zig");
 const testing = @import("testing.zig");
 const s3 = @import("s3.zig");
 const storage = @import("storage.zig");
@@ -11,11 +12,6 @@ const Allocator = std.mem.Allocator;
 
 const Self = @This();
 
-const offsetFilesPrefix = "offsets_";
-const offsetFilesExtension = ".offsets";
-const recordBatchExtension = ".record_batch";
-const key_len_max = 512;
-
 allocator: Allocator,
 name: []const u8,
 
@@ -24,22 +20,20 @@ name: []const u8,
 storage_files_offsets: ArrayList(u64),
 next_offset: u64,
 
-// TODO: stop using allocator, likely writing offsets to disk when they get larger than memory
 pub fn init(allocator: Allocator, strg: Storage, bufs: *Buffers, name: []const u8) !Self {
     var offsets = try listBatchRecordOffsets(allocator, strg, bufs, name);
     errdefer offsets.deinit(allocator);
-    std.debug.print("got {d} offsets: {any}", .{ offsets.items.len, offsets.items });
+    std.debug.print("got {d} offsets: {any}\n", .{ offsets.items.len, offsets.items });
 
     const next_offset = if (offsets.items.len == 0)
         0
     else blk: {
-        var buf: [key_len_max]u8 = undefined;
-        const key = try recordBatchKey(buf[0..], name, offsets.getLast());
+        var buf: [storage.key_len_max]u8 = undefined;
+        const key = try storage.recordBatchKey(buf[0..], name, offsets.getLast());
         const rdr = try strg.reader(key);
         defer rdr.close();
 
-        // TODO: make it possible to only parse the header so we don't need to
-        // allocate buffers and know the exact file size
+        // TODO: we don't want to allocate here
         var buffers = try record.Buffers.init(allocator, 512, 512);
         defer buffers.deinit();
         const header = try record.Header.parse(&buffers, rdr);
@@ -58,11 +52,11 @@ fn deinit(self: *Self) void {
     self.storage_files_offsets.deinit(self.allocator);
 }
 
-fn listBatchRecordOffsets(allocator: Allocator, strg: Storage, bufs: *Buffers, topic_name: []const u8) !ArrayList(u64) {
+fn listBatchRecordOffsets(allocator: Allocator, strg: Storage, bufs: *const Buffers, topic_name: []const u8) !ArrayList(u64) {
     var files_buf: [10 * 1024]storage.File = undefined;
     var files_: []storage.File = files_buf[0..];
 
-    const offset_files = try strg.listFiles(topic_name, offsetFilesExtension, null, &files_);
+    const offset_files = try strg.listFiles(topic_name, storage.offset_files_extension, null, &files_);
 
     var offsets = try ArrayList(u64).initCapacity(allocator, @max(offset_files.len * 2, 10 * 1024));
     errdefer offsets.deinit(allocator);
@@ -78,11 +72,11 @@ fn listBatchRecordOffsets(allocator: Allocator, strg: Storage, bufs: *Buffers, t
 
     var record_name_buf: [1024]u8 = undefined;
     const start_after = if (offsets.items.len > 0)
-        try recordBatchBaseName(record_name_buf[0..], offsets.getLast())
+        try storage.recordBatchBaseName(record_name_buf[0..], offsets.getLast())
     else
         null;
 
-    const files = try strg.listFiles(topic_name, recordBatchExtension, start_after, &files_);
+    const files = try strg.listFiles(topic_name, storage.record_batch_extension, start_after, &files_);
 
     // TODO: use stack-allocated buffer and do in batches instead of allocating.
     // var file_offsets: [1024]u64 = undefined;
@@ -90,7 +84,7 @@ fn listBatchRecordOffsets(allocator: Allocator, strg: Storage, bufs: *Buffers, t
     defer allocator.free(file_offsets);
     for (0.., files) |i, file| {
         const file_name: []const u8 = std.fs.path.basename(file.path);
-        const offset_str = file_name[0 .. file_name.len - recordBatchExtension.len];
+        const offset_str = file_name[0 .. file_name.len - storage.record_batch_extension.len];
 
         file_offsets[i] = try std.fmt.parseInt(u64, offset_str, 10);
     }
@@ -102,141 +96,175 @@ fn listBatchRecordOffsets(allocator: Allocator, strg: Storage, bufs: *Buffers, t
     return offsets;
 }
 
-fn recordBatchKey(buf: []u8, topic_name: []const u8, record_batch_id: u64) ![]u8 {
-    return try std.fmt.bufPrint(buf, "{s}/{d:0>12}{s}", .{ topic_name, record_batch_id, recordBatchExtension });
-}
-
-fn recordBatchBaseName(buf: []u8, record_batch_id: u64) ![]u8 {
-    return try std.fmt.bufPrint(buf, "{d:0>12}{s}", .{ record_batch_id, recordBatchExtension });
-}
-
 const Buffers = struct {
+    allocator: ?Allocator,
     offset_file_offsets: []u64,
     offset_file_buf: []u8,
+
+    fn init(offset_file_offsets: []u64, offset_file_buf: []u8) Buffers {
+        return Buffers{
+            .allocator = null,
+            .offset_file_offsets = offset_file_offsets,
+            .offset_file_buf = offset_file_buf,
+        };
+    }
+
+    fn init_alloc(allocator: Allocator, offset_file_offsets_num: usize, file_buf_num: usize) !Buffers {
+        return Buffers{
+            .allocator = allocator,
+            .offset_file_offsets = try allocator.alloc(u64, offset_file_offsets_num),
+            .offset_file_buf = try allocator.alloc(u8, file_buf_num),
+        };
+    }
+
+    fn deinit(self: Buffers) void {
+        if (self.allocator) |allocator| {
+            allocator.free(self.offset_file_offsets);
+            allocator.free(self.offset_file_buf);
+        }
+    }
 };
 
 test "listBatchRecordOffsets lists all files" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
 
-    var mem_strg = storage.memory.Storage.init(allocator, 512);
-    const strg = mem_strg.interface();
-    defer strg.deinit();
+    var strg_helper = try testing.MemoryStorageHelper.init(gpa, io, 512);
+    defer strg_helper.deinit();
 
     const topic_name = "topic";
 
     const offsets_expected = [_]u64{ 0, 1, 5, 9, 13, 17, 300, 342, 1337 };
     for (offsets_expected) |offset| {
-        var buf: [key_len_max]u8 = undefined;
-        const key = try recordBatchKey(buf[0..], topic_name, offset);
-        const wtr = try strg.writer(key);
-        defer wtr.close();
+        const batch = try strg_helper.write_record_batch(topic_name, offset, 1, 1);
+        defer batch.deinit();
     }
 
-    var offset_file_buf: [512]u8 = undefined;
-    var offset_file_offsets: [512]u64 = undefined;
+    var bufs = try Buffers.init_alloc(gpa, 512, 512);
+    defer bufs.deinit();
+    var offsets = try listBatchRecordOffsets(gpa, strg_helper.storage, &bufs, topic_name);
+    defer offsets.deinit(gpa);
 
-    var bufs = Buffers{
-        .offset_file_buf = offset_file_buf[0..],
-        .offset_file_offsets = offset_file_offsets[0..],
-    };
-
-    var offsets = try listBatchRecordOffsets(allocator, strg, &bufs, topic_name);
-    defer offsets.deinit(allocator);
-
-    try std.testing.expectEqualSlices(u64, offsets_expected[0..], offsets.items);
+    try std.testing.expectEqualSlices(u64, &offsets_expected, offsets.items);
 }
 
 test "listBatchRecordOffsets list empty topic" {
-    const allocator = std.testing.allocator;
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
 
-    var mem_strg = storage.memory.Storage.init(allocator, 512);
-    var strg = mem_strg.interface();
-    defer strg.deinit();
+    var strg_helper = try testing.MemoryStorageHelper.init(gpa, io, 512);
+    defer strg_helper.deinit();
 
-    var offset_file_buf: [512]u8 = undefined;
-    var offset_file_offsets: [512]u64 = undefined;
+    const bufs = try Buffers.init_alloc(gpa, 512, 512);
+    defer bufs.deinit();
 
-    var bufs = Buffers{
-        .offset_file_buf = offset_file_buf[0..],
-        .offset_file_offsets = offset_file_offsets[0..],
-    };
-
-    var offsets = try listBatchRecordOffsets(allocator, strg, &bufs, "topic");
-    defer offsets.deinit(allocator);
+    var offsets = try listBatchRecordOffsets(gpa, strg_helper.storage, &bufs, "topic");
+    defer offsets.deinit(gpa);
 
     assert(offsets.items.len == 0);
 }
 
-test "list existing files, no offsets file" {
-    const allocator = std.testing.allocator;
+test "Topic init, no offsets file" {
+    // Verifies that Topic.init() computes the correct next_offset when there's
+    // no offsets file.
+
+    const gpa = std.testing.allocator;
     const io = std.testing.io;
 
-    var mem_strg = storage.memory.Storage.init(allocator, 512);
-    const strg = mem_strg.interface();
-    defer strg.deinit();
+    var strg_helper = try testing.MemoryStorageHelper.init(gpa, io, 512);
+    defer strg_helper.deinit();
 
     const topic_name = "topic";
-
     const batch_size = 32;
     const offsets_expected = comptime [_]u64{ batch_size * 0, batch_size * 1, batch_size * 2 };
-    for (offsets_expected) |offset| {
-        var buf: [key_len_max]u8 = undefined;
-        const key = try recordBatchKey(buf[0..], topic_name, offset);
-        const wtr = try strg.writer(key);
-        defer wtr.close();
 
-        const mem_batch = try testing.MemWriteBatch(allocator, io, batch_size, 32);
-        defer mem_batch.deinit();
-        _ = try wtr.write(mem_batch.buf);
+    for (offsets_expected) |offset| {
+        const batch = try strg_helper.write_record_batch(topic_name, offset, batch_size, 0);
+        defer batch.deinit();
     }
 
-    var offset_file_buf: [512]u8 = undefined;
-    var offset_file_offsets: [512]u64 = undefined;
+    var bufs = try Buffers.init_alloc(gpa, 512, 512);
+    defer bufs.deinit();
 
-    var bufs = Buffers{
-        .offset_file_buf = offset_file_buf[0..],
-        .offset_file_offsets = offset_file_offsets[0..],
-    };
-
-    var topic = try Self.init(allocator, strg, &bufs, "topic");
+    var topic = try Self.init(gpa, strg_helper.storage, &bufs, "topic");
     defer topic.deinit();
     assert(topic.next_offset == batch_size * 3);
 }
 
-test "list existing files, has offsets file" {
-    const allocator = std.testing.allocator;
+test "Topic init, only offsets file" {
+    // Verifies that Topic.init() computes the correct next_offset when the
+    // offsets file covers all offsets.
+
+    const gpa = std.testing.allocator;
     const io = std.testing.io;
 
-    var mem_strg = storage.memory.Storage.init(allocator, 512);
-    const strg = mem_strg.interface();
-    defer strg.deinit();
+    var strg_helper = try testing.MemoryStorageHelper.init(gpa, io, 512);
+    defer strg_helper.deinit();
 
     const topic_name = "topic";
+    const batch_records = 32;
+    const record_size = 1;
+    const offsets_expected = [_]u64{ 0, 1, 5, 9, 12, 31 };
 
-    const batch_size = 32;
-    const offsets_expected = comptime [_]u64{ batch_size * 0, batch_size * 1, batch_size * 2 };
     for (offsets_expected) |offset| {
-        var buf: [key_len_max]u8 = undefined;
-        const key = try recordBatchKey(buf[0..], topic_name, offset);
-        const wtr = try strg.writer(key);
-        defer wtr.close();
-
-        const mem_batch = try testing.MemWriteBatch(allocator, io, batch_size, 32);
-        defer mem_batch.deinit();
-        _ = try wtr.write(mem_batch.buf);
+        const batch = try strg_helper.write_record_batch(topic_name, offset, batch_records, record_size);
+        defer batch.deinit();
     }
+    try strg_helper.write_offsets_file(topic_name, 0, &offsets_expected);
 
-    TODO: write offsets file
+    var bufs = try Buffers.init_alloc(gpa, 512, 512);
+    defer bufs.deinit();
 
-    var offset_file_buf: [512]u8 = undefined;
-    var offset_file_offsets: [512]u64 = undefined;
-
-    var bufs = Buffers{
-        .offset_file_buf = offset_file_buf[0..],
-        .offset_file_offsets = offset_file_offsets[0..],
-    };
-
-    var topic = try Self.init(allocator, strg, &bufs, "topic");
+    var topic = try Self.init(gpa, strg_helper.storage, &bufs, "topic");
     defer topic.deinit();
-    assert(topic.next_offset == batch_size * 3);
+    assert(topic.next_offset == 31 + batch_records);
 }
+
+test "Topic init, offsets file not covering all offsets" {
+    // Verifies that Topic.init() computes the correct next_offset when the
+    // offset file does not cover all existing offsets.
+
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var strg_helper = try testing.MemoryStorageHelper.init(gpa, io, 512);
+    defer strg_helper.deinit();
+
+    const topic_name = "topic";
+    const batch_records = 32;
+    const record_size = 1;
+    const offsets_expected = [_]u64{ 0, 1, 5, 9, 12, 31 };
+    const offsets_file_offsets = offsets_expected[0 .. offsets_expected.len - 2];
+
+    for (offsets_expected) |offset| {
+        const batch = try strg_helper.write_record_batch(topic_name, offset, batch_records, record_size);
+        defer batch.deinit();
+    }
+    try strg_helper.write_offsets_file(topic_name, 0, offsets_file_offsets);
+
+    var bufs = try Buffers.init_alloc(gpa, 512, 512);
+    defer bufs.deinit();
+
+    var topic = try Self.init(gpa, strg_helper.storage, &bufs, "topic");
+    defer topic.deinit();
+    assert(topic.next_offset == 31 + batch_records);
+}
+
+// test "topic short write" {
+//     const gpa = std.testing.allocator;
+//     const io = std.testing.io;
+
+//     var mem_storage = storage.memory.Storage.init(gpa, 512);
+//     const strg = mem_storage.interface();
+//     const strg_helper = testing.StorageHelper.init(gpa, io, strg);
+//     defer strg_helper.deinit();
+
+//     const topic_name = "topic";
+//     const batch_records = 32;
+//     const record_size = 32;
+//     const offsets_expected = [_]u64{0};
+
+//     for (offsets_expected) |offset| {
+//         try strg_helper.write_record_batch(topic_name, offset, batch_records, record_size);
+//     }
+// }

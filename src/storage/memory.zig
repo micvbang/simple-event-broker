@@ -118,7 +118,7 @@ pub const Storage = struct {
             .writer = .{ .buf = buf },
         };
 
-        // TODO: we would like to now have to allocate here
+        // TODO: we would like to not have to allocate here
         const owned_key = try self.allocator.dupe(u8, key);
         errdefer self.allocator.free(owned_key);
 

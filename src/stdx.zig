@@ -2,6 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
+const storage = @import("storage.zig");
 
 pub const KiB = 1 << 10;
 pub const MiB = 1 << 20;

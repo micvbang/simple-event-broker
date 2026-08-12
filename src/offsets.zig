@@ -5,18 +5,18 @@ const stdx = @import("stdx.zig");
 const testing = @import("testing.zig");
 const storage = @import("storage.zig");
 
-pub fn Parse(reader: storage.Reader, buf: []u8, offsets: []u64) ![]u64 {
+pub fn Parse(reader: storage.Reader, scratch: []u8, offsets: []u64) ![]u64 {
     const header = try Header.parse(reader);
 
-    if (buf.len < header.num_offsets * Header.record_size - Header.size) return error.BufferTooSmall;
+    if (scratch.len < header.num_offsets * Header.record_size) return error.BufferTooSmall;
     if (!std.mem.eql(u8, header.magic_bytes[0..], Header.expected_magic_bytes[0..])) return error.InvalidMagicBytes;
-    if (header.version != 1) return error.InvalidVersion;
+    if (header.version != Header.expected_version) return error.InvalidVersion;
 
-    const read_size = try reader.readAt(buf, Header.size);
+    const read_size = try reader.readAt(scratch, Header.size);
     if (read_size < header.num_offsets * Header.record_size) return error.EndOfStream;
 
     for (0..header.num_offsets) |i| {
-        offsets[i] = std.mem.readInt(u64, buf[i * Header.record_size ..][0..8], .little);
+        offsets[i] = std.mem.readInt(u64, scratch[i * Header.record_size ..][0..8], .little);
     }
 
     return offsets[0..header.num_offsets];
@@ -65,13 +65,13 @@ pub fn offsets_file_size(offsets_num: usize) usize {
     return Header.size + offsets_num * Header.record_size;
 }
 
-pub fn Write(buf: []u8, output: *std.Io.Writer, offsets: []u64, now: anytype, fns: ClockNow(@TypeOf(now))) !u64 {
-    assert(buf.len >= offsets_file_size(offsets.len));
+pub fn Write(scratch: []u8, output: storage.Writer, offsets: []const u64, now: anytype, fns: ClockNow(@TypeOf(now))) !u64 {
+    assert(scratch.len >= offsets_file_size(offsets.len));
 
-    const file = buf[0..offsets_file_size(offsets.len)];
+    // Write correct format into output_buf, making as few writes to output as we can
+    const output_buf = scratch[0..offsets_file_size(offsets.len)];
 
-    // Write correct format into buf, making as few writes to output as we can
-    var mem_writer = std.Io.Writer.fixed(file);
+    var mem_writer = std.Io.Writer.fixed(output_buf);
     try mem_writer.writeSliceEndian(u8, Header.expected_magic_bytes[0..], .little);
     try mem_writer.writeInt(u16, Header.expected_version, .little);
     try mem_writer.writeInt(u64, fns.now(now), .little);
@@ -82,39 +82,34 @@ pub fn Write(buf: []u8, output: *std.Io.Writer, offsets: []u64, now: anytype, fn
     assert(mem_writer.unusedCapacityLen() == 0);
 
     // Write buf and data to output in a single write
-    try output.writeAll(file);
-    return file.len;
+    if (try output.write(output_buf) < output_buf.len) return error.ShortWrite;
+
+    return output_buf.len;
 }
 
 test "can read and write offsets file" {
     const io = std.testing.io;
-
-    var offsets_in_buf = [_]u64{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
-    var offsets_out_buf: [128]u64 = undefined;
-
+    const gpa = std.testing.allocator;
     const clock = stdx.Clock{ .io = io };
 
-    var buf_file: [offsets_file_size(offsets_in_buf.len)]u8 = undefined;
-    var memory_writer = std.Io.Writer.fixed(buf_file[0..]);
+    var offsets_in = [_]u64{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
 
-    var buf_scratch: [offsets_file_size(offsets_in_buf.len)]u8 = undefined;
-    const write_size = try Write(buf_scratch[0..], &memory_writer, offsets_in_buf[0..], clock, .{ .now = stdx.Clock.now });
+    const strg_helper = try testing.MemoryStorageHelper.init(gpa, io, stdx.MiB);
+    defer strg_helper.deinit();
 
-    var rdr = stdx.ReaderAdapter(stdx.BufferReader, false){
-        .allocator = {},
-        .reader = .{
-            .buf = buf_file[0..write_size],
-        },
-    };
-    const reader = storage.Reader{
-        .context = &rdr,
-        .vtable = &.{
-            .readAt = @TypeOf(rdr).readAtAdapter,
-            .close = @TypeOf(rdr).closeAdapter,
-        },
-    };
+    var wtr = try strg_helper.offsets_file_writer("topic", 0);
+    defer wtr.close();
 
-    var buf_output: [offsets_file_size(offsets_in_buf.len)]u8 = undefined;
-    const offsets_out = try Parse(reader, buf_output[0..], offsets_out_buf[0..]);
-    assert(std.mem.eql(u64, offsets_in_buf[0..], offsets_out));
+    var write_buf_scratch: [offsets_file_size(offsets_in.len)]u8 = undefined;
+    const write_size = try Write(&write_buf_scratch, wtr, &offsets_in, clock, .{ .now = stdx.Clock.now });
+    assert(write_size == offsets_file_size(offsets_in.len));
+
+    const rdr = try strg_helper.offsets_file_reader("topic", 0);
+    defer rdr.close();
+
+    var output_buf: [offsets_file_size(offsets_in.len)]u8 = undefined;
+
+    var offsets_out_buf: [128]u64 = undefined;
+    const offsets_out = try Parse(rdr, &output_buf, &offsets_out_buf);
+    assert(std.mem.eql(u64, &offsets_in, offsets_out));
 }

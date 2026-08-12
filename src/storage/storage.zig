@@ -1,3 +1,22 @@
+const std = @import("std");
+
+pub const key_len_max = 512;
+pub const offset_files_prefix = "offsets_";
+pub const offset_files_extension = ".offsets";
+pub const record_batch_extension = ".record_batch";
+
+pub fn recordBatchKey(buf: []u8, topic_name: []const u8, record_batch_id: u64) ![]u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{d:0>12}{s}", .{ topic_name, record_batch_id, record_batch_extension });
+}
+
+pub fn recordBatchBaseName(buf: []u8, record_batch_id: u64) ![]u8 {
+    return try std.fmt.bufPrint(buf, "{d:0>12}{s}", .{ record_batch_id, record_batch_extension });
+}
+
+pub fn offsetsFileKey(buf: []u8, topic_name: []const u8, offsets_file_id: u64) ![]u8 {
+    return try std.fmt.bufPrint(buf, "{s}/{s}{d:0>12}{s}", .{ topic_name, offset_files_prefix, offsets_file_id, offset_files_extension });
+}
+
 pub const File = struct {
     size: usize,
     path: []const u8,
