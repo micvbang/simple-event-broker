@@ -41,7 +41,7 @@ pub fn Parser(comptime Input: type) type {
         // NOTE: Parser borrows bufs during its entire lifetime
         pub fn init(bufs: *Buffers, input: Input, file_size: usize) !Self {
             assert(bufs.data.len >= file_size);
-            const header = try Header.parse(bufs, input);
+            const header = try Header.parse(input);
 
             // parse record offsets
             const record_offsets_size = header.num_records * Header.record_offset_size;
@@ -166,8 +166,7 @@ pub const Header = struct {
     num_records: u32,
     reserved: [14]u8,
 
-    // NOTE: parse borrows bufs through its lifetime
-    pub fn parse(bufs: *Buffers, input: anytype) !Header {
+    pub fn parse(input: anytype) !Header {
         var header_buf: [header_size]u8 = undefined;
         const read = try input.readAt(&header_buf, 0);
         if (read < header_size) return ParserError.EndOfStream;
@@ -183,7 +182,6 @@ pub const Header = struct {
         if (!std.mem.eql(u8, magic_bytes[0..], Header.expected_magic_bytes)) return ParserError.InvalidMagicBytes;
         if (Header.expected_version != version) return ParserError.InvalidVersion;
         if (!std.mem.eql(u8, reserved[0..], &(.{0} ** 14))) return ParserError.InvalidReservedBytes;
-        assert(bufs.offsets.len >= num_records);
 
         return .{
             .magic_bytes = magic_bytes,
