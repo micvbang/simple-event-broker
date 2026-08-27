@@ -23,6 +23,7 @@ pub const ParserError = error{
     ShortRead,
     InvalidMagicBytes,
     InvalidVersion,
+    InvalidFileLength,
     InvalidReservedBytes,
 };
 
@@ -35,19 +36,18 @@ pub fn Parser(comptime Input: type) type {
         // dynamic header
         record_offsets: []u32,
 
-        file_size: usize,
         input: Input,
 
         // NOTE: Parser borrows bufs during its entire lifetime
-        pub fn init(bufs: *Buffers, input: Input, file_size: usize) !Self {
-            assert(bufs.data.len >= file_size);
+        pub fn init(bufs: *Buffers, input: Input) !Self {
             const header = try Header.parse(input);
+            assert(bufs.data.len >= header.file_size);
 
             // parse record offsets
             const record_offsets_size = header.num_records * Header.record_offset_size;
             const header_end_offset = Header.header_size + record_offsets_size;
             const file_size_min = header_end_offset + header.num_records;
-            if (file_size < file_size_min) return ParserError.FileTooSmall; // assumes at least 1 byte per record
+            if (header.file_size < file_size_min) return ParserError.FileTooSmall; // assumes at least 1 byte per record
 
             const data = bufs.data[0..record_offsets_size];
             const read_size = try input.readAt(data, Header.header_size);
@@ -63,7 +63,7 @@ pub fn Parser(comptime Input: type) type {
                 // offset must start at 0
                 if (offsets[0] != 0) return ParserError.OffsetsMustStartAtZero;
 
-                const record_offsets_max_size = file_size - header_end_offset;
+                const record_offsets_max_size = header.file_size - header_end_offset;
 
                 var previous_offset: u32 = undefined;
                 for (0.., offsets) |i, offset| {
@@ -78,7 +78,6 @@ pub fn Parser(comptime Input: type) type {
 
             return Self{
                 .header = header,
-                .file_size = file_size,
                 .input = input,
                 .record_offsets = offsets,
             };
@@ -95,7 +94,7 @@ pub fn Parser(comptime Input: type) type {
             const offset_end = if (index_end < self.header.num_records)
                 @as(usize, self.record_offsets[index_end])
             else
-                self.file_size - self.header.size();
+                self.header.file_size - self.header.size();
 
             return offset_end - offset_start;
         }
@@ -157,14 +156,15 @@ pub const Header = struct {
     pub const header_size = 32;
     pub const record_offset_size = 4;
     const expected_magic_bytes = "seb!";
-    const expected_version = 1;
+    const expected_version = 2;
 
     // static header
     magic_bytes: [4]u8,
     version: i16,
     unix_epoch_us: i64,
     num_records: u32,
-    reserved: [14]u8,
+    file_size: u32,
+    reserved: [10]u8,
 
     pub fn parse(input: anytype) !Header {
         var header_buf: [header_size]u8 = undefined;
@@ -176,18 +176,21 @@ pub const Header = struct {
         const version = std.mem.readInt(i16, header_buf[4..6], .little);
         const unix_epoch_us = std.mem.readInt(i64, header_buf[6..14], .little);
         const num_records = std.mem.readInt(u32, header_buf[14..18], .little);
-        const reserved = header_buf[18..32].*;
+        const file_length = std.mem.readInt(u32, header_buf[18..22], .little);
+        const reserved = header_buf[22..32].*;
 
         if (num_records == 0) return ParserError.FileHasNoRecords;
         if (!std.mem.eql(u8, magic_bytes[0..], Header.expected_magic_bytes)) return ParserError.InvalidMagicBytes;
         if (Header.expected_version != version) return ParserError.InvalidVersion;
-        if (!std.mem.eql(u8, reserved[0..], &(.{0} ** 14))) return ParserError.InvalidReservedBytes;
+        if (file_length < header_size + num_records * record_offset_size) return ParserError.InvalidFileLength;
+        if (!std.mem.eql(u8, reserved[0..], &(.{0} ** 10))) return ParserError.InvalidReservedBytes;
 
         return .{
             .magic_bytes = magic_bytes,
             .version = version,
             .unix_epoch_us = unix_epoch_us,
             .num_records = num_records,
+            .file_size = file_length,
             .reserved = reserved,
         };
     }
@@ -250,7 +253,8 @@ pub fn Write(bufs: Buffers, output: storage.Writer, batch: Batch, now: anytype, 
     try mem_writer.writeInt(u16, Header.expected_version, .little);
     try mem_writer.writeInt(u64, fns.now(now), .little);
     try mem_writer.writeInt(u32, @as(u32, @intCast(batch.offsets.len)), .little);
-    try mem_writer.writeSliceEndian(u8, &([_]u8{0} ** 14), .little);
+    try mem_writer.writeInt(u32, @as(u32, @intCast(batch_file_size(batch.data.len, batch.offsets.len))), .little);
+    try mem_writer.writeSliceEndian(u8, &([_]u8{0} ** 10), .little);
     try mem_writer.writeSliceEndian(u32, batch.offsets, .little);
     try mem_writer.writeSliceEndian(u8, batch.data, .little);
 
@@ -270,7 +274,6 @@ test "can write and read record batch" {
     defer batch_write.deinit();
 
     const file_size = batch_file_size(records_num * records_size, records_num);
-
     const strg_helper = try testing.MemoryStorageHelper.init(gpa, io, file_size);
     defer strg_helper.deinit();
 
@@ -286,7 +289,7 @@ test "can write and read record batch" {
 
     var parser_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.offsets.len);
     defer parser_buffers.deinit();
-    const parser = try Parser(@TypeOf(rdr)).init(&parser_buffers, rdr, file_size);
+    const parser = try Parser(@TypeOf(rdr)).init(&parser_buffers, rdr);
     defer parser.deinit();
 
     var batch_read = try Batch.init(gpa, 10 * stdx.MiB, 32 * 1024);

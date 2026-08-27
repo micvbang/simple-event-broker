@@ -56,10 +56,12 @@ fn deinit(self: *Self) void {
     self.storage_file_offsets.deinit(self.allocator);
 }
 
-pub fn addBatch(self: *Self, bufs: Buffers, batch: Batch) ![]u64 {
+pub fn addBatch(self: *Self, bufs: record.Buffers, batch: Batch, ids_buf: []u64) ![]u64 {
+    assert(ids_buf.len >= batch.offsets.len);
+
     const offset_next = self.offset_next;
 
-    const key_buf: [storage.key_len_max]u8 = undefined;
+    var key_buf: [storage.key_len_max]u8 = undefined;
     const key = try storage.recordBatchKey(&key_buf, self.name, offset_next);
 
     const wtr = try self.strg.writer(key);
@@ -68,8 +70,14 @@ pub fn addBatch(self: *Self, bufs: Buffers, batch: Batch) ![]u64 {
     try record.Write(bufs, wtr, batch, self.clock, .{ .now = stdx.Clock.now });
 
     // NOTE: we probably want a lock around storage_files_offsets
-    self.storage_file_offsets.append(self.allocator, offset_next);
+    try self.storage_file_offsets.append(self.allocator, offset_next);
     self.offset_next += batch.offsets.len;
+
+    for (offset_next..offset_next + batch.offsets.len, 0..) |record_id, i| {
+        ids_buf[i] = record_id;
+    }
+
+    return ids_buf[0..batch.offsets.len];
 }
 
 pub fn readBatch(self: *Self, bufs: *record.Buffers, batch: Batch, offset: u64, records_max: usize, bytes_max: usize) !void {
@@ -362,7 +370,7 @@ test "topic addBatch" {
     const io = std.testing.io;
 
     const topic_name = "topic";
-    const batch_records = 32;
+    const batch_records = 8;
     const record_size = 32;
 
     // TODO: set correct size
@@ -370,13 +378,20 @@ test "topic addBatch" {
     defer strg_helper.deinit();
 
     // TODO: set correct size
-    var bufs = try Buffers.init_alloc(gpa, 512, 512);
-    defer bufs.deinit();
+    var topic_bufs = try Buffers.init_alloc(gpa, 512, 512);
+    defer topic_bufs.deinit();
 
     const clock = stdx.Clock{ .io = io };
-    var topic = try Self.init(gpa, clock, strg_helper.storage, &bufs, topic_name);
+    var topic = try Self.init(gpa, clock, strg_helper.storage, &topic_bufs, topic_name);
     defer topic.deinit();
 
+    const record_bufs = try record.Buffers.init(gpa, 512, 512);
+    defer record_bufs.deinit();
     const batch = try testing.randomBatch(gpa, batch_records, record_size);
-    try topic.addBatch(bufs, batch);
+    defer batch.deinit();
+
+    var ids_buf: [batch_records]u64 = undefined;
+    const record_ids = try topic.addBatch(record_bufs, batch, &ids_buf);
+
+    assert(std.mem.eql(u64, record_ids, &([_]u64{ 0, 1, 2, 3, 4, 5, 6, 7 })));
 }
