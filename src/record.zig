@@ -27,130 +27,127 @@ pub const ParserError = error{
     InvalidReservedBytes,
 };
 
-pub fn Parser(comptime Input: type) type {
-    return struct {
-        const Self = @This();
+pub const Parser = struct {
+    const Self = @This();
 
-        header: Header,
+    rdr: storage.Reader,
+    header: Header,
+    record_offsets: []u32,
 
-        // dynamic header
-        record_offsets: []u32,
+    // NOTE: Parser borrows bufs during its entire lifetime
+    pub fn init(bufs: *Buffers, rdr: storage.Reader) !Self {
+        const header = try Header.parse(rdr);
+        assert(bufs.data.len >= header.file_size);
 
-        input: Input,
+        // parse record offsets
+        const record_offsets_size = header.num_records * Header.record_offset_size;
+        const header_end_offset = Header.header_size + record_offsets_size;
+        const file_size_min = header_end_offset + header.num_records;
+        if (header.file_size < file_size_min) return ParserError.FileTooSmall; // assumes at least 1 byte per record
 
-        // NOTE: Parser borrows bufs during its entire lifetime
-        pub fn init(bufs: *Buffers, input: Input) !Self {
-            const header = try Header.parse(input);
-            assert(bufs.data.len >= header.file_size);
+        const data = bufs.data[0..record_offsets_size];
+        const read_size = try rdr.readAt(data, Header.header_size);
+        if (read_size < record_offsets_size) return ParserError.EndOfStream;
 
-            // parse record offsets
-            const record_offsets_size = header.num_records * Header.record_offset_size;
-            const header_end_offset = Header.header_size + record_offsets_size;
-            const file_size_min = header_end_offset + header.num_records;
-            if (header.file_size < file_size_min) return ParserError.FileTooSmall; // assumes at least 1 byte per record
-
-            const data = bufs.data[0..record_offsets_size];
-            const read_size = try input.readAt(data, Header.header_size);
-            if (read_size < record_offsets_size) return ParserError.EndOfStream;
-
-            const offsets = bufs.offsets[0..header.num_records];
-            for (0..header.num_records) |i| {
-                offsets[i] = std.mem.readInt(u32, data[i * 4 ..][0..4], .little);
-            }
-
-            // validate offsets
-            {
-                // offset must start at 0
-                if (offsets[0] != 0) return ParserError.OffsetsMustStartAtZero;
-
-                const record_offsets_max_size = header.file_size - header_end_offset;
-
-                var previous_offset: u32 = undefined;
-                for (0.., offsets) |i, offset| {
-                    // offset must not point beyond file length
-                    if (offset >= record_offsets_max_size) return ParserError.OffsetOutOfBounds;
-
-                    // offset is monotonically increasing
-                    if (i > 0 and previous_offset >= offset) return ParserError.OffsetsNotMonotonicallyIncreasing;
-                    previous_offset = offset;
-                }
-            }
-
-            return Self{
-                .header = header,
-                .input = input,
-                .record_offsets = offsets,
-            };
+        const offsets = bufs.offsets[0..header.num_records];
+        for (0..header.num_records) |i| {
+            offsets[i] = std.mem.readInt(u32, data[i * 4 ..][0..4], .little);
         }
 
-        pub fn deinit(_: Self) void {}
+        // validate offsets
+        {
+            // TODO: validate file_length is correct
 
-        pub fn sizeOf(self: Self, index_start: u32, index_end: u32) !usize {
-            if (index_start >= self.header.num_records) return ParserError.StartOffsetOutOfBounds;
-            if (index_end > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
-            if (index_start >= index_end) return ParserError.StartIndexLargerThanEndIndex;
+            // offset must start at 0
+            if (offsets[0] != 0) return ParserError.OffsetsMustStartAtZero;
 
-            const offset_start = self.record_offsets[index_start];
-            const offset_end = if (index_end < self.header.num_records)
-                @as(usize, self.record_offsets[index_end])
-            else
-                self.header.file_size - self.header.size();
+            const record_offsets_max_size = header.file_size - header_end_offset;
 
-            return offset_end - offset_start;
+            var previous_offset: u32 = undefined;
+            for (0.., offsets) |i, offset| {
+                // offset must not point beyond file length
+                if (offset >= record_offsets_max_size) return ParserError.OffsetOutOfBounds;
+
+                // offset is monotonically increasing
+                if (i > 0 and previous_offset >= offset) return ParserError.OffsetsNotMonotonicallyIncreasing;
+                previous_offset = offset;
+            }
         }
 
-        pub fn record(self: Self, batch: *Batch, record_id: u32) !void {
-            if (record_id >= self.header.num_records) return ParserError.RecordNotFound;
-            if (batch.offsets_full.len < 1) return ParserError.BatchSizesTooSmall;
+        return Self{
+            .header = header,
+            .rdr = rdr,
+            .record_offsets = offsets,
+        };
+    }
 
-            const record_size = try self.sizeOf(record_id, record_id + 1);
-            if (record_size > batch.data_full.len) return ParserError.BatchDataTooSmall;
+    pub fn deinit(_: Self) void {}
 
-            const record_offset = self.record_offsets[record_id];
+    pub fn sizeOf(self: Self, index_start: u32, index_end: u32) !usize {
+        if (index_start >= self.header.num_records) return ParserError.StartOffsetOutOfBounds;
+        if (index_end > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
+        if (index_start >= index_end) return ParserError.StartIndexLargerThanEndIndex;
 
-            const read_size = try self.input.readAt(batch.data_full[0..record_size], self.header.size() + record_offset);
-            if (read_size != record_size) {
-                return ParserError.ShortRead;
-            }
-            batch.offsets_full[0] = 0;
+        const offset_start = self.record_offsets[index_start];
+        const offset_end = if (index_end < self.header.num_records)
+            @as(usize, self.record_offsets[index_end])
+        else
+            self.header.file_size - self.header.size();
 
-            // reslice to expose data to caller
-            batch.offsets = batch.offsets_full[0..1];
-            batch.data = batch.data_full[0..read_size];
+        return offset_end - offset_start;
+    }
+
+    pub fn record(self: Self, batch: *Batch, record_id: u32) !void {
+        if (record_id >= self.header.num_records) return ParserError.RecordNotFound;
+        if (batch.offsets_full.len < 1) return ParserError.BatchSizesTooSmall;
+
+        const record_size = try self.sizeOf(record_id, record_id + 1);
+        if (record_size > batch.data_full.len) return ParserError.BatchDataTooSmall;
+
+        const record_offset = self.record_offsets[record_id];
+
+        const read_size = try self.rdr.readAt(batch.data_full[0..record_size], self.header.size() + record_offset);
+        if (read_size != record_size) {
+            return ParserError.ShortRead;
+        }
+        batch.offsets_full[0] = 0;
+
+        // reslice to expose data to caller
+        batch.offsets = batch.offsets_full[0..1];
+        batch.data = batch.data_full[0..read_size];
+    }
+
+    // NOTE: reads records in the range [index_start; index_end[
+    pub fn records(self: Self, batch: *Batch, index_start: u32, index_end: u32) !void {
+        if (index_start >= self.header.num_records) return ParserError.StartOffsetOutOfBounds;
+        if (index_end > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
+        if (index_start >= index_end) return ParserError.StartIndexLargerThanEndIndex;
+
+        const records_num = index_end - index_start;
+        if (records_num > batch.offsets_full.len) return ParserError.BatchSizesTooSmall;
+
+        const data_size = try self.sizeOf(index_start, index_end);
+        if (data_size > batch.data_full.len) return ParserError.BatchDataTooSmall;
+
+        const offset_start = self.record_offsets[index_start];
+
+        const read_size = try self.rdr.readAt(batch.data_full[0..data_size], self.header.size() + offset_start);
+        if (read_size != data_size) {
+            return ParserError.ShortRead;
         }
 
-        // NOTE: reads records in the range [index_start; index_end[
-        pub fn records(self: Self, batch: *Batch, index_start: u32, index_end: u32) !void {
-            if (index_start >= self.header.num_records) return ParserError.StartOffsetOutOfBounds;
-            if (index_end > self.header.num_records) return ParserError.EndOffsetOutOfBounds;
-            if (index_start >= index_end) return ParserError.StartIndexLargerThanEndIndex;
-
-            const records_num = index_end - index_start;
-            if (records_num > batch.offsets_full.len) return ParserError.BatchSizesTooSmall;
-
-            const data_size = try self.sizeOf(index_start, index_end);
-            if (data_size > batch.data_full.len) return ParserError.BatchDataTooSmall;
-
-            const offset_start = self.record_offsets[index_start];
-
-            const read_size = try self.input.readAt(batch.data_full[0..data_size], self.header.size() + offset_start);
-            if (read_size != data_size) {
-                return ParserError.ShortRead;
-            }
-
-            var offset: u32 = 0;
-            for (0..records_num) |i| {
-                const index = @as(u32, @intCast(index_start + i));
-                batch.offsets_full[i] = offset;
-                offset += @intCast(try self.sizeOf(index, index + 1));
-            }
-
-            // point user-facing slices into backing storage
-            batch.data = batch.data_full[0..read_size];
-            batch.offsets = batch.offsets_full[0..records_num];
+        var offset: u32 = 0;
+        for (0..records_num) |i| {
+            const index = @as(u32, @intCast(index_start + i));
+            batch.offsets_full[i] = offset;
+            offset += @intCast(try self.sizeOf(index, index + 1));
         }
-    };
-}
+
+        // point user-facing slices into backing storage
+        batch.data = batch.data_full[0..read_size];
+        batch.offsets = batch.offsets_full[0..records_num];
+    }
+};
 
 pub const Header = struct {
     pub const header_size = 32;
@@ -289,7 +286,7 @@ test "can write and read record batch" {
 
     var parser_buffers = try Buffers.init(std.testing.allocator, batch_write.data.len, batch_write.offsets.len);
     defer parser_buffers.deinit();
-    const parser = try Parser(@TypeOf(rdr)).init(&parser_buffers, rdr);
+    const parser = try Parser.init(&parser_buffers, rdr);
     defer parser.deinit();
 
     var batch_read = try Batch.init(gpa, 10 * stdx.MiB, 32 * 1024);

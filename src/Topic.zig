@@ -80,23 +80,20 @@ pub fn addBatch(self: *Self, bufs: record.Buffers, batch: Batch, ids_buf: []u64)
     return ids_buf[0..batch.offsets.len];
 }
 
-pub fn readBatch(self: *Self, bufs: *record.Buffers, batch: Batch, offset: u64, records_max: usize, bytes_max: usize) !void {
+pub fn readBatch(self: *Self, bufs: *record.Buffers, batch: *Batch, offset: u64, records_max: ?usize, bytes_max: ?usize) !void {
     const offset_next = self.offset_next;
     if (offset >= offset_next) return error.OffsetOutOfBounds;
 
-    if (records_max == 0) records_max = batch.offsets_full.len;
-    if (bytes_max == 0) bytes_max = batch.data_full.len;
-
-    assert(records_max <= batch.offsets);
-    assert(bytes_max <= batch.data.len);
+    assert(records_max orelse 0 <= batch.offsets.len);
+    assert(bytes_max orelse 0 <= batch.data.len);
 
     // find batch offset is located in
-    var batch_offset = undefined;
+    var batch_offset: u64 = undefined;
     var storage_file_offsets_index: usize = undefined;
 
     // NOTE: we probably want a lock around storage_file_offsets
-    for (self.storage_file_offsets.items - 1..0) |i| {
-        const batch_cur_offset = self.storage_file_offset.items[i];
+    for (self.storage_file_offsets.items.len - 1..0) |i| {
+        const batch_cur_offset = self.storage_file_offsets.items[i];
         if (batch_cur_offset <= offset) {
             batch_offset = batch_cur_offset;
             storage_file_offsets_index = i;
@@ -104,8 +101,8 @@ pub fn readBatch(self: *Self, bufs: *record.Buffers, batch: Batch, offset: u64, 
         }
     }
 
-    var records_left = @min(records_max, batch.offsets_full.len);
-    var bytes_left = @min(bytes_max, batch.data_full.len);
+    var records_left = records_max orelse batch.offsets_full.len;
+    var bytes_left = bytes_max orelse batch.data_full.len;
     var batches_left = (self.storage_file_offsets.items.len - 1) - storage_file_offsets_index;
 
     while (records_left > 0 and bytes_left > 0 and batches_left > 0) {
@@ -113,17 +110,14 @@ pub fn readBatch(self: *Self, bufs: *record.Buffers, batch: Batch, offset: u64, 
         const rdr = try reader(self.strg, self.name, batch_offset);
         defer rdr.close();
 
-        // TODO: we should include the size of the last record in a record
-        // batch, so that we don't have to provide the file size.
-        const file_size = 1 * stdx.MiB;
         // NOTE: this will parse all of the file's offsets, which may be
         // unnecessary in some cases, where we can determine from just the
         // header that we can't continue any further.
-        const parser = try record.Parser(rdr).init(bufs, rdr, file_size);
+        const parser = try record.Parser.init(bufs, rdr);
 
         const batch_records_max = @min(records_left, parser.record_offsets.len);
-        var batch_bytes = 0;
-        var batch_records = 0;
+        var batch_bytes: usize = 0;
+        var batch_records: usize = 0;
         for (0..batch_records_max - 1) |record_offsets_i| {
             const record_size = parser.record_offsets[record_offsets_i + 1] - parser.record_offsets[record_offsets_i];
             if (batch_bytes + record_size > bytes_left) break;
@@ -136,7 +130,7 @@ pub fn readBatch(self: *Self, bufs: *record.Buffers, batch: Batch, offset: u64, 
         batches_left -= 1;
 
         const batch_record_index = offset - batch_offset;
-        try parser.records(batch, batch_record_index, batch_record_index + batch_records);
+        try parser.records(batch, @intCast(batch_record_index), @intCast(batch_record_index + batch_records));
     }
 }
 
@@ -372,12 +366,11 @@ test "topic addBatch" {
     const topic_name = "topic";
     const batch_records = 8;
     const record_size = 32;
+    const batch_file_size = record.batch_file_size(batch_records * record_size, batch_records);
 
-    // TODO: set correct size
-    var strg_helper = try testing.MemoryStorageHelper.init(gpa, io, 512);
+    var strg_helper = try testing.MemoryStorageHelper.init(gpa, io, batch_file_size);
     defer strg_helper.deinit();
 
-    // TODO: set correct size
     var topic_bufs = try Buffers.init_alloc(gpa, 512, 512);
     defer topic_bufs.deinit();
 
@@ -385,13 +378,31 @@ test "topic addBatch" {
     var topic = try Self.init(gpa, clock, strg_helper.storage, &topic_bufs, topic_name);
     defer topic.deinit();
 
-    const record_bufs = try record.Buffers.init(gpa, 512, 512);
+    var record_bufs = try record.Buffers.init(gpa, 512, 512);
     defer record_bufs.deinit();
-    const batch = try testing.randomBatch(gpa, batch_records, record_size);
-    defer batch.deinit();
 
     var ids_buf: [batch_records]u64 = undefined;
-    const record_ids = try topic.addBatch(record_bufs, batch, &ids_buf);
 
-    assert(std.mem.eql(u64, record_ids, &([_]u64{ 0, 1, 2, 3, 4, 5, 6, 7 })));
+    for (0..5) |i| {
+        const batch_write = try testing.randomBatch(gpa, batch_records, record_size);
+        defer batch_write.deinit();
+        const record_ids = try topic.addBatch(record_bufs, batch_write, &ids_buf);
+
+        assert(std.mem.eql(u64, record_ids, &([_]u64{
+            i * batch_records + 0,
+            i * batch_records + 1,
+            i * batch_records + 2,
+            i * batch_records + 3,
+            i * batch_records + 4,
+            i * batch_records + 5,
+            i * batch_records + 6,
+            i * batch_records + 7,
+        })));
+
+        var batch_read = try Batch.init(gpa, batch_records * record_size, batch_records);
+        try topic.readBatch(&record_bufs, &batch_read, i * batch_records, null, null);
+
+        assert(std.mem.eql(u32, batch_read.offsets, batch_write.offsets));
+        assert(std.mem.eql(u8, batch_read.data, batch_write.data));
+    }
 }

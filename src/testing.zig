@@ -39,12 +39,12 @@ const TestBatch = struct {
 
     parser_buffers: ?record.Buffers,
 
-    pub fn parser(self: *TestBatch, rdr: storage.Reader) !record.Parser(storage.Reader) {
+    pub fn parser(self: *TestBatch, rdr: storage.Reader) !record.Parser {
         std.debug.assert(self.parser_buffers == null); // don't leak parser_buffers
 
         const file_size = record.batch_file_size(self.batch.data.len, self.batch.offsets.len);
         self.parser_buffers = try record.Buffers.init(self.allocator, file_size, self.batch.offsets.len);
-        return try record.Parser(@TypeOf(rdr)).init(&self.parser_buffers.?, rdr);
+        return try record.Parser.init(&self.parser_buffers.?, rdr);
     }
 
     pub fn deinit(self: TestBatch) void {
