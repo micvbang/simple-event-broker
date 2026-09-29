@@ -117,13 +117,19 @@ func (c *DiskCache) Reader(key string) (io.ReadSeekCloser, error) {
 func (c *DiskCache) SizeOf(key string) (CacheItem, error) {
 	log := c.log.WithField("key", key)
 
-	fileInfo, err := os.Stat(key)
+	path, err := c.cachePath(key)
+	if err != nil {
+		return CacheItem{}, fmt.Errorf("getting cachePath: %w", err)
+	}
+
+	fileInfo, err := os.Stat(path)
 	if err != nil {
 		return CacheItem{}, fmt.Errorf("calling os.Stat: %w", err)
 	}
 
 	log.Debugf("found")
 	return CacheItem{
+		Key:        key,
 		Size:       fileInfo.Size(),
 		AccessedAt: fileInfo.ModTime(),
 	}, nil

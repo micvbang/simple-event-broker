@@ -86,6 +86,36 @@ func TestCacheEvictLeastRecentlyUsed(t *testing.T) {
 	})
 }
 
+// TestStorageCacheItemKeyMatchesLookupKey verifies that every sebcache.Storage
+// implementation returns CacheItem values whose Key field matches the key
+// that was used to look them up, both from List() and from SizeOf().
+// This is a regression test for a bug that was spotted on 2026-09-29.
+func TestStorageCacheItemKeyMatchesLookupKey(t *testing.T) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage sebcache.Storage) {
+		key := "some/nested/key"
+
+		wtr, err := cacheStorage.Writer(key)
+		require.NoError(t, err)
+
+		_, err = wtr.Write(tester.RandomBytes(t, 32))
+		require.NoError(t, err)
+		require.NoError(t, wtr.Close())
+
+		// List() must report the item under the same Key it's stored under.
+		items, err := cacheStorage.List()
+		require.NoError(t, err)
+
+		item, ok := items[key]
+		require.True(t, ok, "expected %s to be present in List()", key)
+		require.Equal(t, key, item.Key)
+
+		// SizeOf() must report the same Key that was looked up.
+		sizeItem, err := cacheStorage.SizeOf(key)
+		require.NoError(t, err)
+		require.Equal(t, key, sizeItem.Key)
+	})
+}
+
 // TestCacheEvictLeastRecentlyUsedMaxBytes verifies that calls to
 // EvictLeastRecentlyUsed ensures that the cache contains at most the given
 // number of bytes, potentially evicting more than one item per call.

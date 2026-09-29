@@ -9,6 +9,7 @@ import (
 
 	"github.com/micvbang/go-helpy/mapy"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/seberr"
 )
 
 type Storage interface {
@@ -99,21 +100,29 @@ func (c *Cache) Write(key string, bs []byte) (int, error) {
 func (c *Cache) Reader(key string) (io.ReadSeekCloser, error) {
 	log := c.log.WithField("key", key)
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	r, err := c.storage.Reader(key)
 	if err != nil {
 		return nil, fmt.Errorf("reading from cache storage: %w", err)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	item, ok := c.cacheItems[key]
 	if !ok {
 		log.Debugf("not found in cache items, adding")
 		newItem, err := c.storage.SizeOf(key)
 		if err == nil {
 			item = newItem
+		} else {
+			// NOTE: should only happen if
+			// 1) the file was deleted between opening it and getting its size
+			// 2) the storage implementation is broken somehow.
+			r.Close()
+			return nil, seberr.ErrNotInCache
 		}
 	}
+
 	item.AccessedAt = c.now()
 	c.cacheItems[key] = item
 
