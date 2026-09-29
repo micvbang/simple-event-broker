@@ -34,6 +34,7 @@ func init() {
 
 	// client
 	clientCmd.AddCommand(clientGetCmd)
+	clientCmd.AddCommand(clientTopicCmd)
 
 	// offsets
 	offsetsCmd.AddCommand(offsetsWriteCmd)
