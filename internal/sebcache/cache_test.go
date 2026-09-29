@@ -2,6 +2,7 @@ package sebcache_test
 
 import (
 	"fmt"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -169,6 +170,28 @@ func TestCacheEvictLeastRecentlyEmptyCache(t *testing.T) {
 	})
 }
 
+// TestEvictionSwallowsRemoveErrors verifies that EvictLeastRecentlyUsed returns an error
+// when >= 1 call to storage.Remove() fails.
+// Fix for a regression found on 2026-09-29.
+func TestCacheEvictLeastRecentlyUsedReturnsRemoveErrors(t *testing.T) {
+	storage := &cacheStorageMock{}
+	storage.MockList = func() (map[string]sebcache.CacheItem, error) {
+		return map[string]sebcache.CacheItem{
+			"a": {Key: "a", Size: 1},
+			"b": {Key: "b", Size: 1},
+		}, nil
+	}
+	storage.MockRemove = func(key string) error {
+		return fmt.Errorf("failed removing %s", key)
+	}
+
+	cache, err := sebcache.New(log, storage)
+	require.NoError(t, err)
+
+	err = cache.EvictLeastRecentlyUsed(0)
+	require.Error(t, err, "every single storage.Remove() call failed, but EvictLeastRecentlyUsed reported no error")
+}
+
 // TestCacheReaderFileNotCached verifies that Reader() returns ErrNotInCache
 // when attempting to read a file from cache that does not exist.
 func TestCacheReaderFileNotCached(t *testing.T) {
@@ -327,6 +350,8 @@ type cacheStorageMock struct {
 
 	MockList   func() (map[string]sebcache.CacheItem, error)
 	ListCalled bool
+
+	MockWriter func(key string) (io.WriteCloser, error)
 }
 
 func (c *cacheStorageMock) Remove(key string) error {
@@ -337,4 +362,73 @@ func (c *cacheStorageMock) Remove(key string) error {
 func (c *cacheStorageMock) List() (map[string]sebcache.CacheItem, error) {
 	c.ListCalled = true
 	return c.MockList()
+}
+
+func (c *cacheStorageMock) Writer(key string) (io.WriteCloser, error) {
+	return c.MockWriter(key)
+}
+
+type nopWriteCloser struct{ io.Writer }
+
+func (nopWriteCloser) Close() error { return nil }
+
+// TestEvictionBlocksConcurrentIngestWrite proves that Cache.EvictLeastRecentlyUsed
+// does not hold the Cache-wide mutex while physically deleting files from disk.
+func TestEvictionBlocksConcurrentIngestWrite(t *testing.T) {
+	const (
+		numItemsToEvict = 20
+		removeLatency   = 10 * time.Millisecond
+	)
+
+	storage := &cacheStorageMock{}
+
+	items := make(map[string]sebcache.CacheItem, numItemsToEvict)
+	for i := range numItemsToEvict {
+		key := fmt.Sprintf("old-batch-%d", i)
+		items[key] = sebcache.CacheItem{Key: key, Size: 1}
+	}
+
+	storage.MockList = func() (map[string]sebcache.CacheItem, error) {
+		return items, nil
+	}
+	storage.MockRemove = func(key string) error {
+		// simulate a slow backing-store delete (S3 DeleteObject, slow disk, etc.)
+		time.Sleep(removeLatency)
+		return nil
+	}
+	storage.MockWriter = func(key string) (io.WriteCloser, error) {
+		return nopWriteCloser{io.Discard}, nil
+	}
+
+	cache, err := sebcache.New(log, storage)
+	require.NoError(t, err)
+
+	evictionDone := make(chan struct{})
+	go func() {
+		defer close(evictionDone)
+		// evict everything -> maxBytes 0 -> triggers numItemsToEvict sequential
+		// storage.Remove() calls, ALL while holding cache.mu.
+		err := cache.EvictLeastRecentlyUsed(0)
+		require.NoError(t, err)
+	}()
+
+	// allow EvictLeastRecentlyUsed to acquire the lock
+	time.Sleep(5 * time.Millisecond)
+
+	// simulate Topic.AddRecords() creating a new, unrelated cache entry
+	t0 := time.Now()
+	wtr, err := cache.Writer("brand-new-incoming-batch")
+	require.NoError(t, err)
+	require.NoError(t, wtr.Close())
+	ingestWriteDuration := time.Since(t0)
+
+	<-evictionDone
+
+	t.Logf("ingest-path cache write blocked for %s (eviction of %d items takes ~%s)",
+		ingestWriteDuration, numItemsToEvict, time.Duration(numItemsToEvict)*removeLatency)
+
+	// If Cache.Writer()/Close() is NOT blocked by the eviction's lock hold,
+	// the call should complete near-instantly.
+	minBlockTimeIfLockWasHeld := time.Duration(numItemsToEvict) * removeLatency / 2
+	require.Greater(t, minBlockTimeIfLockWasHeld, ingestWriteDuration)
 }

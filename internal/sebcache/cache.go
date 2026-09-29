@@ -1,6 +1,7 @@
 package sebcache
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -151,7 +152,6 @@ func (c *Cache) EvictLeastRecentlyUsed(maxSize int64) error {
 	log := c.log.WithField("maxSize", maxSize)
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	cacheItems := mapy.Values(c.cacheItems)
 	sort.Slice(cacheItems, func(i, j int) bool {
@@ -173,25 +173,35 @@ func (c *Cache) EvictLeastRecentlyUsed(maxSize int64) error {
 		log.Debugf("deleting all items last accessed at <= %s", cacheItemsToDelete[0].AccessedAt)
 	}
 
+	// Remove entries from the cache so that we can release the lock and
+	// continue to actually delete the files
+	for _, item := range cacheItemsToDelete {
+		delete(c.cacheItems, item.Key)
+	}
+	cacheSize := c.size()
+	c.mu.Unlock()
+
+	// NOTE: if c.storage.Remove fails and a file actually remains on the disk, it will
+	// remain there forever.
 	bytesDeleted := int64(0)
 	itemsDeleted := 0
+	var removeErrs error = nil
 	for _, item := range cacheItemsToDelete {
 		log.Debugf("deleting %s (%d bytes)", item.Key, item.Size)
 		err := c.storage.Remove(item.Key)
 		if err != nil {
 			log.Errorf("deleting '%s': %w", item.Key, err)
-			return fmt.Errorf("deleting %s: %w", item.Key, err)
+			removeErrs = errors.Join(removeErrs, fmt.Errorf("deleting %s: %w", item.Key, err))
+			continue
 		}
 
 		itemsDeleted += 1
 		bytesDeleted += item.Size
-		delete(c.cacheItems, item.Key)
 	}
 
-	cacheSize := c.size()
 	log.Infof("deleted %d items (%d bytes) -> cache is now %d bytes", itemsDeleted, bytesDeleted, cacheSize)
 
-	return nil
+	return removeErrs
 
 }
 
