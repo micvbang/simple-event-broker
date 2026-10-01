@@ -1027,3 +1027,76 @@ func benchmarkTopicReadRecords(b *testing.B, readRecord func(t *sebtopic.Topic, 
 		}
 	}
 }
+
+// TestTopicClosesCacheReaders verifies that every cache reader opened by
+// ReadRecords() and Metadata() is closed again.
+// This is a regression test.
+func TestTopicClosesCacheReaders(t *testing.T) {
+	cacheStorage := &closeCountingCacheStorage{Storage: sebcache.NewMemoryStorage(log)}
+	cache, err := sebcache.New(log, cacheStorage)
+	require.NoError(t, err)
+
+	topic, err := sebtopic.New(log, sebtopic.NewMemoryStorage(log), "topic", cache)
+	require.NoError(t, err)
+
+	for range 2 {
+		_, err = topic.AddRecords(tester.MakeRandomRecordBatchSize(2, 1000))
+		require.NoError(t, err)
+	}
+
+	tests := map[string]func() error{
+		"batch 2's first record doesn't fit": func() error {
+			batch := tester.NewBatch(10, 10*sizey.KB)
+			return topic.ReadRecords(context.Background(), &batch, 0, 10, 2500)
+		},
+		"reading records fails": func() error {
+			batch := tester.NewBatch(10, 10) // too small to hold a single record
+			err := topic.ReadRecords(context.Background(), &batch, 0, 10, 999)
+			require.ErrorIs(t, err, seberr.ErrPayloadTooLarge)
+			return nil
+		},
+		"metadata": func() error {
+			_, err := topic.Metadata()
+			return err
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			opensBefore := cacheStorage.opens
+
+			// Act
+			err := test()
+
+			// Assert
+			require.NoError(t, err)
+			require.Greater(t, cacheStorage.opens, opensBefore)
+			require.Equal(t, cacheStorage.opens, cacheStorage.closes)
+		})
+	}
+}
+
+type closeCountingCacheStorage struct {
+	sebcache.Storage
+	opens  int
+	closes int
+}
+
+func (s *closeCountingCacheStorage) Reader(key string) (io.ReadSeekCloser, error) {
+	r, err := s.Storage.Reader(key)
+	if err != nil {
+		return nil, err
+	}
+	s.opens += 1
+	return &closeCountingReader{ReadSeekCloser: r, storage: s}, nil
+}
+
+type closeCountingReader struct {
+	io.ReadSeekCloser
+	storage *closeCountingCacheStorage
+}
+
+func (r *closeCountingReader) Close() error {
+	r.storage.closes += 1
+	return r.ReadSeekCloser.Close()
+}

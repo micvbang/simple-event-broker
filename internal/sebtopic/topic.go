@@ -271,15 +271,15 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 
 		// we read enough records to satisfy the request
 		if numRecords == 0 {
+			rb.Close()
 			break
 		}
 
 		err = rb.Records(batch, batchRecordIndex, batchRecordIndex+numRecords)
+		rb.Close()
 		if err != nil {
 			return fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
 		}
-
-		rb.Close()
 
 		// no more relevant records in batch -> prepare to check next batch
 		batchOffsetIndex += 1
@@ -312,6 +312,7 @@ func (s *Topic) Metadata() (Metadata, error) {
 		}
 
 		latestCommitAt = time.UnixMicro(p.Header.UnixEpochUs)
+		p.Close()
 	}
 
 	return Metadata{
@@ -376,6 +377,7 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 
 	rb, err := sebrecords.Parse(f)
 	if err != nil {
+		f.Close()
 		return nil, fmt.Errorf("parsing record batch '%s': %w", recordBatchPath, err)
 	}
 	return rb, nil
