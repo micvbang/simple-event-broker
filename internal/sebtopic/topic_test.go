@@ -684,6 +684,33 @@ func TestTopicReadRecordsRandomRecordSizes(t *testing.T) {
 	})
 }
 
+// TestTopicReadRecordsSoftMaxBytesStopsWithinBatch verifies that ReadRecords()
+// does not skip the remaining records of a batch when softMaxBytes is reached
+// in the middle of it, even if the first record of the next batch would fit.
+// This is a regression test for a bug spotted on 2026-10-01.
+func TestTopicReadRecordsSoftMaxBytesStopsWithinBatch(t *testing.T) {
+	tester.TestTopicStorageAndCache(t, func(t *testing.T, storage sebtopic.Storage, cache *sebcache.Cache) {
+		topic, err := sebtopic.New(log, storage, "topic", cache)
+		require.NoError(t, err)
+
+		batch1 := tester.MakeRandomRecordBatchSize(3, 1000) // file 1
+		_, err = topic.AddRecords(batch1)
+		require.NoError(t, err)
+
+		batch2 := tester.MakeRandomRecordBatchSize(1, 400) // file 2
+		_, err = topic.AddRecords(batch2)
+		require.NoError(t, err)
+
+		// Act
+		gotBatch := tester.NewBatch(10, 10*sizey.KB)
+		err = topic.ReadRecords(context.Background(), &gotBatch, 0, 100, 2500)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, batch1.IndividualRecords()[:2], gotBatch.IndividualRecords())
+	})
+}
+
 // TestTopicReadRecordsOutOfBounds verifies that seberr.ErrOutOfBounds is returned
 // when requesting an offset larger than the existing max offset.
 func TestTopicReadRecordsOutOfBounds(t *testing.T) {

@@ -233,9 +233,10 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 	recordBatchBytes := uint32(0)
 	batchRecordIndex := uint32(offset - batchOffset)
 	firstRecord := true
+	nextRecordFits := true
 
 	moreRecords := func() bool { return batch.Len() < maxRecords }
-	moreBytes := func() bool { return (!trackByteSize || recordBatchBytes < uint32(softMaxBytes)) }
+	moreBytes := func() bool { return (!trackByteSize || (recordBatchBytes < uint32(softMaxBytes) && nextRecordFits)) }
 	moreBatches := func() bool { return batchOffsetIndex < len(recordBatchOffsets) }
 
 	for moreRecords() && moreBytes() && moreBatches() {
@@ -258,6 +259,7 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 
 			for _, recordSize := range rb.RecordSizes[batchRecordIndex : batchRecordIndex+batchMaxRecords] {
 				if !firstRecord && recordBatchBytes+recordSize > uint32(softMaxBytes) {
+					nextRecordFits = false
 					break
 				}
 
@@ -277,8 +279,9 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 			return fmt.Errorf("record batch '%s': %w", s.recordBatchPath(batchOffset), err)
 		}
 
-		// no more relevant records in batch -> prepare to check next batch
 		rb.Close()
+
+		// no more relevant records in batch -> prepare to check next batch
 		batchOffsetIndex += 1
 		batchRecordIndex = 0
 	}
