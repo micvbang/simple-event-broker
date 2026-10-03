@@ -148,8 +148,8 @@ func (rb *Parser) Records(batch *Batch, recordIndexStart uint32, recordIndexEnd 
 		return fmt.Errorf("%w: not enough bytes left in buffer to satisfy read; %d required, %d left", seberr.ErrPayloadTooLarge, requestedBytes, bytesLeftInBatch)
 	}
 
-	fileOffsetStart := rb.Header.Size() + recordOffsetStart
-	_, err := rb.rdr.Seek(int64(fileOffsetStart), io.SeekStart)
+	fileOffsetStart := int64(rb.Header.Size()) + int64(recordOffsetStart)
+	_, err := rb.rdr.Seek(fileOffsetStart, io.SeekStart)
 	if err != nil {
 		return fmt.Errorf("seeking for record %d/%d: %w", recordIndexStart, len(rb.recordIndex), err)
 	}

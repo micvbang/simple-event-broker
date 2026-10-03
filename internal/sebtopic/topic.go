@@ -182,6 +182,10 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 // to fetch until one of the above conditions were met. This means that the
 // returned value should be used even if err is non-nil!
 func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset uint64, maxRecords int, softMaxBytes int) error {
+	if maxRecords < 0 || softMaxBytes < 0 {
+		return fmt.Errorf("%w: record and byte limits must be nonnegative", seberr.ErrBadInput)
+	}
+
 	if offset >= s.nextOffset.Load() {
 		return fmt.Errorf("offset does not exist: %w", seberr.ErrOutOfBounds)
 	}
@@ -211,13 +215,13 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 	}
 
 	trackByteSize := softMaxBytes != 0
-	recordBatchBytes := uint32(0)
+	recordBatchBytes := uint64(0)
 	batchRecordIndex := uint32(offset - batchOffset)
 	firstRecord := true
 	nextRecordFits := true
 
 	moreRecords := func() bool { return batch.Len() < maxRecords }
-	moreBytes := func() bool { return (!trackByteSize || (recordBatchBytes < uint32(softMaxBytes) && nextRecordFits)) }
+	moreBytes := func() bool { return (!trackByteSize || (recordBatchBytes < uint64(softMaxBytes) && nextRecordFits)) }
 	moreBatches := func() bool { return batchOffsetIndex < len(recordBatchOffsets) }
 
 	for moreRecords() && moreBytes() && moreBatches() {
@@ -239,13 +243,13 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 			numRecords = 0
 
 			for _, recordSize := range rb.RecordSizes[batchRecordIndex : batchRecordIndex+batchMaxRecords] {
-				if !firstRecord && recordBatchBytes+recordSize > uint32(softMaxBytes) {
+				if !firstRecord && recordBatchBytes+uint64(recordSize) > uint64(softMaxBytes) {
 					nextRecordFits = false
 					break
 				}
 
 				numRecords += 1
-				recordBatchBytes += recordSize
+				recordBatchBytes += uint64(recordSize)
 				firstRecord = false
 			}
 		}
