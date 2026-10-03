@@ -318,6 +318,13 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 			return nil, fmt.Errorf("opening reader '%s': %w", recordBatchPath, err)
 		}
 
+		backingClosed := false
+		defer func() {
+			if !backingClosed {
+				backingReader.Close()
+			}
+		}()
+
 		r := backingReader
 		if s.compression != nil {
 			r, err = s.compression.NewReader(backingReader)
@@ -325,6 +332,13 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 				return nil, fmt.Errorf("creating compression reader: %w", err)
 			}
 		}
+
+		compressionClosed := s.compression == nil
+		defer func() {
+			if !compressionClosed {
+				r.Close()
+			}
+		}()
 
 		// write to cache
 		cacheFile, err := s.cache.Writer(recordBatchPath)
@@ -338,6 +352,7 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 
 		if s.compression != nil {
 			r.Close()
+			compressionClosed = true
 		}
 
 		err = cacheFile.Close()
@@ -346,6 +361,7 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 		}
 
 		err = backingReader.Close()
+		backingClosed = true
 		if err != nil {
 			return nil, fmt.Errorf("closing backing reader: %w", err)
 		}
