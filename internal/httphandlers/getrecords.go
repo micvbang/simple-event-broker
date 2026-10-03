@@ -107,7 +107,6 @@ func GetRecords(log logger.Logger, batchPool *syncy.Pool[*sebrecords.Batch], s R
 		if errIsContext {
 			log.Debugf("context ended: %s", err)
 			w.WriteHeader(http.StatusPartialContent)
-			return
 		}
 
 		log.Debugf("sizes: %d, data: %d", len(batch.Sizes), len(batch.Data))
