@@ -10,7 +10,6 @@ import (
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
-	"github.com/micvbang/go-helpy/timey"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
@@ -325,15 +324,17 @@ func TestBrokerMetadataHappyPath(t *testing.T) {
 		const topicName = "topic-name"
 
 		for numRecords := 1; numRecords <= 10; numRecords++ {
+			beforeWrite := time.Now().UnixMicro()
 			_, err := s.AddRecords(topicName, tester.MakeRandomRecordBatch(1))
 			require.NoError(t, err)
+			afterWrite := time.Now().UnixMicro()
 
 			gotMetadata, err := s.Metadata(topicName)
 			require.NoError(t, err)
-			t0 := time.Now()
 
 			require.Equal(t, uint64(numRecords), gotMetadata.NextOffset)
-			require.True(t, timey.DiffEqual(5*time.Millisecond, t0, gotMetadata.LatestCommitAt))
+			require.GreaterOrEqual(t, gotMetadata.LatestCommitAt.UnixMicro(), beforeWrite)
+			require.LessOrEqual(t, gotMetadata.LatestCommitAt.UnixMicro(), afterWrite)
 		}
 	})
 }

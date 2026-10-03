@@ -11,7 +11,6 @@ import (
 	"github.com/micvbang/go-helpy/inty"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/slicey"
-	"github.com/micvbang/go-helpy/timey"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/tester"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
@@ -769,18 +768,20 @@ func TestTopicMetadata(t *testing.T) {
 
 		for i := 1; i <= 5; i++ {
 			batch := tester.MakeRandomRecordBatch(32)
+			beforeWrite := time.Now().UnixMicro()
 			_, err = topic.AddRecords(batch)
 			require.NoError(t, err)
+			afterWrite := time.Now().UnixMicro()
 
 			// Act
 			gotMetadata, err := topic.Metadata()
 			require.NoError(t, err)
-			t0 := time.Now()
 
 			// Assert
 			expectedNextOffset := uint64(i * batch.Len())
 			require.Equal(t, expectedNextOffset, gotMetadata.NextOffset)
-			require.True(t, timey.DiffEqual(5*time.Millisecond, t0, gotMetadata.LatestCommitAt))
+			require.GreaterOrEqual(t, gotMetadata.LatestCommitAt.UnixMicro(), beforeWrite)
+			require.LessOrEqual(t, gotMetadata.LatestCommitAt.UnixMicro(), afterWrite)
 		}
 	})
 }

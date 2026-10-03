@@ -118,6 +118,15 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 		return nil, fmt.Errorf("opening writer '%s': %w", rbPath, err)
 	}
 
+	committed := false
+	defer func() {
+		if !committed {
+			if aborter, ok := backingWriter.(interface{ Abort() error }); ok {
+				aborter.Abort()
+			}
+		}
+	}()
+
 	w := backingWriter
 	if s.compression != nil {
 		w, err = s.compression.NewWriter(backingWriter)
@@ -125,6 +134,13 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 			return nil, fmt.Errorf("creating compression writer: %w", err)
 		}
 	}
+
+	compressionClosed := s.compression == nil
+	defer func() {
+		if !compressionClosed {
+			w.Close()
+		}
+	}()
 
 	t0 := time.Now()
 	err = sebrecords.Write(w, batch)
@@ -134,16 +150,20 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 
 	if s.compression != nil {
 		err = w.Close()
+		compressionClosed = true
 		if err != nil {
 			return nil, fmt.Errorf("closing compression writer: %w", err)
 		}
 	}
+
 	// once Close() returns, the data has been committed and can be retrieved by
 	// ReadRecord.
 	err = backingWriter.Close()
 	if err != nil {
 		return nil, fmt.Errorf("closing backing writer: %w", err)
 	}
+
+	committed = true
 
 	s.log.Infof("wrote %d records (%s bytes) to %s (%s)", batch.Len(), sizey.FormatBytes(len(batch.Data)), rbPath, time.Since(t0))
 
