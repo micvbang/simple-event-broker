@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
-	"slices"
 
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/seberr"
@@ -98,38 +98,46 @@ func MultipartFormDataToRecords(r io.Reader, boundary string, batch *sebrecords.
 			return err
 		}
 
-		// NOTE: in order to avoid allocations we use batch.Data as a buffer
-		// here. It will be overwritten with record data below.
-		batch.Data = batch.Data[:cap(batch.Data)]
-
-		// NOTE: we don't know how much data is coming in, so we have to allow for
-		// short reads
-		n, err := io.ReadFull(part, batch.Data)
-		shortRead := errors.Is(err, io.ErrUnexpectedEOF)
-		if err != nil && !shortRead {
-			return fmt.Errorf("copying '%s' of multipart/form-data: %w", RecordsMultipartSizesKey, err)
+		// Metadata has its own bound: a uint32 uses at most ten digits, with
+		// room for delimiters and ordinary whitespace. Payload capacity must
+		// not determine whether a valid list of sizes fits.
+		maxRecords := cap(batch.Sizes)
+		if int64(maxRecords) > (math.MaxInt64-3)/16 {
+			return fmt.Errorf("%w: sizes buffer capacity is too large", seberr.ErrBadInput)
 		}
-		if shortRead {
-			batch.Data = batch.Data[:n]
+
+		metadataLimit := int64(maxRecords)*16 + 2
+		metadata, err := io.ReadAll(io.LimitReader(part, metadataLimit+1))
+		if err != nil {
+			return fmt.Errorf("%w: reading sizes metadata: %w", seberr.ErrBadInput, err)
+		}
+
+		if int64(len(metadata)) > metadataLimit {
+			return fmt.Errorf("%w: sizes metadata exceeds %d bytes", seberr.ErrPayloadTooLarge, metadataLimit)
 		}
 
 		err = part.Close()
 		if err != nil {
-			return fmt.Errorf("closing multiwriter part: %w", err)
+			return fmt.Errorf("closing sizes part: %w", err)
 		}
 
-		if slices.Equal(batch.Data, []byte("null")) {
-			return fmt.Errorf("%w: null not a valid list of sizes", seberr.ErrBadInput)
-		}
-
-		err = json.Unmarshal(batch.Data, &batch.Sizes)
+		// Decode into a local slice so a rejected oversized list cannot grow
+		// the pooled batch's record capacity for subsequent requests.
+		sizes := batch.Sizes
+		err = json.Unmarshal(metadata, &sizes)
 		if err != nil {
 			return fmt.Errorf("%w: parsing batch sizes JSON: %s", seberr.ErrBadInput, err)
 		}
 
-		if len(batch.Sizes) == 0 {
+		if len(sizes) > maxRecords {
+			return fmt.Errorf("%w: batch contains %d records, maximum is %d", seberr.ErrPayloadTooLarge, len(sizes), maxRecords)
+		}
+
+		if len(sizes) == 0 {
 			return fmt.Errorf("%w: multipart '%s' must contain a json-encoded list of record sizes", seberr.ErrBadInput, RecordsMultipartSizesKey)
 		}
+
+		batch.Sizes = sizes
 	}
 
 	var sizesSum uint64

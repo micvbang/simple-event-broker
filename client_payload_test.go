@@ -78,3 +78,21 @@ func TestRecordClientGetRecordsEmptyRecord(t *testing.T) {
 	require.Len(t, records, 1)
 	require.Empty(t, records[0])
 }
+
+func TestRecordClientGetRecordsPayloadFitsBuffer(t *testing.T) {
+	srv := tester.HTTPServer(t)
+	defer srv.Close()
+
+	_, err := srv.Broker.AddRecords("proof", sebrecords.NewBatch([]uint32{1}, []byte("x")))
+	require.NoError(t, err)
+
+	client, err := seb.NewRecordClient(srv.Server.URL, tester.DefaultAPIKey)
+	require.NoError(t, err)
+
+	records, err := client.GetRecords("proof", 0, seb.GetRecordsInput{
+		MaxRecords: 1,
+		Buffer:     make([]byte, 1),
+	})
+	require.NoError(t, err, "the complete one-byte record fits the caller's buffer")
+	require.Equal(t, [][]byte{[]byte("x")}, records)
+}

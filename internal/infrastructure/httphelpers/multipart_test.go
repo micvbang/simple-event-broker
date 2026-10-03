@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"mime/multipart"
+	"strings"
 	"testing"
 
 	"github.com/micvbang/go-helpy/sizey"
@@ -19,6 +20,50 @@ type multipartToRecordsTestcase struct {
 	boundary    string
 	expectedErr error
 	expected    sebrecords.Batch
+}
+
+func TestMultipartSizesMetadataHasIndependentBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name, metadata, data string
+		maxRecords           int
+		err                  error
+	}{
+		{"tiny payload buffer", "[1]", "x", 1, nil},
+		{"whitespace", "[ 1 ]", "x", 1, nil},
+		{"too many records", "[0,0]", "", 1, seberr.ErrPayloadTooLarge},
+		{"metadata too large", "[" + strings.Repeat(" ", 64) + "1]", "x", 1, seberr.ErrPayloadTooLarge},
+		{"trailing JSON", "[1][0]", "x", 1, seberr.ErrBadInput},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var wire bytes.Buffer
+			mw := multipart.NewWriter(&wire)
+			part, err := mw.CreateFormField(httphelpers.RecordsMultipartSizesKey)
+			require.NoError(t, err)
+
+			_, err = io.WriteString(part, tc.metadata)
+			require.NoError(t, err)
+
+			part, err = mw.CreateFormField(httphelpers.RecordsMultipartRecordsKey)
+			require.NoError(t, err)
+
+			_, err = io.WriteString(part, tc.data)
+			require.NoError(t, err)
+			require.NoError(t, mw.Close())
+
+			batch := sebrecords.NewBatch(make([]uint32, 0, tc.maxRecords), make([]byte, 0, 1))
+			err = httphelpers.MultipartFormDataToRecords(&wire, mw.Boundary(), &batch)
+			require.ErrorIs(t, err, tc.err)
+			require.Equal(t, tc.maxRecords, cap(batch.Sizes))
+
+			if tc.err == nil {
+				require.Equal(t, []uint32{1}, batch.Sizes)
+				require.Equal(t, []byte("x"), batch.Data)
+			} else {
+				require.Empty(t, batch.Sizes)
+				require.Empty(t, batch.Data)
+			}
+		})
+	}
 }
 
 // TestMultipartFormDataToRecordsPartsRequired verifies that
