@@ -242,6 +242,10 @@ func (c *RecordClient) statusCode(statusCode int) error {
 	case http.StatusRequestEntityTooLarge:
 		return fmt.Errorf("status code %d: %w", statusCode, seberr.ErrPayloadTooLarge)
 	default:
+		if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+			return fmt.Errorf("unexpected status code %d", statusCode)
+		}
+
 		return nil
 	}
 }

@@ -2,6 +2,9 @@ package seb_test
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -16,6 +19,33 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestRecordClientRejectsHTTPFailures(t *testing.T) {
+	for _, status := range []int{400, 405, 500, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				fmt.Fprint(w, "server error")
+			}))
+			defer srv.Close()
+
+			client, err := seb.NewRecordClient(srv.URL, "key")
+			require.NoError(t, err)
+			require.ErrorContains(t, client.AddRecords("topic", []uint32{1}, []byte("x")), fmt.Sprint(status))
+
+			record, err := client.GetRecord("topic", 0)
+			require.ErrorContains(t, err, fmt.Sprint(status))
+			require.Nil(t, record)
+
+			records, err := client.GetRecords("topic", 0, seb.GetRecordsInput{})
+			require.ErrorContains(t, err, fmt.Sprint(status))
+			require.Nil(t, records)
+
+			_, err = client.GetTopic("topic")
+			require.ErrorContains(t, err, fmt.Sprint(status))
+		})
+	}
+}
 
 func TestRecordClientAddRecordsHappyPath(t *testing.T) {
 	srv := tester.HTTPServer(t)
