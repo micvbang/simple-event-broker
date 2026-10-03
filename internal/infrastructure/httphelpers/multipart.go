@@ -8,7 +8,6 @@ import (
 	"mime/multipart"
 	"slices"
 
-	"github.com/micvbang/go-helpy/slicey"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
 	"github.com/micvbang/simple-event-broker/seberr"
 )
@@ -133,9 +132,13 @@ func MultipartFormDataToRecords(r io.Reader, boundary string, batch *sebrecords.
 		}
 	}
 
-	sizesSum := slicey.Sum(batch.Sizes)
-	if cap(batch.Data) < int(sizesSum) {
-		return fmt.Errorf("%w: record data expected to be %d bytes, buffer is %d bytes", seberr.ErrPayloadTooLarge, sizesSum, cap(batch.Data))
+	var sizesSum uint64
+
+	for _, size := range batch.Sizes {
+		sizesSum += uint64(size)
+		if sizesSum > uint64(cap(batch.Data)) {
+			return fmt.Errorf("%w: record data expected to be at least %d bytes, buffer is %d bytes", seberr.ErrPayloadTooLarge, sizesSum, cap(batch.Data))
+		}
 	}
 
 	// records
@@ -145,19 +148,21 @@ func MultipartFormDataToRecords(r io.Reader, boundary string, batch *sebrecords.
 			return err
 		}
 
-		buf := batch.Data[:cap(batch.Data)]
+		buf := batch.Data[:int(sizesSum)]
 
-		// NOTE: we're intentionally opening up for the opportunity for a short
-		// read, so that we can verify that the given sizes match up with the
-		// record data we receive
-		n, err := io.ReadFull(part, buf)
-		if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		// Read exactly the declared payload, including zero-byte records.
+		_, err = io.ReadFull(part, buf)
+		if err != nil {
 			return fmt.Errorf("%w: copying '%s' of multipart/form-data: %w", seberr.ErrBadInput, RecordsMultipartRecordsKey, err)
 		}
-		if n != int(sizesSum) {
-			return fmt.Errorf("%w: sizes says the payload should be %d bytes, got %d", seberr.ErrBadInput, sizesSum, n)
+
+		// ReadFull alone cannot detect excess bytes when the buffer is full.
+		var extra [1]byte
+		if n, err := io.ReadFull(part, extra[:]); n != 0 || !errors.Is(err, io.EOF) {
+			return fmt.Errorf("%w: records payload exceeds its declared size or has an invalid ending", seberr.ErrBadInput)
 		}
-		batch.Data = batch.Data[:n]
+
+		batch.Data = buf
 
 		err = part.Close()
 		if err != nil {
