@@ -2,6 +2,7 @@ package sebtopic_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +11,54 @@ import (
 	sebtopic "github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/stretchr/testify/require"
 )
+
+func TestOffsetCondRemovesCancelledWaiters(t *testing.T) {
+	c := sebtopic.NewEmptyOffsetCond()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	for range 1000 {
+		require.ErrorIs(t, c.Wait(ctx, 0), context.Canceled)
+	}
+
+	require.Zero(t, c.Waiting(), "idle topics must not retain expired consumers")
+}
+
+func TestOffsetCondCancellationRacesWithBroadcast(t *testing.T) {
+	for range 100 {
+		c := sebtopic.NewEmptyOffsetCond()
+		ctx, cancel := context.WithCancel(context.Background())
+		returned := make(chan error, 1)
+
+		go func() {
+			returned <- c.Wait(ctx, 0)
+		}()
+
+		require.Eventually(t, func() bool {
+			return c.Waiting() == 1
+		}, time.Second, time.Millisecond)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+
+			cancel()
+		}()
+
+		go func() {
+			defer wg.Done()
+
+			c.Broadcast(0)
+		}()
+
+		wg.Wait()
+		err := <-returned
+		require.True(t, err == nil || errors.Is(err, context.Canceled))
+		require.Zero(t, c.Waiting())
+	}
+}
 
 func TestEmptyOffsetCondWaitsForFirstCommit(t *testing.T) {
 	c := sebtopic.NewEmptyOffsetCond()

@@ -68,7 +68,7 @@ func (c *OffsetCond) Wait(ctx context.Context, offset uint64) error {
 	}
 
 	ch := make(chan struct{})
-	c.waiting.PushBack(wait{
+	el := c.waiting.PushBack(wait{
 		offset: offset,
 		ch:     ch,
 	})
@@ -78,6 +78,10 @@ func (c *OffsetCond) Wait(ctx context.Context, offset uint64) error {
 	case <-ch:
 		return nil
 	case <-ctx.Done():
+		c.mu.Lock()
+		c.waiting.Remove(el)
+		c.mu.Unlock()
+
 		return ctx.Err()
 	}
 }
