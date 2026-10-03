@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -26,8 +27,9 @@ type Cache struct {
 	storage Storage
 	now     func() time.Time
 
-	mu         sync.Mutex
-	cacheItems map[string]CacheItem
+	mu          sync.Mutex
+	cacheItems  map[string]CacheItem
+	invalidKeys map[string]struct{}
 }
 
 // NewDiskCache returns a new Cache with DiskStorage.
@@ -58,34 +60,61 @@ func NewCacheWithNow(log logger.Logger, cacheStorage Storage, now func() time.Ti
 	}
 
 	return &Cache{
-		log:        log,
-		storage:    cacheStorage,
-		cacheItems: cacheItems,
-		now:        now,
+		log:         log,
+		storage:     cacheStorage,
+		cacheItems:  cacheItems,
+		invalidKeys: make(map[string]struct{}),
+		now:         now,
 	}, nil
 }
 
-func (c *Cache) Writer(key string) (io.WriteCloser, error) {
-	log := c.log.WithField("key", key)
+// WriteAbortCloser can discard a cache fill when its source reader fails.
+type WriteAbortCloser interface {
+	io.WriteCloser
+	Abort() error
+}
 
+func (c *Cache) Writer(key string) (WriteAbortCloser, error) {
 	w, err := c.storage.Writer(key)
 	if err != nil {
 		return nil, err
 	}
 
-	return newWriteCloseWrapper(w, func(size int64) {
-		log.Debugf("adding to cache items")
+	return &writeCloseWrapper{
+		wc: w,
+		finish: func(size int64, writeErr error) error {
+			// Readers cannot observe a partial publication between Close and removal.
+			c.mu.Lock()
+			defer c.mu.Unlock()
 
-		c.mu.Lock()
-		defer c.mu.Unlock()
+			if writeErr != nil {
+				if aborter, ok := w.(interface{ Abort() error }); ok {
+					return errors.Join(writeErr, aborter.Abort())
+				}
+			}
 
-		c.cacheItems[key] = CacheItem{
-			Size:       size,
-			AccessedAt: c.now(),
-			Key:        key,
-		}
+			err := errors.Join(writeErr, w.Close())
+			if err != nil {
+				delete(c.cacheItems, key)
+				c.invalidKeys[key] = struct{}{}
+				removeErr := c.storage.Remove(key)
+				if removeErr == nil || errors.Is(removeErr, os.ErrNotExist) {
+					delete(c.invalidKeys, key)
+				}
 
-	}), nil
+				return errors.Join(err, removeErr)
+			}
+
+			delete(c.invalidKeys, key)
+			c.cacheItems[key] = CacheItem{
+				Size:       size,
+				AccessedAt: c.now(),
+				Key:        key,
+			}
+
+			return nil
+		},
+	}, nil
 }
 
 func (c *Cache) Write(key string, bs []byte) (int, error) {
@@ -103,6 +132,10 @@ func (c *Cache) Reader(key string) (io.ReadSeekCloser, error) {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if _, invalid := c.invalidKeys[key]; invalid {
+		return nil, seberr.ErrNotInCache
+	}
 
 	r, err := c.storage.Reader(key)
 	if err != nil {
@@ -206,31 +239,47 @@ func (c *Cache) EvictLeastRecentlyUsed(maxSize int64) error {
 }
 
 type writeCloseWrapper struct {
-	wc         io.WriteCloser
-	size       int64
-	afterClose func(int64)
-}
-
-func newWriteCloseWrapper(wc io.WriteCloser, afterClose func(int64)) *writeCloseWrapper {
-	return &writeCloseWrapper{
-		wc:         wc,
-		afterClose: afterClose,
-	}
+	wc       io.WriteCloser
+	size     int64
+	writeErr error
+	closed   bool
+	closeErr error
+	finish   func(int64, error) error
 }
 
 func (w *writeCloseWrapper) Write(bs []byte) (int, error) {
+	if w.closed {
+		return 0, io.ErrClosedPipe
+	}
+
+	if w.writeErr != nil {
+		return 0, w.writeErr
+	}
+
 	n, err := w.wc.Write(bs)
 	w.size += int64(n)
+	if n != len(bs) && err == nil {
+		err = io.ErrShortWrite
+	}
+
+	w.writeErr = err
+
 	return n, err
 }
 
 func (w *writeCloseWrapper) Close() error {
-	err := w.wc.Close()
-	if err != nil {
-		return fmt.Errorf("closing writeCloseWrapper file: %w", err)
+	if !w.closed {
+		w.closed = true
+		w.closeErr = w.finish(w.size, w.writeErr)
 	}
 
-	w.afterClose(w.size)
+	return w.closeErr
+}
 
-	return nil
+func (w *writeCloseWrapper) Abort() error {
+	if !w.closed {
+		w.writeErr = io.ErrClosedPipe
+	}
+
+	return w.Close()
 }

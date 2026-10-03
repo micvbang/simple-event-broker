@@ -85,7 +85,9 @@ type cleanupCacheWriter struct {
 
 func (w cleanupCacheWriter) Write(p []byte) (int, error) {
 	if w.failure == "write" {
-		return 0, cacheFillFailure
+		n, _ := w.WriteCloser.Write(p[:1])
+
+		return n, cacheFillFailure
 	}
 
 	return w.WriteCloser.Write(p)
@@ -119,9 +121,19 @@ func TestTopicClosesBackingReadersOnCacheFillFailures(t *testing.T) {
 			require.NoError(t, err)
 
 			got := tester.NewBatch(1, 64)
-			_ = topic.ReadRecords(context.Background(), &got, 0, 1, 0)
+			require.NoError(t, topic.ReadRecords(context.Background(), &got, 0, 1, 0))
+			require.Equal(t, []byte("A"), got.Data)
+
+			got.Reset()
+			require.NoError(t, topic.ReadRecords(context.Background(), &got, 0, 1, 0))
+			require.Equal(t, []byte("A"), got.Data)
 			require.Positive(t, cs.attempts)
 			require.Positive(t, backing.opens)
+			require.Equal(t, backing.opens, backing.closes)
+			require.Equal(t, compression.opens, compression.closes)
+
+			_, err = sebtopic.New(log, backing, "topic", cache, sebtopic.WithCompress(compression))
+			require.NoError(t, err)
 			require.Equal(t, backing.opens, backing.closes)
 			require.Equal(t, compression.opens, compression.closes)
 		})

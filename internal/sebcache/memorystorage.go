@@ -64,10 +64,24 @@ type memoryWriter struct {
 }
 
 func (w *memoryWriter) Write(bs []byte) (int, error) {
+	if w.buf == nil {
+		return 0, io.ErrClosedPipe
+	}
+
 	return w.buf.Write(bs)
 }
 
+func (w *memoryWriter) Abort() error {
+	w.buf = nil
+
+	return nil
+}
+
 func (w *memoryWriter) Close() error {
+	if w.buf == nil {
+		return io.ErrClosedPipe
+	}
+
 	w.mc.mu.Lock()
 	defer w.mc.mu.Unlock()
 

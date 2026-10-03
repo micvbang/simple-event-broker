@@ -177,6 +177,10 @@ func (cw *cacheWriter) Write(bs []byte) (int, error) {
 	return cw.tmpFile.Write(bs)
 }
 
+func (cw *cacheWriter) Abort() error {
+	return errors.Join(cw.tmpFile.Close(), os.Remove(cw.tmpFile.Name()))
+}
+
 func (cw cacheWriter) Close() error {
 	err := cw.tmpFile.Close()
 	if err != nil {

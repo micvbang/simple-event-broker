@@ -1,6 +1,7 @@
 package sebtopic
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/micvbang/go-helpy/stringy"
 	"github.com/micvbang/go-helpy/uint64y"
 	"github.com/micvbang/simple-event-broker/internal/infrastructure/logger"
+	"github.com/micvbang/simple-event-broker/internal/infrastructure/nops"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/seboffsets"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
@@ -344,14 +346,31 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 			}
 		}()
 
+		fallback := func(cacheErr error) (*sebrecords.Parser, error) {
+			s.log.Errorf("cache fill failed for %s: %s", recordBatchPath, cacheErr)
+			if !compressionClosed {
+				r.Close()
+				compressionClosed = true
+			}
+
+			if !backingClosed {
+				backingReader.Close()
+				backingClosed = true
+			}
+
+			return s.parseBackingBatch(ctx, recordBatchPath)
+		}
+
 		// write to cache
 		cacheFile, err := s.cache.Writer(recordBatchPath)
 		if err != nil {
-			return nil, fmt.Errorf("writing backing storage result to cache: %w", err)
+			return fallback(fmt.Errorf("opening cache writer: %w", err))
 		}
+
 		_, err = io.Copy(cacheFile, r)
 		if err != nil {
-			return nil, fmt.Errorf("copying backing storage result to cache: %w", err)
+			cacheFile.Abort()
+			return fallback(fmt.Errorf("copying backing storage result to cache: %w", err))
 		}
 
 		if s.compression != nil {
@@ -361,7 +380,7 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 
 		err = cacheFile.Close()
 		if err != nil {
-			return nil, fmt.Errorf("closing cacheFile: %w", err)
+			return fallback(fmt.Errorf("closing cache file: %w", err))
 		}
 
 		err = backingReader.Close()
@@ -372,7 +391,7 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 
 		f, err = s.cache.Reader(recordBatchPath)
 		if err != nil {
-			return nil, fmt.Errorf("reading from cache just after writing it: %w", err)
+			return fallback(fmt.Errorf("reading cache after filling it: %w", err))
 		}
 	}
 
@@ -382,6 +401,37 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 		return nil, fmt.Errorf("parsing record batch '%s': %w", recordBatchPath, err)
 	}
 	return rb, nil
+}
+
+// parseBackingBatch is a seekable in-memory fallback for unavailable caches.
+// The ordinary cache-fill path remains streaming to avoid buffering healthy reads.
+func (s *Topic) parseBackingBatch(ctx context.Context, key string) (*sebrecords.Parser, error) {
+	backing, err := s.backingStorage.Reader(ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("opening backing fallback: %w", err)
+	}
+	defer backing.Close()
+
+	r := backing
+	if s.compression != nil {
+		r, err = s.compression.NewReader(backing)
+		if err != nil {
+			return nil, fmt.Errorf("creating fallback decompressor: %w", err)
+		}
+		defer r.Close()
+	}
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("reading backing fallback: %w", err)
+	}
+
+	parser, err := sebrecords.Parse(nops.NopReadSeekCloser(bytes.NewReader(data)))
+	if err != nil {
+		return nil, fmt.Errorf("parsing backing fallback: %w", err)
+	}
+
+	return parser, nil
 }
 
 func (s *Topic) offsetGetRecordBatchID(offset uint64) uint64 {
