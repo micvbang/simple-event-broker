@@ -104,6 +104,10 @@ func (b *BlockingBatcher) collectBatches() {
 		batchRecords := blockedCaller.batch.Len()
 
 		ctx, cancel := context.WithCancel(b.contextFactory())
+		if batchBytes >= b.bytesSoftMax {
+			cancel()
+		}
+
 		t0 := time.Now()
 
 	innerLoop:
