@@ -104,7 +104,6 @@ func (b *BlockingBatcher) collectBatches() {
 		batchRecords := blockedCaller.batch.Len()
 
 		ctx, cancel := context.WithCancel(b.contextFactory())
-		defer cancel()
 		t0 := time.Now()
 
 	innerLoop:
@@ -163,6 +162,7 @@ func (b *BlockingBatcher) collectBatches() {
 				break innerLoop
 			}
 		}
+		cancel()
 	}
 }
 
