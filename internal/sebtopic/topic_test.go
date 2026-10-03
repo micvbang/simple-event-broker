@@ -288,9 +288,9 @@ func TestStorageOpenExistingStorageAndAppend(t *testing.T) {
 	})
 }
 
-// TestStorageCacheWrite verifies that AddRecordBatch uses the cache to cache
-// the record batch.
-func TestStorageCacheWrite(t *testing.T) {
+// TestStorageCacheOnRead verifies that writes only commit to backing storage
+// and the first read populates the cache.
+func TestStorageCacheOnRead(t *testing.T) {
 	tester.TestTopicStorageAndCache(t, func(t *testing.T, backingStorage sebtopic.Storage, cache *sebcache.Cache) {
 		const topicName = "my_topic"
 
@@ -308,17 +308,22 @@ func TestStorageCacheWrite(t *testing.T) {
 
 		// Assert
 
-		// record batch must be written to both backing storage and cache.
+		// The committed batch is not cached until it is read.
 		_, err = cache.Reader(batchKey)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, seberr.ErrNotInCache)
 
-		_, err = backingStorage.Reader(context.Background(), batchKey)
+		rdr, err := backingStorage.Reader(context.Background(), batchKey)
 		require.NoError(t, err)
+		require.NoError(t, rdr.Close())
 
 		gotBatch := tester.NewBatch(numRecords, 4096)
 		err = s.ReadRecords(context.Background(), &gotBatch, offsets[0], 0, 0)
 		require.NoError(t, err)
 		require.Equal(t, batch.Data, gotBatch.Data)
+
+		cached, err := cache.Reader(batchKey)
+		require.NoError(t, err)
+		require.NoError(t, cached.Close())
 	})
 }
 
@@ -337,6 +342,9 @@ func TestStorageCacheReadFromCache(t *testing.T) {
 		offsets, err := s.AddRecords(batch)
 		require.NoError(t, err)
 		tester.RequireOffsets(t, 0, numRecords, offsets)
+
+		warm := tester.NewBatch(numRecords, 4096)
+		require.NoError(t, s.ReadRecords(context.Background(), &warm, offsets[0], 0, 0))
 
 		// NOTE: in order to prove that we're reading from the cache and not
 		// from the backing storage, we're truncating the file in the backing

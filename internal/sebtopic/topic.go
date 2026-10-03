@@ -157,28 +157,7 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	s.mu.Unlock()
 	s.nextOffset.Store(nextOffset)
 
-	// TODO: it would be nice to remove this from the "fastpath"
-	// NOTE: we are intentionally not returning caching errors to caller. It's
-	// (semi) fine if the file isn't written to cache since we can retrieve it
-	// from backing storage.
-	if s.cache != nil {
-		cacheWtr, err := s.cache.Writer(rbPath)
-		if err != nil {
-			s.log.Errorf("creating cache writer to cache (%s): %w", rbPath, err)
-			return offsets, nil
-		}
-
-		err = sebrecords.Write(cacheWtr, batch)
-		if err != nil {
-			s.log.Errorf("writing to cache (%s): %w", rbPath, err)
-		}
-
-		err = cacheWtr.Close()
-		if err != nil {
-			s.log.Errorf("closing cached file (%s): %w", rbPath, err)
-		}
-	}
-
+	// Cache batches on read; cache failures must not affect committed writes.
 	// inform potentially waiting consumers that new offsets have been added
 	if len(offsets) > 0 {
 		s.OffsetCond.Broadcast(slicey.Last(offsets))

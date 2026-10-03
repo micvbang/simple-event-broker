@@ -454,8 +454,13 @@ func TestBrokerConcurrency(t *testing.T) {
 		}
 
 		// concurrently verify the records that were written
+		var verifyWG sync.WaitGroup
+		verifyWG.Add(verifiers)
+
 		for range verifiers {
 			go func() {
+				defer verifyWG.Done()
+
 				for verification := range verifications {
 					batch := tester.NewBatch(256, 4096)
 
@@ -486,5 +491,6 @@ func TestBrokerConcurrency(t *testing.T) {
 
 		// stop verifiers once they've verified all writes
 		close(verifications)
+		verifyWG.Wait()
 	})
 }
