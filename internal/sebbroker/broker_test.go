@@ -134,7 +134,7 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 			getErr          error
 		}{
 			"false": {autoCreateTopic: false, addErr: seberr.ErrTopicNotFound, getErr: seberr.ErrTopicNotFound},
-			"true":  {autoCreateTopic: true, addErr: nil, getErr: seberr.ErrOutOfBounds},
+			"true":  {autoCreateTopic: true, addErr: nil, getErr: context.DeadlineExceeded},
 		}
 
 		for name, test := range tests {
@@ -151,8 +151,12 @@ func TestGetRecordsTopicDoesNotExist(t *testing.T) {
 
 				batch := tester.NewBatch(10, 1024)
 
+				// Empty auto-created topics wait for their first record.
+				readCtx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+				defer cancel()
+
 				// Act
-				err = broker.GetRecords(ctx, &batch, "does-not-exist", 0, 10, 1024)
+				err = broker.GetRecords(readCtx, &batch, "does-not-exist", 0, 10, 1024)
 				require.ErrorIs(t, err, test.getErr)
 
 				// Assert

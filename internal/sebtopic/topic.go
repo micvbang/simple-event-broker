@@ -79,7 +79,7 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 		recordBatchOffsets: recordBatchOffsets,
 		cache:              cache,
 		compression:        opts.Compression,
-		OffsetCond:         NewOffsetCond(0),
+		OffsetCond:         NewEmptyOffsetCond(),
 	}
 
 	if len(recordBatchOffsets) > 0 {
@@ -92,7 +92,9 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 
 		nextOffset := newestRecordBatchOffset + uint64(parser.Header.NumRecords)
 		topic.nextOffset.Store(nextOffset)
-		topic.OffsetCond = NewOffsetCond(nextOffset - 1)
+		if nextOffset > 0 {
+			topic.OffsetCond = NewOffsetCond(nextOffset - 1)
+		}
 	}
 
 	return topic, nil

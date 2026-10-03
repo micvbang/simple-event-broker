@@ -12,13 +12,23 @@ type OffsetCond struct {
 	mu            sync.Mutex
 	waiting       *list.List
 	currentOffset uint64
+	hasOffset     bool
 }
 
 func NewOffsetCond(offset uint64) *OffsetCond {
 	return &OffsetCond{
 		currentOffset: offset,
+		hasOffset:     true,
 		waiting:       list.New(),
 	}
+}
+
+// NewEmptyOffsetCond waits even for offset zero until a first commit is broadcast.
+func NewEmptyOffsetCond() *OffsetCond {
+	c := NewOffsetCond(0)
+	c.hasOffset = false
+
+	return c
 }
 
 type wait struct {
@@ -33,6 +43,7 @@ func (c *OffsetCond) Broadcast(offset uint64) {
 	defer c.mu.Unlock()
 
 	c.currentOffset = offset
+	c.hasOffset = true
 
 	for el := c.waiting.Front(); el != nil; {
 		next := el.Next()
@@ -51,7 +62,7 @@ func (c *OffsetCond) Broadcast(offset uint64) {
 // from the context expiring or nil.
 func (c *OffsetCond) Wait(ctx context.Context, offset uint64) error {
 	c.mu.Lock()
-	if offset <= c.currentOffset {
+	if c.hasOffset && offset <= c.currentOffset {
 		c.mu.Unlock()
 		return nil
 	}

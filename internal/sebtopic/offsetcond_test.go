@@ -11,6 +11,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestEmptyOffsetCondWaitsForFirstCommit(t *testing.T) {
+	c := sebtopic.NewEmptyOffsetCond()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	returned := make(chan error, 1)
+
+	go func() {
+		returned <- c.Wait(ctx, 0)
+	}()
+
+	require.Eventually(t, func() bool {
+		return c.Waiting() == 1
+	}, time.Second, time.Millisecond)
+
+	c.Broadcast(0)
+	require.NoError(t, <-returned)
+
+	// Once offset zero exists, even a cancelled context returns immediately.
+	cancel()
+	require.NoError(t, c.Wait(ctx, 0))
+}
+
 // TestOffsetCondDoesNotWaitWhenOffsetHighEnough verifies that Wait() does not
 // block if the existing offset is higher than the one that should be waited
 // for.
