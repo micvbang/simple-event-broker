@@ -35,6 +35,11 @@ func GetTopic(log logger.Logger, s TopicGetter) http.HandlerFunc {
 
 		metadata, err := s.Metadata(topicName)
 		if err != nil {
+			if errors.Is(err, seberr.ErrBadInput) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
 			if errors.Is(err, seberr.ErrTopicNotFound) {
 				log.Debugf("not found")
 				w.WriteHeader(http.StatusNotFound)

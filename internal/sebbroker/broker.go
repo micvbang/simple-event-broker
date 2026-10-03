@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,6 +105,10 @@ func (s *Broker) GetRecord(batch *sebrecords.Batch, topicName string, offset uin
 
 // CreateTopic creates a topic with the given name and default configuration.
 func (s *Broker) CreateTopic(topicName string) error {
+	if err := validateTopicName(topicName); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -212,6 +217,10 @@ func (s *Broker) makeTopicBatcher(topicName string) (topicBatcher, error) {
 }
 
 func (s *Broker) getTopicBatcher(topicName string) (topicBatcher, error) {
+	if err := validateTopicName(topicName); err != nil {
+		return topicBatcher{}, err
+	}
+
 	var err error
 	// log := s.log.WithField("topicName", topicName)
 
@@ -233,6 +242,15 @@ func (s *Broker) getTopicBatcher(topicName string) (topicBatcher, error) {
 	}
 
 	return tb, nil
+}
+
+// Topic names are single path components so storage keys cannot alias or nest.
+func validateTopicName(topicName string) error {
+	if topicName == "" || topicName == "." || topicName == ".." || strings.ContainsAny(topicName, "/\\\x00") {
+		return fmt.Errorf("%w: topic name must be a nonempty path component other than . or ..", seberr.ErrBadInput)
+	}
+
+	return nil
 }
 
 // WithAutoCreateTopic sets whether to automatically create topics if they don't

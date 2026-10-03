@@ -68,6 +68,11 @@ func AddRecords(log logger.Logger, bufPool *syncy.Pool[*sebrecords.Batch], s Rec
 
 		offsets, err := s.AddRecords(topicName, *batch)
 		if err != nil {
+			if errors.Is(err, seberr.ErrBadInput) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
 			if errors.Is(err, seberr.ErrPayloadTooLarge) {
 				w.WriteHeader(http.StatusRequestEntityTooLarge)
 				return

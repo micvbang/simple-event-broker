@@ -77,6 +77,11 @@ func GetRecords(log logger.Logger, batchPool *syncy.Pool[*sebrecords.Batch], s R
 
 		err = s.GetRecords(ctx, batch, topicName, offset, maxRecords, softMaxBytes)
 		if err != nil {
+			if errors.Is(err, seberr.ErrBadInput) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
 			if errors.Is(err, seberr.ErrTopicNotFound) {
 				log.Debugf("not found: %s", err)
 				w.WriteHeader(http.StatusNotFound)

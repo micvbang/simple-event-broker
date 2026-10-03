@@ -36,6 +36,11 @@ func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 		batch := sebrecords.NewBatch(make([]uint32, 0, 8192), make([]byte, 0, 10*sizey.MB))
 		record, err := s.GetRecord(&batch, topicName, offset)
 		if err != nil {
+			if errors.Is(err, seberr.ErrBadInput) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
 			if errors.Is(err, seberr.ErrOutOfBounds) {
 				log.Debugf("not found")
 				w.WriteHeader(http.StatusNotFound)
@@ -47,6 +52,7 @@ func GetRecord(log logger.Logger, s RecordGetter) http.HandlerFunc {
 			fmt.Fprintf(w, "failed to read record '%d': %s", offset, err)
 			return
 		}
+
 		w.Write(record)
 	}
 }
