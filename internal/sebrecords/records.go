@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"time"
 
 	"github.com/micvbang/go-helpy/sizey"
@@ -73,7 +74,7 @@ func Write(wtr io.Writer, batch Batch) error {
 
 type Parser struct {
 	Header      Header
-	recordIndex []uint32
+	recordIndex []uint64
 	RecordSizes []uint32
 	rdr         io.ReadSeekCloser
 }
@@ -87,31 +88,73 @@ func Parse(rdr io.ReadSeekCloser) (*Parser, error) {
 		return nil, fmt.Errorf("reading header: %w", err)
 	}
 
-	// NOTE: we're adding the size of the final record to recordIndex below,
-	// once we've figured out the total file size
-	recordIndex := make([]uint32, header.NumRecords, header.NumRecords+1)
-	err = binary.Read(rdr, byteOrder, &recordIndex)
-	if err != nil {
-		return nil, fmt.Errorf("reading record index: %w", err)
+	if header.MagicBytes != FileFormatMagicBytes {
+		return nil, fmt.Errorf("invalid record batch magic bytes: %x", header.MagicBytes)
 	}
 
-	// TODO: this seek is only necessary because we don't have the size of the
-	// last entry in the file.
-	// In order to not make the code more complex than necessary, we compute the
-	// file size once, now, when the file is opened. An alternative (and
-	// probably better) solution could be to include the size of the final
-	// record in the file header.
+	if header.Version != FileFormatVersion {
+		return nil, fmt.Errorf("unsupported record batch version: %d", header.Version)
+	}
+
+	// Check the index against the file before allocating from an untrusted count.
+	// Header.Size uses uint32, so reject headers that cannot be represented there.
+	headerSize := uint64(headerBytes) + uint64(header.NumRecords)*recordIndexSize
 	fileSize, err := rdr.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, fmt.Errorf("seeking to end of file: %w", err)
 	}
 
-	recordIndex = append(recordIndex, uint32(fileSize)-header.Size())
+	if headerSize > math.MaxUint32 || fileSize < 0 || headerSize > uint64(fileSize) {
+		return nil, fmt.Errorf("invalid record batch index: header size %d, file size %d", headerSize, fileSize)
+	}
 
-	recordSizes := make([]uint32, 0, len(recordIndex)-1)
-	for i := 0; i < len(recordIndex)-1; i++ {
+	// Account for the sentinel and the widest allocation on this platform.
+	if uint64(header.NumRecords)+1 > uint64(int(^uint(0)>>1))/8 {
+		return nil, fmt.Errorf("record batch index too large: %d records", header.NumRecords)
+	}
+
+	payloadSize := uint64(fileSize) - headerSize
+	if header.NumRecords == 0 && payloadSize != 0 {
+		return nil, fmt.Errorf("record batch with no records contains %d payload bytes", payloadSize)
+	}
+
+	if _, err := rdr.Seek(headerBytes, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("seeking to record index: %w", err)
+	}
+
+	indexes := make([]uint32, int(header.NumRecords))
+	if err := binary.Read(rdr, byteOrder, indexes); err != nil {
+		return nil, fmt.Errorf("reading record index: %w", err)
+	}
+
+	// The final payload boundary can exceed uint32 even though each stored
+	// index and each individual record size must fit the format's uint32 fields.
+	recordIndex := make([]uint64, len(indexes)+1)
+
+	for i, index := range indexes {
+		offset := uint64(index)
+		if i == 0 && offset != 0 {
+			return nil, fmt.Errorf("invalid first record offset: %d", offset)
+		}
+
+		if offset > payloadSize || (i > 0 && offset < recordIndex[i-1]) {
+			return nil, fmt.Errorf("invalid record offset %d: %d", i, offset)
+		}
+
+		recordIndex[i] = offset
+	}
+
+	recordIndex[len(indexes)] = payloadSize
+
+	recordSizes := make([]uint32, len(indexes))
+
+	for i := range recordSizes {
 		recordSize := recordIndex[i+1] - recordIndex[i]
-		recordSizes = append(recordSizes, recordSize)
+		if recordSize > math.MaxUint32 {
+			return nil, fmt.Errorf("record %d size exceeds uint32: %d", i, recordSize)
+		}
+
+		recordSizes[i] = uint32(recordSize)
 	}
 
 	return &Parser{
@@ -141,12 +184,14 @@ func (rb *Parser) Records(batch *Batch, recordIndexStart uint32, recordIndexEnd 
 
 	recordOffsetStart := rb.recordIndex[recordIndexStart]
 	recordOffsetEnd := rb.recordIndex[recordIndexEnd]
-	requestedBytes := int(recordOffsetEnd - recordOffsetStart)
+	requestedBytes64 := recordOffsetEnd - recordOffsetStart
 
 	bytesLeftInBatch := cap(batch.Data) - len(batch.Data)
-	if requestedBytes > bytesLeftInBatch {
-		return fmt.Errorf("%w: not enough bytes left in buffer to satisfy read; %d required, %d left", seberr.ErrPayloadTooLarge, requestedBytes, bytesLeftInBatch)
+	if requestedBytes64 > uint64(bytesLeftInBatch) {
+		return fmt.Errorf("%w: not enough bytes left in buffer to satisfy read; %d required, %d left", seberr.ErrPayloadTooLarge, requestedBytes64, bytesLeftInBatch)
 	}
+
+	requestedBytes := int(requestedBytes64)
 
 	fileOffsetStart := int64(rb.Header.Size()) + int64(recordOffsetStart)
 	_, err := rb.rdr.Seek(fileOffsetStart, io.SeekStart)
