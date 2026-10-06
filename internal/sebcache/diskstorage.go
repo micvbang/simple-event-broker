@@ -76,7 +76,7 @@ func (c *DiskCache) List() (map[string]CacheItem, error) {
 	return cacheItems, nil
 }
 
-func (c *DiskCache) Writer(key string) (io.WriteCloser, error) {
+func (c *DiskCache) Writer(key string) (WriteAbortCloser, error) {
 	log := c.log.WithField("key", key)
 
 	log.Debugf("adding '%s'", key)
@@ -171,21 +171,31 @@ func newCacheWriter(tempDir string, destPath string) (*cacheWriter, error) {
 type cacheWriter struct {
 	tmpFile  *os.File
 	destPath string
+
+	// done is true once Close() or Abort() has been called
+	done bool
 }
 
 func (cw *cacheWriter) Write(bs []byte) (int, error) {
 	return cw.tmpFile.Write(bs)
 }
 
-func (cw cacheWriter) Close() error {
+func (cw *cacheWriter) Close() error {
+	if cw.done {
+		return fmt.Errorf("cacheWriter already closed or aborted")
+	}
+	cw.done = true
+
 	err := cw.tmpFile.Close()
 	if err != nil {
+		os.Remove(cw.tmpFile.Name())
 		return fmt.Errorf("closing cacheWriter file: %w", err)
 	}
 
 	cacheDir := path.Dir(cw.destPath)
 	err = os.MkdirAll(cacheDir, os.ModePerm)
 	if err != nil {
+		os.Remove(cw.tmpFile.Name())
 		return fmt.Errorf("creating cache dirs '%s': %w", cacheDir, err)
 	}
 
@@ -194,8 +204,20 @@ func (cw cacheWriter) Close() error {
 	// system as destPath.
 	err = os.Rename(cw.tmpFile.Name(), cw.destPath)
 	if err != nil {
+		os.Remove(cw.tmpFile.Name())
 		return fmt.Errorf("moving %s to %s: %w", cw.tmpFile.Name(), cw.destPath, err)
 	}
 
 	return nil
+}
+
+// Abort discards the temporary file. It does nothing if Close() or Abort() has
+// already been called.
+func (cw *cacheWriter) Abort() error {
+	if cw.done {
+		return nil
+	}
+	cw.done = true
+
+	return errors.Join(cw.tmpFile.Close(), os.Remove(cw.tmpFile.Name()))
 }

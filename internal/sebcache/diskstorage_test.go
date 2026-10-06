@@ -164,3 +164,31 @@ func TestDiskCacheListExistingCache(t *testing.T) {
 	item := items[theKey]
 	require.Equal(t, theKey, item.Key)
 }
+
+// TestCacheWriterAbortRemovesTempFile verifies that Abort() removes the
+// temporary file and doesn't write the file to the cache destination.
+func TestCacheWriterAbortRemovesTempFile(t *testing.T) {
+	tempDir := t.TempDir()
+
+	const key = "some/topic/name/123"
+
+	cache, err := sebcache.NewDiskStorage(log, tempDir)
+	require.NoError(t, err)
+
+	w, err := cache.Writer(key)
+	require.NoError(t, err)
+
+	_, err = w.Write(tester.RandomBytes(t, 4096))
+	require.NoError(t, err)
+
+	// Act
+	err = w.Abort()
+	require.NoError(t, err)
+
+	// Assert
+	require.NoFileExists(t, path.Join(tempDir, key))
+
+	tmpFiles, err := os.ReadDir(path.Join(tempDir, "_tmpdir"))
+	require.NoError(t, err)
+	require.Empty(t, tmpFiles)
+}

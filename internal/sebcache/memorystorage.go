@@ -1,6 +1,7 @@
 package sebcache
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -52,7 +53,7 @@ func (mc *MemoryCache) Reader(key string) (io.ReadSeekCloser, error) {
 	return nops.NopReadSeekCloser(buf), nil
 }
 
-func (mc *MemoryCache) Writer(key string) (io.WriteCloser, error) {
+func (mc *MemoryCache) Writer(key string) (WriteAbortCloser, error) {
 	buf := bytey.NewBuffer(make([]byte, 0, 4096))
 	return &memoryWriter{mc: mc, key: key, buf: buf}, nil
 }
@@ -61,6 +62,9 @@ type memoryWriter struct {
 	mc  *MemoryCache
 	key string
 	buf *bytey.Buffer
+
+	// done is true once Close() or Abort() has been called
+	done bool
 }
 
 func (w *memoryWriter) Write(bs []byte) (int, error) {
@@ -68,6 +72,11 @@ func (w *memoryWriter) Write(bs []byte) (int, error) {
 }
 
 func (w *memoryWriter) Close() error {
+	if w.done {
+		return fmt.Errorf("memoryWriter already closed or aborted")
+	}
+	w.done = true
+
 	w.mc.mu.Lock()
 	defer w.mc.mu.Unlock()
 
@@ -75,6 +84,18 @@ func (w *memoryWriter) Close() error {
 		buf:        w.buf,
 		accessedAt: w.mc.now(),
 	}
+	return nil
+}
+
+// Abort discards everything written. It does nothing if Close() or Abort() has
+// already been called.
+func (w *memoryWriter) Abort() error {
+	if w.done {
+		return nil
+	}
+	w.done = true
+	w.buf = nil
+
 	return nil
 }
 

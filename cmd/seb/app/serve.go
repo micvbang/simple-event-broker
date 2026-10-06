@@ -19,6 +19,7 @@ import (
 	"github.com/micvbang/simple-event-broker/internal/sebbroker"
 	"github.com/micvbang/simple-event-broker/internal/sebcache"
 	"github.com/micvbang/simple-event-broker/internal/sebrecords"
+	"github.com/micvbang/simple-event-broker/internal/sebtopic"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/netutil"
 )
@@ -48,6 +49,10 @@ func init() {
 	fs.StringVar(&serveFlags.cacheDir, "cache-dir", path.Join(os.TempDir(), "seb-cache"), "Local dir to use when caching record batches")
 	fs.Int64Var(&serveFlags.cacheMaxBytes, "cache-size", 1*sizey.GB, "Maximum number of bytes to keep in the cache (soft limit)")
 	fs.DurationVar(&serveFlags.cacheEvictionInterval, "cache-eviction-interval", 5*time.Minute, "Amount of time between enforcing maximum cache size")
+
+	// downloading
+	fs.IntVar(&serveFlags.downloadsMax, "s3-downloads-max", 16, "Maximum number of concurrent record batch downloads from S3, across all topics")
+	fs.IntVar(&serveFlags.prefetchBatches, "prefetch-batches", 8, "Number of record batches to download concurrently when reading records (1 disables prefetching)")
 
 	// read only
 	fs.BoolVar(&serveFlags.readOnly, "read-only", false, "Whether to make the instance read-only (not accept any writes)")
@@ -80,7 +85,9 @@ var serveCmd = &cobra.Command{
 
 		go sebcache.EvictionLoop(ctx, log.Name("cache eviction"), cache, flags.cacheMaxBytes, flags.cacheEvictionInterval)
 
-		blockingS3Broker, err := makeBlockingS3Broker(log, cache, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
+		fetcher := sebtopic.NewFetcher(flags.downloadsMax, time.Minute)
+
+		blockingS3Broker, err := makeBlockingS3Broker(log, cache, fetcher, flags.prefetchBatches, flags.recordBatchSoftMaxBytes, flags.recordBatchBlockTime, flags.s3BucketName)
 		if err != nil {
 			log.Fatalf("making blocking s3 broker: %s", err)
 		}
@@ -122,13 +129,13 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-func makeBlockingS3Broker(log logger.Logger, cache *sebcache.Cache, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*sebbroker.Broker, error) {
+func makeBlockingS3Broker(log logger.Logger, cache *sebcache.Cache, fetcher *sebtopic.Fetcher, prefetchBatches int, bytesSoftMax int, blockTime time.Duration, s3BucketName string) (*sebbroker.Broker, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("creating s3 session: %s", err)
 	}
 
-	s3TopicFactory := sebbroker.NewS3TopicFactory(cfg, s3BucketName, cache)
+	s3TopicFactory := sebbroker.NewS3TopicFactory(cfg, s3BucketName, cache, sebtopic.WithFetcher(fetcher), sebtopic.WithPrefetchWindow(prefetchBatches))
 	blockingBatcherFactory := sebbroker.NewBlockingBatcherFactory(blockTime, bytesSoftMax)
 
 	broker := sebbroker.New(
@@ -156,6 +163,9 @@ type ServeFlags struct {
 	cacheDir              string
 	cacheMaxBytes         int64
 	cacheEvictionInterval time.Duration
+
+	downloadsMax    int
+	prefetchBatches int
 
 	readOnly bool
 

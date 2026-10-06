@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -1076,6 +1077,111 @@ func TestTopicClosesCacheReaders(t *testing.T) {
 	}
 }
 
+// TestTopicAddRecordsCacheWriteFails verifies that AddRecords() commits the
+// record batch even when writing it to the cache fails; the next batch must get
+// the following offsets, and the records of both batches must be readable.
+// This is a regression test.
+func TestTopicAddRecordsCacheWriteFails(t *testing.T) {
+	cacheStorage := &failOnceCacheStorage{Storage: sebcache.NewMemoryStorage(log)}
+	cache, err := sebcache.New(log, cacheStorage)
+	require.NoError(t, err)
+
+	topic, err := sebtopic.New(log, sebtopic.NewMemoryStorage(log), "topic", cache)
+	require.NoError(t, err)
+
+	batch1 := tester.MakeRandomRecordBatch(3)
+	batch2 := tester.MakeRandomRecordBatch(3)
+
+	// Act
+	offsets1, err := topic.AddRecords(batch1)
+	require.NoError(t, err)
+	offsets2, err := topic.AddRecords(batch2)
+	require.NoError(t, err)
+
+	// Assert
+	require.True(t, cacheStorage.failed)
+	tester.RequireOffsets(t, 0, 3, offsets1)
+	tester.RequireOffsets(t, 3, 6, offsets2)
+	require.Equal(t, uint64(6), topic.NextOffset())
+
+	// NOTE: batch1 isn't in the cache, so it must be read from backing storage
+	gotBatch := tester.NewBatch(10, 4096)
+	err = topic.ReadRecords(context.Background(), &gotBatch, 0, 10, 0)
+	require.NoError(t, err)
+	require.Equal(t, append(batch1.IndividualRecords(), batch2.IndividualRecords()...), gotBatch.IndividualRecords())
+}
+
+// failOnceCacheStorage fails the first call to Writer().
+type failOnceCacheStorage struct {
+	sebcache.Storage
+	failed bool
+}
+
+func (s *failOnceCacheStorage) Writer(key string) (sebcache.WriteAbortCloser, error) {
+	if !s.failed {
+		s.failed = true
+		return nil, fmt.Errorf("disk full")
+	}
+	return s.Storage.Writer(key)
+}
+
+// TestTopicAddRecordsCacheWritePartiallyFails verifies that a record batch
+// that fails to be written to the cache midway isn't added to the cache, and
+// that it can still be read from backing storage.
+// This is a regression test.
+func TestTopicAddRecordsCacheWritePartiallyFails(t *testing.T) {
+	tester.TestCacheStorage(t, func(t *testing.T, storage sebcache.Storage) {
+		cacheStorage := &failingWriteCacheStorage{Storage: storage}
+		cache, err := sebcache.New(log, cacheStorage)
+		require.NoError(t, err)
+
+		topic, err := sebtopic.New(log, sebtopic.NewMemoryStorage(log), "topic", cache)
+		require.NoError(t, err)
+
+		batch := tester.MakeRandomRecordBatch(10)
+
+		// Act
+		offsets, err := topic.AddRecords(batch)
+		require.NoError(t, err)
+		tester.RequireOffsets(t, 0, 10, offsets)
+
+		// Assert
+		require.True(t, cacheStorage.failed)
+		require.False(t, cache.Has(sebtopic.RecordBatchKey("topic", 0)))
+
+		gotBatch := tester.NewBatch(10, 4096)
+		err = topic.ReadRecords(context.Background(), &gotBatch, 0, 10, 0)
+		require.NoError(t, err)
+		require.Equal(t, batch.IndividualRecords(), gotBatch.IndividualRecords())
+	})
+}
+
+// failingWriteCacheStorage makes the first writer it returns write only half
+// of the given bytes on the first call to Write(), and then return an error.
+type failingWriteCacheStorage struct {
+	sebcache.Storage
+	failed bool
+}
+
+func (s *failingWriteCacheStorage) Writer(key string) (sebcache.WriteAbortCloser, error) {
+	w, err := s.Storage.Writer(key)
+	if err != nil || s.failed {
+		return w, err
+	}
+
+	s.failed = true
+	return &failingWriter{WriteAbortCloser: w}, nil
+}
+
+type failingWriter struct {
+	sebcache.WriteAbortCloser
+}
+
+func (w *failingWriter) Write(bs []byte) (int, error) {
+	n, _ := w.WriteAbortCloser.Write(bs[:len(bs)/2])
+	return n, fmt.Errorf("disk full")
+}
+
 type closeCountingCacheStorage struct {
 	sebcache.Storage
 	opens  int
@@ -1099,4 +1205,172 @@ type closeCountingReader struct {
 func (r *closeCountingReader) Close() error {
 	r.storage.closes += 1
 	return r.ReadSeekCloser.Close()
+}
+
+// TestTopicReadRecordsDownloadsConcurrently verifies that ReadRecords()
+// downloads uncached record batches concurrently, bounded by both the prefetch
+// window and the Fetcher's limit, and that it returns the expected records.
+func TestTopicReadRecordsDownloadsConcurrently(t *testing.T) {
+	const (
+		batches         = 12
+		recordsPerBatch = 10
+	)
+
+	tests := map[string]struct {
+		prefetchWindow   int
+		downloadsMax     int
+		expectedMaxConns int
+	}{
+		"no prefetching":          {prefetchWindow: 1, downloadsMax: 16, expectedMaxConns: 1},
+		"limited by window":       {prefetchWindow: 4, downloadsMax: 16, expectedMaxConns: 4},
+		"limited by downloadsMax": {prefetchWindow: 8, downloadsMax: 2, expectedMaxConns: 2},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			storage := &concurrencyTrackingStorage{Storage: sebtopic.NewMemoryStorage(log), delay: 20 * time.Millisecond}
+
+			records := [][]byte{}
+			{
+				cache, err := sebcache.NewMemoryCache(log)
+				require.NoError(t, err)
+				writer, err := sebtopic.New(log, storage, "topic", cache)
+				require.NoError(t, err)
+
+				for range batches {
+					batch := tester.MakeRandomRecordBatch(recordsPerBatch)
+					_, err := writer.AddRecords(batch)
+					require.NoError(t, err)
+					records = append(records, batch.IndividualRecords()...)
+				}
+			}
+
+			// NOTE: new cache, so that every batch must be downloaded
+			cache, err := sebcache.NewMemoryCache(log)
+			require.NoError(t, err)
+			fetcher := sebtopic.NewFetcher(test.downloadsMax, time.Minute)
+			topic, err := sebtopic.New(log, storage, "topic", cache, sebtopic.WithFetcher(fetcher), sebtopic.WithPrefetchWindow(test.prefetchWindow))
+			require.NoError(t, err)
+			storage.reset()
+
+			// Act
+			gotBatch := tester.NewBatch(len(records), 64*sizey.KB)
+			err = topic.ReadRecords(context.Background(), &gotBatch, 0, len(records), 0)
+
+			// Assert
+			require.NoError(t, err)
+			require.Equal(t, records, gotBatch.IndividualRecords())
+			require.Equal(t, test.expectedMaxConns, storage.maxActiveReaders())
+
+			// NOTE: the newest batch was cached by sebtopic.New()
+			require.Equal(t, batches-1, storage.readers())
+		})
+	}
+}
+
+// TestTopicReadRecordsPrefetchBoundedBySoftMaxBytes verifies that ReadRecords()
+// doesn't prefetch record batches beyond those expected to be needed in order
+// to satisfy softMaxBytes.
+func TestTopicReadRecordsPrefetchBoundedBySoftMaxBytes(t *testing.T) {
+	const (
+		batches         = 20
+		recordsPerBatch = 10
+		recordSize      = 1000
+	)
+
+	tests := map[string]struct {
+		softMaxBytes      int
+		expectedRecords   int
+		expectedDownloads int
+	}{
+		"within first batch":    {softMaxBytes: 5 * recordSize, expectedRecords: 5, expectedDownloads: 1},
+		"into second batch":     {softMaxBytes: 15 * recordSize, expectedRecords: 15, expectedDownloads: 2},
+		"exactly three batches": {softMaxBytes: 30 * recordSize, expectedRecords: 30, expectedDownloads: 3},
+		"into seventh batch":    {softMaxBytes: 65 * recordSize, expectedRecords: 65, expectedDownloads: 7},
+		"many batches":          {softMaxBytes: 150 * recordSize, expectedRecords: 150, expectedDownloads: 15},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			storage := &concurrencyTrackingStorage{Storage: sebtopic.NewMemoryStorage(log)}
+
+			records := [][]byte{}
+			{
+				cache, err := sebcache.NewMemoryCache(log)
+				require.NoError(t, err)
+				writer, err := sebtopic.New(log, storage, "topic", cache)
+				require.NoError(t, err)
+
+				for range batches {
+					batch := tester.MakeRandomRecordBatchSize(recordsPerBatch, recordSize)
+					_, err := writer.AddRecords(batch)
+					require.NoError(t, err)
+					records = append(records, batch.IndividualRecords()...)
+				}
+			}
+
+			// NOTE: new cache, so that every batch must be downloaded
+			cache, err := sebcache.NewMemoryCache(log)
+			require.NoError(t, err)
+			topic, err := sebtopic.New(log, storage, "topic", cache, sebtopic.WithPrefetchWindow(8))
+			require.NoError(t, err)
+			storage.reset()
+
+			// Act
+			gotBatch := tester.NewBatch(len(records), 256*sizey.KB)
+			err = topic.ReadRecords(context.Background(), &gotBatch, 0, len(records), test.softMaxBytes)
+
+			// Assert
+			require.NoError(t, err)
+			require.Equal(t, records[:test.expectedRecords], gotBatch.IndividualRecords())
+			require.Equal(t, test.expectedDownloads, storage.readers())
+		})
+	}
+}
+
+// concurrencyTrackingStorage delays calls to Reader() and tracks how many of
+// them run concurrently.
+type concurrencyTrackingStorage struct {
+	sebtopic.Storage
+	delay time.Duration
+
+	mu        sync.Mutex
+	active    int
+	maxActive int
+	calls     int
+}
+
+func (s *concurrencyTrackingStorage) Reader(ctx context.Context, recordBatchPath string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	s.active += 1
+	s.calls += 1
+	s.maxActive = max(s.maxActive, s.active)
+	s.mu.Unlock()
+
+	time.Sleep(s.delay)
+
+	s.mu.Lock()
+	s.active -= 1
+	s.mu.Unlock()
+
+	return s.Storage.Reader(ctx, recordBatchPath)
+}
+
+func (s *concurrencyTrackingStorage) reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxActive = 0
+	s.calls = 0
+}
+
+func (s *concurrencyTrackingStorage) maxActiveReaders() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.maxActive
+}
+
+func (s *concurrencyTrackingStorage) readers() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
 }

@@ -13,19 +13,19 @@ import (
 
 type TopicFactory func(_ logger.Logger, topicName string) (*sebtopic.Topic, error)
 
-func NewS3TopicFactory(cfg aws.Config, s3BucketName string, cache *sebcache.Cache) TopicFactory {
+func NewS3TopicFactory(cfg aws.Config, s3BucketName string, cache *sebcache.Cache, optFuncs ...func(*sebtopic.Opts)) TopicFactory {
 	return func(log logger.Logger, topicName string) (*sebtopic.Topic, error) {
 		storageLogger := log.Name("s3 storage").WithField("topic-name", topicName).WithField("bucket", s3BucketName)
 
 		s3Client := s3.NewFromConfig(cfg)
 		s3Storage := sebtopic.NewS3Storage(storageLogger, s3Client, s3BucketName, "")
-		return sebtopic.New(log, s3Storage, topicName, cache)
+		return sebtopic.New(log, s3Storage, topicName, cache, optFuncs...)
 	}
 }
 
-func NewTopicFactory(ts sebtopic.Storage, cache *sebcache.Cache) TopicFactory {
+func NewTopicFactory(ts sebtopic.Storage, cache *sebcache.Cache, optFuncs ...func(*sebtopic.Opts)) TopicFactory {
 	return func(log logger.Logger, topicName string) (*sebtopic.Topic, error) {
-		return sebtopic.New(log, ts, topicName, cache)
+		return sebtopic.New(log, ts, topicName, cache, optFuncs...)
 	}
 }
 

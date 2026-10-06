@@ -53,18 +53,37 @@ type Topic struct {
 	cache          *sebcache.Cache
 	compression    Compress
 	OffsetCond     *OffsetCond
+
+	fetcher        *Fetcher
+	prefetchWindow int
 }
 
 type Opts struct {
 	Compression Compress
+
+	// Fetcher is used to download record batches that aren't in the cache. Share
+	// a Fetcher between topics in order to limit the number of concurrent
+	// downloads across all of them.
+	Fetcher *Fetcher
+
+	// PrefetchWindow is the number of record batches, starting from the one
+	// currently being read, that ReadRecords may prefetch.
+	PrefetchWindow int
 }
 
 func New(log logger.Logger, backingStorage Storage, topicName string, cache *sebcache.Cache, optFuncs ...func(*Opts)) (*Topic, error) {
 	opts := Opts{
-		Compression: Gzip{},
+		Compression:    Gzip{},
+		PrefetchWindow: 8,
 	}
 	for _, optFunc := range optFuncs {
 		optFunc(&opts)
+	}
+
+	if opts.Fetcher == nil {
+		// NOTE: a private Fetcher only limits this topic's downloads; share one
+		// between topics to get a global limit.
+		opts.Fetcher = NewFetcher(16, time.Minute)
 	}
 
 	recordBatchOffsets, err := ListRecordBatchOffsets(context.Background(), log, backingStorage, topicName)
@@ -80,6 +99,8 @@ func New(log logger.Logger, backingStorage Storage, topicName string, cache *seb
 		cache:              cache,
 		compression:        opts.Compression,
 		OffsetCond:         NewOffsetCond(0),
+		fetcher:            opts.Fetcher,
+		prefetchWindow:     opts.PrefetchWindow,
 	}
 
 	if len(recordBatchOffsets) > 0 {
@@ -149,6 +170,17 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 		offsets = append(offsets, i)
 	}
 
+	// TODO: it would be nice to remove this from the fastpath
+	// NOTE: we are intentionally not returning caching errors to caller. It's
+	// (semi) fine if the file isn't written to cache since we can retrieve it
+	// from backing storage.
+	if s.cache != nil {
+		err = s.writeCache(rbPath, batch)
+		if err != nil {
+			s.log.Errorf("writing %s to cache: %s", rbPath, err)
+		}
+	}
+
 	// once Store() returns, the newly added records are visible in
 	// ReadRecords(). NOTE: recordBatchOffsets must also have been updated before
 	// this is true.
@@ -156,28 +188,6 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	s.recordBatchOffsets = append(s.recordBatchOffsets, recordBatchID)
 	s.mu.Unlock()
 	s.nextOffset.Store(nextOffset)
-
-	// TODO: it would be nice to remove this from the "fastpath"
-	// NOTE: we are intentionally not returning caching errors to caller. It's
-	// (semi) fine if the file isn't written to cache since we can retrieve it
-	// from backing storage.
-	if s.cache != nil {
-		cacheWtr, err := s.cache.Writer(rbPath)
-		if err != nil {
-			s.log.Errorf("creating cache writer to cache (%s): %w", rbPath, err)
-			return offsets, nil
-		}
-
-		err = sebrecords.Write(cacheWtr, batch)
-		if err != nil {
-			s.log.Errorf("writing to cache (%s): %w", rbPath, err)
-		}
-
-		err = cacheWtr.Close()
-		if err != nil {
-			s.log.Errorf("closing cached file (%s): %w", rbPath, err)
-		}
-	}
 
 	// inform potentially waiting consumers that new offsets have been added
 	if len(offsets) > 0 {
@@ -239,6 +249,37 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 	moreBytes := func() bool { return (!trackByteSize || (recordBatchBytes < uint32(softMaxBytes) && nextRecordFits)) }
 	moreBatches := func() bool { return batchOffsetIndex < len(recordBatchOffsets) }
 
+	// prefetchFrom starts downloading the batches in [i; i+prefetchWindow) that
+	// are expected to be needed in order to satisfy maxRecords and softMaxBytes.
+	// The number of bytes in a batch isn't known until it's been downloaded, so
+	// the number of bytes per record is estimated from the batches parsed so
+	// far. Until a batch has been parsed, nothing is prefetched when tracking
+	// bytes.
+	nextPrefetchIndex := batchOffsetIndex
+	recordsPrefetched := -int(batchRecordIndex) // records before offset aren't returned
+	var parsedBytes, parsedRecords int64
+	morePrefetchBytes := func() bool {
+		if !trackByteSize {
+			return true
+		}
+		if parsedRecords == 0 {
+			return false
+		}
+		return int64(recordsPrefetched)*parsedBytes/parsedRecords < int64(softMaxBytes)
+	}
+	prefetchFrom := func(i int) {
+		for nextPrefetchIndex < len(recordBatchOffsets) && nextPrefetchIndex < i+s.prefetchWindow && recordsPrefetched < maxRecords && morePrefetchBytes() {
+			s.prefetch(recordBatchOffsets[nextPrefetchIndex])
+
+			// NOTE: the number of records in the last batch is unknown here, but
+			// it doesn't matter since there are no batches after it.
+			if nextPrefetchIndex+1 < len(recordBatchOffsets) {
+				recordsPrefetched += int(recordBatchOffsets[nextPrefetchIndex+1] - recordBatchOffsets[nextPrefetchIndex])
+			}
+			nextPrefetchIndex += 1
+		}
+	}
+
 	for moreRecords() && moreBytes() && moreBatches() {
 		select {
 		case <-ctx.Done():
@@ -246,11 +287,17 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 		default:
 		}
 
+		prefetchFrom(batchOffsetIndex)
+
 		batchOffset = recordBatchOffsets[batchOffsetIndex]
 		rb, err := s.parseRecordBatch(ctx, batchOffset)
 		if err != nil {
 			return fmt.Errorf("parsing record batch: %w", err)
 		}
+
+		parsedRecords += int64(rb.Header.NumRecords)
+		parsedBytes += int64(slicey.Sum(rb.RecordSizes))
+		prefetchFrom(batchOffsetIndex)
 
 		batchMaxRecords := min(uint32(maxRecords-batch.Len()), rb.Header.NumRecords-batchRecordIndex)
 		numRecords := batchMaxRecords
@@ -287,6 +334,23 @@ func (s *Topic) ReadRecords(ctx context.Context, batch *sebrecords.Batch, offset
 	}
 
 	return nil
+}
+
+// writeCache writes batch to the cache. If writing fails, nothing is added to
+// the cache.
+func (s *Topic) writeCache(rbPath string, batch sebrecords.Batch) error {
+	cacheWtr, err := s.cache.Writer(rbPath)
+	if err != nil {
+		return fmt.Errorf("creating cache writer: %w", err)
+	}
+	defer cacheWtr.Abort()
+
+	err = sebrecords.Write(cacheWtr, batch)
+	if err != nil {
+		return fmt.Errorf("writing: %w", err)
+	}
+
+	return cacheWtr.Close()
 }
 
 // NextOffset returns the topic's next offset (offset of the next record added).
@@ -329,49 +393,15 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 	f, err := s.cache.Reader(recordBatchPath)
 	if err != nil {
 		s.log.Infof("%s not found in cache", recordBatchPath)
-	}
 
-	if f == nil { // not found in cache
-		backingReader, err := s.backingStorage.Reader(ctx, recordBatchPath)
+		err = s.fetcher.Fetch(ctx, recordBatchPath, s.downloader(recordBatchPath))
 		if err != nil {
-			return nil, fmt.Errorf("opening reader '%s': %w", recordBatchPath, err)
-		}
-
-		r := backingReader
-		if s.compression != nil {
-			r, err = s.compression.NewReader(backingReader)
-			if err != nil {
-				return nil, fmt.Errorf("creating compression reader: %w", err)
-			}
-		}
-
-		// write to cache
-		cacheFile, err := s.cache.Writer(recordBatchPath)
-		if err != nil {
-			return nil, fmt.Errorf("writing backing storage result to cache: %w", err)
-		}
-		_, err = io.Copy(cacheFile, r)
-		if err != nil {
-			return nil, fmt.Errorf("copying backing storage result to cache: %w", err)
-		}
-
-		if s.compression != nil {
-			r.Close()
-		}
-
-		err = cacheFile.Close()
-		if err != nil {
-			return nil, fmt.Errorf("closing cacheFile: %w", err)
-		}
-
-		err = backingReader.Close()
-		if err != nil {
-			return nil, fmt.Errorf("closing backing reader: %w", err)
+			return nil, fmt.Errorf("fetching '%s': %w", recordBatchPath, err)
 		}
 
 		f, err = s.cache.Reader(recordBatchPath)
 		if err != nil {
-			return nil, fmt.Errorf("reading from cache just after writing it: %w", err)
+			return nil, fmt.Errorf("reading from cache just after fetching it: %w", err)
 		}
 	}
 
@@ -381,6 +411,69 @@ func (s *Topic) parseRecordBatch(ctx context.Context, recordBatchID uint64) (*se
 		return nil, fmt.Errorf("parsing record batch '%s': %w", recordBatchPath, err)
 	}
 	return rb, nil
+}
+
+// prefetch starts downloading recordBatchID into the cache, unless it's already
+// there.
+func (s *Topic) prefetch(recordBatchID uint64) {
+	recordBatchPath := s.recordBatchPath(recordBatchID)
+	if s.cache.Has(recordBatchPath) {
+		return
+	}
+
+	s.fetcher.Prefetch(recordBatchPath, s.downloader(recordBatchPath))
+}
+
+// downloader returns a function that copies recordBatchPath from backing
+// storage into the cache.
+func (s *Topic) downloader(recordBatchPath string) func(context.Context) error {
+	return func(ctx context.Context) error {
+		// another download of recordBatchPath might have completed between the
+		// caller's cache miss and this download starting.
+		// NOTE: using Reader() instead of Has() since the cache's bookkeeping
+		// can claim that files exist which have been removed from its storage,
+		// e.g. when the OS cleans the temp dir.
+		f, err := s.cache.Reader(recordBatchPath)
+		if err == nil {
+			f.Close()
+			return nil
+		}
+
+		t0 := time.Now()
+		backingReader, err := s.backingStorage.Reader(ctx, recordBatchPath)
+		if err != nil {
+			return fmt.Errorf("opening reader '%s': %w", recordBatchPath, err)
+		}
+		defer backingReader.Close()
+
+		r := backingReader
+		if s.compression != nil {
+			r, err = s.compression.NewReader(backingReader)
+			if err != nil {
+				return fmt.Errorf("creating compression reader: %w", err)
+			}
+			defer r.Close()
+		}
+
+		cacheFile, err := s.cache.Writer(recordBatchPath)
+		if err != nil {
+			return fmt.Errorf("writing backing storage result to cache: %w", err)
+		}
+		defer cacheFile.Abort()
+
+		_, err = io.Copy(cacheFile, r)
+		if err != nil {
+			return fmt.Errorf("copying backing storage result to cache: %w", err)
+		}
+
+		err = cacheFile.Close()
+		if err != nil {
+			return fmt.Errorf("closing cacheFile: %w", err)
+		}
+
+		s.log.Debugf("downloaded %s (%s)", recordBatchPath, time.Since(t0))
+		return nil
+	}
 }
 
 func (s *Topic) offsetGetRecordBatchID(offset uint64) uint64 {
@@ -534,5 +627,21 @@ func RecordBatchKey(topicName string, recordBatchID uint64) string {
 func WithCompress(c Compress) func(*Opts) {
 	return func(o *Opts) {
 		o.Compression = c
+	}
+}
+
+// WithFetcher sets the Fetcher used to download record batches that aren't in
+// the cache.
+func WithFetcher(f *Fetcher) func(*Opts) {
+	return func(o *Opts) {
+		o.Fetcher = f
+	}
+}
+
+// WithPrefetchWindow sets the number of record batches that ReadRecords
+// downloads concurrently. 1 disables prefetching.
+func WithPrefetchWindow(n int) func(*Opts) {
+	return func(o *Opts) {
+		o.PrefetchWindow = n
 	}
 }

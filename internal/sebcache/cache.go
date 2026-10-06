@@ -15,10 +15,18 @@ import (
 
 type Storage interface {
 	Reader(key string) (io.ReadSeekCloser, error)
-	Writer(key string) (io.WriteCloser, error)
+	Writer(key string) (WriteAbortCloser, error)
 	Remove(key string) error
 	List() (map[string]CacheItem, error)
 	SizeOf(key string) (CacheItem, error)
+}
+
+// WriteAbortCloser is a writer whose result is only committed once Close()
+// returns successfully. Abort() discards everything written. Calling Abort()
+// after Close() does nothing, making it safe to defer.
+type WriteAbortCloser interface {
+	io.WriteCloser
+	Abort() error
 }
 
 type Cache struct {
@@ -65,7 +73,7 @@ func NewCacheWithNow(log logger.Logger, cacheStorage Storage, now func() time.Ti
 	}, nil
 }
 
-func (c *Cache) Writer(key string) (io.WriteCloser, error) {
+func (c *Cache) Writer(key string) (WriteAbortCloser, error) {
 	log := c.log.WithField("key", key)
 
 	w, err := c.storage.Writer(key)
@@ -93,9 +101,14 @@ func (c *Cache) Write(key string, bs []byte) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("creating writer: %w", err)
 	}
-	defer wtr.Close()
+	defer wtr.Abort()
 
-	return wtr.Write(bs)
+	n, err := wtr.Write(bs)
+	if err != nil {
+		return n, err
+	}
+
+	return n, wtr.Close()
 }
 
 func (c *Cache) Reader(key string) (io.ReadSeekCloser, error) {
@@ -128,6 +141,15 @@ func (c *Cache) Reader(key string) (io.ReadSeekCloser, error) {
 	c.cacheItems[key] = item
 
 	return r, nil
+}
+
+// Has returns whether key is in the cache.
+func (c *Cache) Has(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, ok := c.cacheItems[key]
+	return ok
 }
 
 func (c *Cache) Size() int64 {
@@ -206,12 +228,12 @@ func (c *Cache) EvictLeastRecentlyUsed(maxSize int64) error {
 }
 
 type writeCloseWrapper struct {
-	wc         io.WriteCloser
+	wc         WriteAbortCloser
 	size       int64
 	afterClose func(int64)
 }
 
-func newWriteCloseWrapper(wc io.WriteCloser, afterClose func(int64)) *writeCloseWrapper {
+func newWriteCloseWrapper(wc WriteAbortCloser, afterClose func(int64)) *writeCloseWrapper {
 	return &writeCloseWrapper{
 		wc:         wc,
 		afterClose: afterClose,
@@ -233,4 +255,10 @@ func (w *writeCloseWrapper) Close() error {
 	w.afterClose(w.size)
 
 	return nil
+}
+
+// Abort discards everything written. NOTE: afterClose is not called, since
+// nothing was added to the cache.
+func (w *writeCloseWrapper) Abort() error {
+	return w.wc.Abort()
 }

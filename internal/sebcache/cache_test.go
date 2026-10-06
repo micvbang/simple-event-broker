@@ -351,7 +351,7 @@ type cacheStorageMock struct {
 	MockList   func() (map[string]sebcache.CacheItem, error)
 	ListCalled bool
 
-	MockWriter func(key string) (io.WriteCloser, error)
+	MockWriter func(key string) (sebcache.WriteAbortCloser, error)
 }
 
 func (c *cacheStorageMock) Remove(key string) error {
@@ -364,13 +364,14 @@ func (c *cacheStorageMock) List() (map[string]sebcache.CacheItem, error) {
 	return c.MockList()
 }
 
-func (c *cacheStorageMock) Writer(key string) (io.WriteCloser, error) {
+func (c *cacheStorageMock) Writer(key string) (sebcache.WriteAbortCloser, error) {
 	return c.MockWriter(key)
 }
 
 type nopWriteCloser struct{ io.Writer }
 
 func (nopWriteCloser) Close() error { return nil }
+func (nopWriteCloser) Abort() error { return nil }
 
 // TestEvictionBlocksConcurrentIngestWrite proves that Cache.EvictLeastRecentlyUsed
 // does not hold the Cache-wide mutex while physically deleting files from disk.
@@ -396,7 +397,7 @@ func TestEvictionBlocksConcurrentIngestWrite(t *testing.T) {
 		time.Sleep(removeLatency)
 		return nil
 	}
-	storage.MockWriter = func(key string) (io.WriteCloser, error) {
+	storage.MockWriter = func(key string) (sebcache.WriteAbortCloser, error) {
 		return nopWriteCloser{io.Discard}, nil
 	}
 
@@ -431,4 +432,101 @@ func TestEvictionBlocksConcurrentIngestWrite(t *testing.T) {
 	// the call should complete near-instantly.
 	minBlockTimeIfLockWasHeld := time.Duration(numItemsToEvict) * removeLatency / 2
 	require.Greater(t, minBlockTimeIfLockWasHeld, ingestWriteDuration)
+}
+
+// TestCacheStorageWriterAbort verifies that nothing is written to the cache
+// storage when Abort() is called, and that Close() fails after Abort().
+func TestCacheStorageWriterAbort(t *testing.T) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage sebcache.Storage) {
+		const key = "some/key"
+
+		w, err := cacheStorage.Writer(key)
+		require.NoError(t, err)
+
+		_, err = w.Write(tester.RandomBytes(t, 4096))
+		require.NoError(t, err)
+
+		// Act
+		err = w.Abort()
+		require.NoError(t, err)
+
+		// Assert
+		_, err = cacheStorage.Reader(key)
+		require.ErrorIs(t, err, seberr.ErrNotInCache)
+
+		err = w.Close()
+		require.Error(t, err)
+
+		_, err = cacheStorage.Reader(key)
+		require.ErrorIs(t, err, seberr.ErrNotInCache)
+	})
+}
+
+// TestCacheStorageWriterAbortAfterClose verifies that Abort() does nothing when
+// called after Close().
+func TestCacheStorageWriterAbortAfterClose(t *testing.T) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage sebcache.Storage) {
+		const key = "some/key"
+		expectedBytes := tester.RandomBytes(t, 4096)
+
+		w, err := cacheStorage.Writer(key)
+		require.NoError(t, err)
+
+		_, err = w.Write(expectedBytes)
+		require.NoError(t, err)
+
+		err = w.Close()
+		require.NoError(t, err)
+
+		// Act
+		err = w.Abort()
+		require.NoError(t, err)
+
+		// Assert
+		r, err := cacheStorage.Reader(key)
+		require.NoError(t, err)
+		defer r.Close()
+
+		gotBytes, err := io.ReadAll(r)
+		require.NoError(t, err)
+		require.Equal(t, expectedBytes, gotBytes)
+	})
+}
+
+// TestCacheWriterAbortKeepsExistingItem verifies that aborting a write to a key
+// that is already in the cache leaves the existing item in the cache.
+func TestCacheWriterAbortKeepsExistingItem(t *testing.T) {
+	tester.TestCacheStorage(t, func(t *testing.T, cacheStorage sebcache.Storage) {
+		const key = "some/key"
+		expectedBytes := tester.RandomBytes(t, 4096)
+
+		cache, err := sebcache.New(log, cacheStorage)
+		require.NoError(t, err)
+
+		_, err = cache.Write(key, expectedBytes)
+		require.NoError(t, err)
+		expectedSize := cache.Size()
+
+		w, err := cache.Writer(key)
+		require.NoError(t, err)
+
+		_, err = w.Write(tester.RandomBytes(t, 1024))
+		require.NoError(t, err)
+
+		// Act
+		err = w.Abort()
+		require.NoError(t, err)
+
+		// Assert
+		require.True(t, cache.Has(key))
+		require.Equal(t, expectedSize, cache.Size())
+
+		r, err := cache.Reader(key)
+		require.NoError(t, err)
+		defer r.Close()
+
+		gotBytes, err := io.ReadAll(r)
+		require.NoError(t, err)
+		require.Equal(t, expectedBytes, gotBytes)
+	})
 }
