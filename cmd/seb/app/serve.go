@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/klauspost/compress/gzhttp"
 	"github.com/micvbang/go-helpy/sizey"
 	"github.com/micvbang/go-helpy/syncy"
 	"github.com/micvbang/simple-event-broker/internal/httphandlers"
@@ -113,7 +114,7 @@ var serveCmd = &cobra.Command{
 			defer l.Close()
 
 			l = netutil.LimitListener(l, flags.httpConnectionsMax)
-			errs <- http.Serve(l, mux)
+			errs <- http.Serve(l, gzhttp.GzipHandler(mux))
 		}()
 
 		if flags.httpEnableDebug {
