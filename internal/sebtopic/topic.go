@@ -129,8 +129,12 @@ func (s *Topic) AddRecords(batch sebrecords.Batch) ([]uint64, error) {
 	s.log.Debugf("Adding %d records (%d bytes)", batch.Len(), len(batch.Data))
 	recordBatchID := s.nextOffset.Load()
 
+	// TODO: make configurable (take ctx as input)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	rbPath := RecordBatchKey(s.topicName, recordBatchID)
-	backingWriter, err := s.backingStorage.Writer(context.Background(), rbPath)
+	backingWriter, err := s.backingStorage.Writer(ctx, rbPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening writer '%s': %w", rbPath, err)
 	}
