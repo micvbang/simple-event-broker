@@ -157,13 +157,13 @@ func (wc *s3WriteCloser) Close() error {
 	_, err := wc.s3.PutObject(wc.ctx, &s3.PutObjectInput{
 		Bucket:        &wc.bucketName,
 		Key:           &wc.objectKey,
-		Body:          &wc.buf,
+		Body:          bytes.NewReader(wc.buf.Bytes()),
 		ContentLength: &size,
 	})
 	if err != nil {
 		return fmt.Errorf("uploading to s3: %w", err)
 	}
-	wc.log.Debugf("uploaded to %s%s (%s)", wc.bucketName, wc.objectKey, time.Since(t0))
+	wc.log.Debugf("uploaded to %s/%s (%s)", wc.bucketName, wc.objectKey, time.Since(t0))
 
 	return nil
 }

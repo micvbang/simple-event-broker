@@ -410,3 +410,24 @@ func TestS3WriterCloseRespectsContextCancellation(t *testing.T) {
 		t.Fatal("Writer.Close did not return after context cancellation")
 	}
 }
+
+// TestS3WriterIsSeekable verifies that the reader given to s3.PutObject implements io.Seeker. This allows the
+// s3 client to retry uploads.
+func TestS3WriterIsSeekable(t *testing.T) {
+	ctx := context.Background()
+
+	s3Mock := &tester.S3Mock{}
+	s3Mock.MockPutObject = func(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+		_, ok := params.Body.(io.Seeker)
+		require.True(t, ok)
+		return nil, nil
+	}
+
+	s3Storage := sebtopic.NewS3Storage(log, s3Mock, "mybucket", "")
+	wtr, err := s3Storage.Writer(ctx, "topicName/000123.record_batch")
+	require.NoError(t, err)
+
+	wtr.Close()
+
+	require.True(t, s3Mock.PutObjectCalled)
+}
